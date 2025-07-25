@@ -1,0 +1,71 @@
+.authButtons {
+  display: flex;
+  gap: 1.25rem;
+  align-items: center;
+}
+
+.authButton {
+  padding: 0.75rem;
+  border-radius: 50%;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  border: none;
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f9ff;
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.15);
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255,255,255,0.1);
+    z-index: -1;
+    transform: scaleX(0);
+    transform-origin: right;
+    transition: transform 0.4s ease;
+  }
+
+  &:hover::before {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+
+  &:hover {
+    background: rgba(14, 165, 233, 0.08);
+    box-shadow: 0 4px 12px rgba(14, 165, 233, 0.25);
+  }
+}
+
+.signupButton {
+  background: linear-gradient(135deg, #38bdf8, #ec4899);
+  background-size: 200% 200%;
+  box-shadow: 0 4px 15px rgba(236, 72, 153, 0.35);
+
+  &:hover {
+    background: linear-gradient(135deg, #0ea5e9, #db2777);
+    box-shadow: 0 6px 20px rgba(236, 72, 153, 0.45);
+  }
+}
+
+.authIcon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  filter: invert(46%) sepia(98%) saturate(385%) hue-rotate(156deg) brightness(95%) contrast(92%);
+  
+  .signupButton & {
+    filter: invert(100%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(100%) contrast(100%);
+  }
+}

@@ -1,0 +1,33 @@
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  z-index: 1001;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.logoContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.logoImage {
+  background: #f0f9ff;
+  border-radius: 50%;
+  padding: 0.5rem;
+  box-shadow: 0 4px 6px rgba(2, 132, 199, 0.1);
+  object-fit: contain;
+  transition: transform 0.3s ease-in-out;
+}
+
+.logoText {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0f172a;
+  cursor: pointer;
+  letter-spacing: -0.5px;
+  transition: color 0.3s ease-in-out;
+}
