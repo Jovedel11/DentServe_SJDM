@@ -1,248 +1,103 @@
-import { motion, AnimatePresence } from "framer-motion";
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Link, NavLink, useLocation } from "react-router-dom";
-import styles from "../../public/style/components/Navbar.module.scss";
+import { useLocation } from "react-router-dom";
+import { RxHamburgerMenu, RxCross1 } from "react-icons/rx";
 import { useMediaQuery } from "react-responsive";
-import { navLinks, dropdownItems } from "../../../data/navPath";
 
-const DesktopNavLinks = ({ location }) => (
-  <>
-    {navLinks.map((link) => (
-      <NavLink
-        key={link.path}
-        to={link.path}
-        className={({ isActive }) =>
-          `${styles.navbar__link} ${isActive ? styles.navbar__linkActive : ""}`
-        }
-        aria-current={link.path === location.pathname ? "page" : undefined}
-      >
-        {({ isActive }) => (
-          <>
-            {link.label}
-            {isActive && (
-              <motion.div
-                layoutId="activeIndicator"
-                className={styles.activeIndicator}
-                initial={false}
-                transition={{ type: "spring", stiffness: 500, damping: 30 }}
-              />
-            )}
-          </>
-        )}
-      </NavLink>
-    ))}
-  </>
-);
+import Logo from "../../../core/components/Logo";
+import NavLinks from "../../../core/components/nav_bar/NavLinks";
+import Dropdown from "../../../core/components/nav_bar/Dropdown";
+import AuthButtons from "../../../core/components/nav_bar/AuthButtons";
+import styles from "../style/components/Navbar.module.scss";
 
-const DropdownMenu = ({ isDropdownOpen }) => (
-  <AnimatePresence>
-    {isDropdownOpen && (
-      <motion.div
-        className={styles.navbar__dropdownMenu}
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -10 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
-        aria-hidden={!isDropdownOpen}
-        role="menu"
-      >
-        {dropdownItems.map((item) => (
-          <motion.div
-            key={item.path}
-            whileHover={{ x: 5 }}
-            transition={{ type: "spring", stiffness: 300 }}
-            role="menuitem"
-          >
-            <Link
-              to={item.path}
-              className={styles.navbar__dropdownLink}
-              tabIndex={isDropdownOpen ? 0 : -1}
-              role="menuitem"
-            >
-              {item.label}
-            </Link>
-          </motion.div>
-        ))}
-      </motion.div>
-    )}
-  </AnimatePresence>
-);
-
-const MobileMenu = ({
-  isMobileMenuOpen,
-  toggleMobileMenu,
-  isDropdownOpen,
-  toggleDropdown,
-  location,
-}) => (
-  <AnimatePresence>
-    {isMobileMenuOpen && (
-      <>
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.3 }}
-          className={styles.mobileMenuOverlay}
-          onClick={toggleMobileMenu}
-          role="presentation"
-        />
-
-        <motion.nav
-          initial={{ x: "100%" }}
-          animate={{ x: 0 }}
-          exit={{ x: "100%" }}
-          transition={{ type: "spring", damping: 30, stiffness: 300 }}
-          className={styles.navbar__mobile}
-          aria-label="Mobile navigation"
-          onClick={(e) => e.stopPropagation()}
-          id="mobile-menu"
-        >
-          <div className={styles.mobileHeader}>
-            <button
-              className={styles.closeButton}
-              onClick={toggleMobileMenu}
-              aria-label="Close menu"
-            >
-              <RxCross1 />
-            </button>
-          </div>
-
-          <div className={styles.mobileNavContent}>
-            {navLinks.map((link) => (
-              <NavLink
-                key={link.path}
-                to={link.path}
-                className={({ isActive }) =>
-                  `${styles.navbar__mobileLink} ${
-                    isActive ? styles.navbar__mobileLinkActive : ""
-                  }`
-                }
-                onClick={toggleMobileMenu}
-                aria-current={
-                  link.path === location.pathname ? "page" : undefined
-                }
-              >
-                {link.label}
-                {({ isActive }) =>
-                  isActive && (
-                    <motion.div
-                      layoutId="mobileActiveIndicator"
-                      className={styles.activeIndicator}
-                    />
-                  )
-                }
-              </NavLink>
-            ))}
-
-            <div className={styles.mobileDropdown}>
-              <button
-                className={`${styles.mobileDropdownButton} ${
-                  isDropdownOpen ? styles.dropdownOpen : ""
-                }`}
-                onClick={toggleDropdown}
-                aria-expanded={isDropdownOpen}
-                aria-controls="mobile-dropdown-menu"
-              >
-                More Links
-                <motion.span
-                  animate={{ rotate: isDropdownOpen ? 180 : 0 }}
-                  transition={{ duration: 0.3 }}
-                  aria-hidden="true"
-                >
-                  <RxChevronDown />
-                </motion.span>
-              </button>
-
-              <AnimatePresence>
-                {isDropdownOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className={styles.mobileDropdownMenu}
-                    id="mobile-dropdown-menu"
-                    role="menu"
-                  >
-                    {dropdownItems.map((item) => (
-                      <Link
-                        key={item.path}
-                        to={item.path}
-                        className={styles.mobileDropdownLink}
-                        onClick={toggleMobileMenu}
-                        role="menuitem"
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-        </motion.nav>
-      </>
-    )}
-  </AnimatePresence>
-);
-
+// navbar component
 const Navbar = React.memo(function Navbar() {
-  const [isMobileMenuOpen, setisMobileMenuOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+
   const location = useLocation();
   const dropdownRef = useRef(null);
+  const mobileMenuRef = useRef(null);
   const isMobile = useMediaQuery({ maxWidth: 768 });
 
-  // detect for scroll
+  // optimized scroll handler with RAF
   useEffect(() => {
+    let ticking = false;
+
     const handleScroll = () => {
-      setIsScrolled(window.scrollY > 50);
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          setIsScrolled(window.scrollY > 50);
+          ticking = false;
+        });
+        ticking = true;
+      }
     };
 
-    window.addEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // close dropdown when clicking in outside
+  // handle click outside dropdown
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contians(event.target)) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsDropdownOpen(false);
       }
+      if (
+        mobileMenuRef.current &&
+        !mobileMenuRef.current.contains(event.target) &&
+        isMobileMenuOpen
+      ) {
+        setIsMobileMenuOpen(false);
+      }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
-  // close menu when route change
+    if (isDropdownOpen || isMobileMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [isDropdownOpen, isMobileMenuOpen]);
+
+  // close menus on route change
   useEffect(() => {
-    setisMobileMenuOpen(false);
+    setIsMobileMenuOpen(false);
     setIsDropdownOpen(false);
-  }, [location]);
+  }, [location.pathname]);
 
-  // close dronwdown when esc key clicked
+  // keyboard event handlers
   useEffect(() => {
-    const handleEscape = (e) => {
+    const handleKeyDown = (e) => {
       if (e.key === "Escape") {
         setIsDropdownOpen(false);
-        isMobileMenuOpen && setisMobileMenuOpen(false);
+        setIsMobileMenuOpen(false);
       }
-
-      document.addEventListener("keydown", handleEscape);
-      return () => document.removeEventListener("keydown", handleEscape);
     };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // body scroll lock for mobile menu
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      const scrollY = window.scrollY;
+      document.body.style.position = "fixed";
+      document.body.style.top = `-${scrollY}px`;
+      document.body.style.width = "100%";
+
+      return () => {
+        document.body.style.position = "";
+        document.body.style.top = "";
+        document.body.style.width = "";
+        window.scrollTo(0, scrollY);
+      };
+    }
   }, [isMobileMenuOpen]);
 
-  // mobile menu toggle w/ scroll locking
-  const toggleMovileMenu = useCallback(() => {
-    setisMobileMenuOpen((prev) => {
-      const newState = !prev;
-      newState
-        ? (document.body.style.overflow = "hidden")
-        : (document.body.style.overflow = "");
-      return newState;
-    });
+  const toggleMobileMenu = useCallback(() => {
+    setIsMobileMenuOpen((prev) => !prev);
     setIsDropdownOpen(false);
   }, []);
 
@@ -250,75 +105,107 @@ const Navbar = React.memo(function Navbar() {
     setIsDropdownOpen((prev) => !prev);
   }, []);
 
+  const closeDropdown = useCallback(() => {
+    setIsDropdownOpen(false);
+  }, []);
+
+  const handleKeyDown = useCallback((e, action) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      action();
+    }
+  }, []);
+
   return (
-    <motion.header
-      initial={{ y: -100 }}
-      animate={{ y: 0 }}
-      transition={{ type: "spring", stiffness: 120, damping: 20 }}
+    <header
       className={`${styles.navbar} ${isScrolled ? styles.scrolled : ""}`}
       role="banner"
     >
-      <div className={styles.navbar__container}>
+      <div className={styles.navbarContainer}>
+        <Logo />
+
         {/* Mobile Menu Toggle */}
-        <motion.button
-          className={styles.navbar__toggle}
+        <button
+          className={styles.navbarToggle}
           onClick={toggleMobileMenu}
+          onKeyDown={(e) => handleKeyDown(e, toggleMobileMenu)}
           aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
           aria-expanded={isMobileMenuOpen}
-          whileTap={{ scale: 0.95 }}
+          aria-controls="mobile-menu"
         >
           {isMobileMenuOpen ? (
             <RxCross1 className={styles.menuIcon} aria-hidden="true" />
           ) : (
             <RxHamburgerMenu className={styles.menuIcon} aria-hidden="true" />
           )}
-        </motion.button>
+        </button>
 
         {/* Desktop Navigation */}
-        <nav className={styles.navbar__center} aria-label="Main navigation">
-          <DesktopNavLinks location={location} />
-
-          {/* Dropdown Menu */}
+        <nav className={styles.navbarCenter} aria-label="Main navigation">
+          <NavLinks />
           <div
             ref={dropdownRef}
-            className={styles.navbar__dropdown}
             onMouseEnter={() => !isMobile && setIsDropdownOpen(true)}
             onMouseLeave={() => !isMobile && setIsDropdownOpen(false)}
           >
-            <motion.button
-              className={`${styles.navbar__dropdownButton} ${
-                isDropdownOpen ? styles.dropdownOpen : ""
-              }`}
-              onClick={toggleDropdown}
-              aria-haspopup="true"
-              aria-expanded={isDropdownOpen}
-              whileHover={{ backgroundColor: "#f0f9ff" }}
-              aria-controls="dropdown-menu"
-            >
-              More Links
-              <motion.span
-                className={styles.navbar__dropdownIcon}
-                animate={{ rotate: isDropdownOpen ? 180 : 0 }}
-                transition={{ duration: 0.3 }}
-                aria-hidden="true"
-              >
-                <RxChevronDown />
-              </motion.span>
-            </motion.button>
-            <DropdownMenu isDropdownOpen={isDropdownOpen} />
+            <Dropdown
+              isOpen={isDropdownOpen}
+              onToggle={toggleDropdown}
+              onClose={closeDropdown}
+            />
           </div>
         </nav>
 
+        <AuthButtons />
+
         {/* Mobile Menu */}
-        <MobileMenu
-          isMobileMenuOpen={isMobileMenuOpen}
-          toggleMobileMenu={toggleMobileMenu}
-          isDropdownOpen={isDropdownOpen}
-          toggleDropdown={toggleDropdown}
-          location={location}
-        />
+        {isMobileMenuOpen && (
+          <>
+            <div
+              className={styles.mobileMenuOverlay}
+              onClick={toggleMobileMenu}
+              role="presentation"
+              aria-hidden="true"
+            />
+            <nav
+              ref={mobileMenuRef}
+              className={`${styles.navbarMobile} ${
+                isMobileMenuOpen ? styles.mobileMenuOpen : ""
+              }`}
+              aria-label="Mobile navigation"
+              id="mobile-menu"
+            >
+              <div className={styles.mobileHeader}>
+                <Logo />
+                <button
+                  className={styles.closeButton}
+                  onClick={toggleMobileMenu}
+                  aria-label="Close menu"
+                >
+                  <RxCross1 />
+                </button>
+              </div>
+
+              <div className={styles.mobileNavContent}>
+                <div className={styles.mobileNavLinks}>
+                  <NavLinks isMobile onLinkClick={toggleMobileMenu} />
+                </div>
+
+                <Dropdown
+                  isOpen={isDropdownOpen}
+                  onToggle={toggleDropdown}
+                  onClose={closeDropdown}
+                  isMobile
+                  onItemClick={toggleMobileMenu}
+                />
+
+                <AuthButtons isMobile onButtonClick={toggleMobileMenu} />
+              </div>
+            </nav>
+          </>
+        )}
       </div>
-    </motion.header>
+    </header>
   );
 });
 
