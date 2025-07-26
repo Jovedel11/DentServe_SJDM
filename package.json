@@ -11,16 +11,24 @@
   },
   "dependencies": {
     "@googlemaps/react-wrapper": "^1.2.0",
+    "@heroui/navbar": "^2.2.21",
+    "@heroui/react": "^2.8.1",
     "@react-google-maps/api": "^2.20.7",
+    "@tailwindcss/vite": "^4.1.11",
     "@tanstack/react-query": "^5.83.0",
+    "antd": "^5.26.6",
+    "classnames": "^2.5.1",
     "framer-motion": "^12.23.9",
+    "lodash": "^4.17.21",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-icons": "^5.5.0",
+    "react-leaflet": "^5.0.0",
     "react-responsive": "^10.0.1",
     "react-router-dom": "^7.7.1",
     "recharts": "^3.1.0",
-    "sass": "^1.89.2"
+    "sass": "^1.89.2",
+    "tailwindcss": "^4.1.11"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.1",
