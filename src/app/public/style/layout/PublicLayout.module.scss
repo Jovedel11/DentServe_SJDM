@@ -2,9 +2,46 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  width: 100%;
+  position: relative;
+  overflow-x: hidden; 
 }
 
 .mainContent {
   flex: 1;
-  padding-top: 1.5rem; 
+  width: 100%;
+  position: relative;
+  
+  padding-top: 80px;
+  
+  @media (max-width: 768px) {
+    padding-top: 70px; 
+  }
+  
+  transition: padding-top 0.3s ease;
+}
+
+.container {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 1rem;
+  
+  @media (min-width: 768px) {
+    padding: 0 2rem;
+  }
+  
+  @media (min-width: 1200px) {
+    padding: 0 2.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .mainContent {
+    padding-top: 65px;
+  }
+  
+  .container {
+    padding: 0 0.75rem;
+  }
 }

@@ -1,9 +1,9 @@
 .footer {
   width: 100%;
   background: #0a192f;
-  color: #fff;
+  color: #ffffff;
   overflow: hidden;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   position: relative;
   
   &::before {
@@ -17,5 +17,603 @@
       radial-gradient(circle at 20% 30%, rgba(25, 55, 109, 0.4) 0%, transparent 40%),
       radial-gradient(circle at 80% 70%, rgba(25, 55, 109, 0.4) 0%, transparent 40%);
     pointer-events: none;
+    z-index: -1;
+  }
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+/* how it works section */
+.howItWorksSection {
+  padding: 5rem 0 3.5rem;
+  text-align: center;
+  position: relative;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 800px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  }
+
+  h2 {
+    font-size: clamp(1.8rem, 5vw, 2.6rem);
+    font-weight: 700;
+    margin-bottom: 1.2rem;
+    letter-spacing: -0.5px;
+    color: #ffffff;
+    position: relative;
+    display: inline-block;
+    
+    &::after {
+      content: '';
+      position: absolute;
+      bottom: -10px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 80px;
+      height: 4px;
+      background: linear-gradient(to right, #64ffda, #ac66ff);
+      border-radius: 2px;
+    }
+  }
+
+  p {
+    font-size: clamp(1rem, 2.5vw, 1.2rem);
+    color: rgba(255, 255, 255, 0.85);
+    max-width: 700px;
+    margin: 2rem auto 3rem;
+    line-height: 1.6;
+  }
+}
+
+.stepsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 2.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.stepCard {
+  background: rgba(15, 40, 75, 0.9);
+  border: 1px solid rgba(168, 218, 220, 0.15);
+  border-radius: 1rem;
+  padding: 2.5rem 2rem;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  
+  @supports (backdrop-filter: blur(10px)) {
+    background: rgba(15, 40, 75, 0.6);
+    backdrop-filter: blur(10px);
+  }
+  
+  &:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
+    border-color: rgba(168, 218, 220, 0.3);
+  }
+
+  .stepNumber {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: rgba(168, 218, 220, 0.15);
+    z-index: 0;
+  }
+
+  .iconWrapper {
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: rgba(168, 218, 220, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1.5rem;
+    font-size: 1.8rem;
+    color: #64ffda;
+    position: relative;
+    z-index: 1;
+    transition: transform 0.3s ease;
+  }
+
+  &:hover .iconWrapper {
+    transform: scale(1.1);
+  }
+
+  h3 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #ffffff;
+    margin-bottom: 1rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  p {
+    font-size: 1.05rem;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 1.8rem;
+    position: relative;
+    z-index: 1;
+    line-height: 1.5;
+  }
+
+  .tooltip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: help;
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.7);
+    transition: color 0.3s ease;
+    z-index: 1;
+
+    .tooltipIcon {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: bold;
+      margin-right: 8px;
+    }
+
+    .tooltipText {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.9);
+      color: #ffffff;
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      font-size: 0.8rem;
+      white-space: nowrap;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s ease;
+      z-index: 10;
+      
+      &::after {
+        content: '';
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 5px solid transparent;
+        border-top-color: rgba(0, 0, 0, 0.9);
+      }
+    }
+
+    &:hover .tooltipText {
+      opacity: 1;
+      visibility: visible;
+    }
+  }
+}
+
+/* sing up section */
+.signUpSection {
+  padding: 3.5rem 0;
+  position: relative;
+  background: rgba(10, 25, 47, 0.8);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+
+  .signUpContent {
+    text-align: center;
+    max-width: 700px;
+    margin: 0 auto;
+  }
+
+  h3 {
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 1.2rem;
+    line-height: 1.3;
+  }
+
+  p {
+    font-size: clamp(1rem, 2.5vw, 1.15rem);
+    color: rgba(255, 255, 255, 0.85);
+    margin: 0 auto 2rem;
+    line-height: 1.7;
+  }
+
+  .signUpButton {
+    background: transparent;
+    color: #64ffda;
+    font-size: clamp(1rem, 2vw, 1.1rem);
+    font-weight: 600;
+    padding: 1rem 2.5rem;
+    border-radius: 50px;
+    border: 2px solid #64ffda;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(100, 255, 218, 0.1);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      z-index: -1;
+    }
+    
+    &:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+      background-color: #1a3a5f;
+      
+      &::before {
+        opacity: 1;
+      }
+      
+      .arrowIcon {
+        transform: translateX(4px);
+      }
+    }
+    
+    &:focus-visible {
+      outline: 2px solid #64ffda;
+      outline-offset: 3px;
+    }
+    
+    .arrowIcon {
+      transition: transform 0.3s ease;
+    }
+  }
+}
+
+/* footer links */
+.footerLinks {
+  padding: 4.5rem 0 3rem;
+  position: relative;
+}
+
+.footerGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 3rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.brandColumn, .linkColumn, .newsletterColumn {
+  h4 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 1.8rem;
+    position: relative;
+    padding-bottom: 0.8rem;
+    
+    &::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 40px;
+      height: 2px;
+      background: #64ffda;
+    }
+  }
+}
+
+.brandColumn {
+  .brandLogo {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #64ffda;
+    margin-bottom: 1.2rem;
+    letter-spacing: -1px;
+  }
+  
+  .brandDescription {
+    font-size: 1.05rem;
+    color: rgba(255, 255, 255, 0.8);
+    line-height: 1.7;
+    margin-bottom: 2rem;
+  }
+  
+  .socialLinks {
+    display: flex;
+    gap: 1rem;
+  }
+  
+  .socialLink {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    text-decoration: none;
+    
+    &:hover,
+    &:focus-visible {
+      background: rgba(100, 255, 218, 0.2);
+      color: #64ffda;
+      transform: translateY(-3px);
+      outline: none;
+    }
+  }
+}
+
+.linkColumn {
+  ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    
+    li {
+      margin-bottom: 1rem;
+      
+      a {
+        font-size: 1.05rem;
+        color: rgba(255, 255, 255, 0.8);
+        display: block;
+        padding: 0.5rem 0;
+        transition: all 0.3s ease;
+        position: relative;
+        text-decoration: none;
+        
+        &::before {
+          content: '›';
+          margin-right: 10px;
+          opacity: 0;
+          transition: opacity 0.3s ease;
+          color: #64ffda;
+        }
+        
+        &:hover,
+        &:focus-visible {
+          color: #64ffda;
+          padding-left: 15px;
+          outline: none;
+          
+          &::before {
+            opacity: 1;
+          }
+        }
+      }
+    }
+  }
+}
+
+.newsletterColumn {
+  p {
+    font-size: 1.05rem;
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 1.5rem;
+    line-height: 1.7;
+  }
+  
+  .subscribeForm {
+    display: flex;
+    margin-bottom: 1.2rem;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    
+    @media (max-width: 480px) {
+      flex-direction: column;
+    }
+  }
+  
+  .emailInput {
+    flex: 1;
+    padding: 0.9rem 1.5rem;
+    border: none;
+    background: transparent;
+    color: #ffffff;
+    font-size: 1rem;
+    
+    &:focus {
+      outline: none;
+    }
+    
+    &::placeholder {
+      color: rgba(255, 255, 255, 0.6);
+    }
+  }
+  
+  .subscribeButton {
+    padding: 0 1.8rem;
+    background: rgba(100, 255, 218, 0.2);
+    color: #64ffda;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: background 0.3s ease;
+    
+    &:hover,
+    &:focus-visible {
+      background: rgba(100, 255, 218, 0.3);
+      outline: none;
+    }
+  }
+  
+  .disclaimer {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.6);
+    line-height: 1.6;
+  }
+}
+
+/* copyright section */
+.copyrightSection {
+  padding: 2rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  
+  .copyrightContent {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    
+    p {
+      font-size: 0.95rem;
+      color: rgba(255, 255, 255, 0.7);
+      margin: 0.5rem 0;
+    }
+  }
+  
+  .legalLinks {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    
+    a {
+      font-size: 0.95rem;
+      color: rgba(255, 255, 255, 0.7);
+      transition: color 0.3s ease;
+      padding: 0.5rem 0;
+      text-decoration: none;
+      
+      &:hover,
+      &:focus-visible {
+        color: #64ffda;
+        outline: none;
+      }
+    }
+    
+    .divider {
+      color: rgba(255, 255, 255, 0.3);
+    }
+  }
+}
+
+/* responsive design */
+@media (max-width: 992px) {
+  .howItWorksSection {
+    padding: 4rem 0 3rem;
+  }
+  
+  .footerGrid {
+    gap: 2.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .stepsGrid {
+    grid-template-columns: 1fr;
+    max-width: 550px;
+    margin: 0 auto;
+    gap: 1.5rem;
+  }
+  
+  .stepCard {
+    padding: 1.8rem;
+  }
+  
+  .footerLinks {
+    padding: 3.5rem 0 2.5rem;
+  }
+  
+  .footerGrid {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+    
+    > div:not(:last-child) {
+      padding-bottom: 2.5rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+  }
+  
+  .signUpSection {
+    padding: 2.5rem 0;
+    
+    h3 {
+      font-size: 1.6rem;
+    }
+  }
+  
+  .copyrightContent {
+    flex-direction: column;
+    text-align: center;
+    gap: 1rem;
+    
+    .legalLinks {
+      justify-content: center;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .stepCard {
+    padding: 1.5rem;
+  }
+  
+  .signUpButton {
+    padding: 0.8rem 1.8rem;
+    font-size: 1rem;
+  }
+  
+  .linkColumn li a {
+    padding: 0.8rem 0;
+  }
+  
+  .container {
+    padding: 0 1rem;
+  }
+}
+
+// accessibility and performance
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+// high contrast mode and support
+@media (prefers-contrast: high) {
+  .footer {
+    border-top: 2px solid #ffffff;
+  }
+  
+  .stepCard {
+    border-width: 2px;
   }
 }

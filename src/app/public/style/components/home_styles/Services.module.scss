@@ -1,0 +1,275 @@
+.services {
+  padding: 5rem 1.5rem;
+  background-color: #0a192f;
+  color: white;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 4rem;
+}
+
+.title {
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.subtitle {
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  color: #64748b;
+  max-width: 600px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+.featuresGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 2rem;
+  margin-bottom: 4rem;
+}
+
+.featureCard {
+  background-color: #1e293b;
+  padding: 2rem;
+  border-radius: 12px;
+  border: 1px solid #334155;
+  text-align: center;
+  transition: all 0.3s ease;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.featureCard:hover {
+  transform: translateY(-4px);
+  border-color: #3b82f6;
+  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.15);
+}
+
+.icon {
+  font-size: 2.5rem;
+  color: #3b82f6;
+  margin-bottom: 1.5rem;
+  transition: color 0.3s ease;
+}
+
+.featureCard:hover .icon {
+  color: #60a5fa;
+}
+
+.featureTitle {
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  color: #ffffff;
+}
+
+.featureList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  flex-grow: 1;
+}
+
+.featureList li {
+  padding: 0.5rem 0;
+  font-size: 0.95rem;
+  color: #eaebec;
+  position: relative;
+  padding-left: 1.5rem;
+}
+
+.featureList li::before {
+  content: "•";
+  color: #3b82f6;
+  font-weight: bold;
+  position: absolute;
+  left: 0;
+  top: 0.5rem;
+}
+
+.benefits {
+  background-color: #1e293b;
+  border-radius: 12px;
+  padding: 3rem 2rem;
+  border: 1px solid #334155;
+}
+
+.benefitsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.benefitCard {
+  text-align: center;
+  padding: 1.5rem;
+  border-radius: 8px;
+  background-color: #0f172a;
+  border: 1px solid #334155;
+  transition: all 0.3s ease;
+}
+
+.benefitCard:hover {
+  transform: translateY(-2px);
+  border-color: #3b82f6;
+}
+
+.benefitCard h4 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  color: #ffffff;
+}
+
+.benefitCard ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.benefitCard ul li {
+  padding: 0.5rem 0;
+  font-size: 0.95rem;
+  color: #eaebec;
+  position: relative;
+  padding-left: 1.5rem;
+}
+
+.benefitCard ul li::before {
+  content: "✓";
+  color: #10b981;
+  font-weight: bold;
+  position: absolute;
+  left: 0;
+  top: 0.5rem;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .services {
+    padding: 4rem 1.5rem;
+  }
+  
+  .featuresGrid {
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .services {
+    padding: 3rem 1rem;
+    min-height: auto;
+  }
+  
+  .header {
+    margin-bottom: 3rem;
+  }
+  
+  .featuresGrid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    margin-bottom: 3rem;
+  }
+  
+  .featureCard {
+    padding: 1.5rem;
+  }
+  
+  .benefits {
+    padding: 2rem 1.5rem;
+  }
+  
+  .benefitsGrid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  
+  .benefitCard {
+    padding: 1.5rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .services {
+    padding: 2rem 1rem;
+  }
+  
+  .header {
+    margin-bottom: 2rem;
+  }
+  
+  .featuresGrid {
+    margin-bottom: 2rem;
+  }
+  
+  .featureCard {
+    padding: 1.25rem;
+  }
+  
+  .benefits {
+    padding: 1.5rem 1rem;
+  }
+  
+  .benefitCard {
+    padding: 1.25rem;
+  }
+  
+  .icon {
+    font-size: 2rem;
+  }
+}
+
+@media (max-width: 320px) {
+  .services {
+    padding: 1.5rem 0.75rem;
+  }
+  
+  .featureCard,
+  .benefitCard {
+    padding: 1rem;
+  }
+  
+  .benefits {
+    padding: 1.25rem 0.75rem;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .featureCard,
+  .benefits,
+  .benefitCard {
+    border-width: 2px;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .featureCard,
+  .benefitCard,
+  .icon {
+    transition: none;
+  }
+  
+  .featureCard:hover,
+  .benefitCard:hover {
+    transform: none;
+  }
+}

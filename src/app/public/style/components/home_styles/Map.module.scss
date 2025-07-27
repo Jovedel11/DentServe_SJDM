@@ -1,0 +1,173 @@
+.mapSection {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  min-height: 100vh;
+  padding: 2rem 0;
+  display: flex;
+  align-items: center;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 1rem;
+  width: 100%;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.title {
+  color: #ffffff;
+  font-size: clamp(1.5rem, 4vw, 2.2rem);
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  color: #cbd5e0;
+  font-size: clamp(0.9rem, 2vw, 1.1rem);
+  max-width: 600px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+.mapWrapper {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.mapContainer {
+  height: 90vh;
+  min-height: 500px;
+  width: 90%;
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(58, 134, 255, 0.1);
+}
+
+.mapCanvas {
+  width: 100%;
+  height: 100%;
+}
+
+.resetButton {
+  position: absolute;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 1000;
+  background: rgba(13, 59, 102, 0.9);
+  border: none;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+  
+  svg {
+    width: 20px;
+    height: 20px;
+    color: #ffffff;
+  }
+  
+  &:hover {
+    background: #3a86ff;
+    transform: scale(1.05);
+  }
+  
+  &:focus {
+    outline: 2px solid #3a86ff;
+    outline-offset: 2px;
+  }
+}
+
+// Marker styles
+.clinicMarker {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  
+  .markerPin {
+    width: 32px;
+    height: 32px;
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    position: absolute;
+    top: 0;
+    left: 0;
+    transition: transform 0.2s ease;
+    box-shadow: 0 0 12px currentColor;
+  }
+  
+  .markerLabel {
+    position: absolute;
+    top: 10px;
+    color: white;
+    font-size: 0.8rem;
+    font-weight: 700;
+    transform: rotate(45deg);
+    z-index: 10;
+    width: 100%;
+    text-align: center;
+    left: 0;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  }
+  
+  &.high .markerPin {
+    background: #10b981;
+  }
+  
+  &.medium .markerPin {
+    background: #f59e0b;
+  }
+  
+  &.low .markerPin {
+    background: #ef4444;
+  }
+  
+  &.selected .markerPin {
+    transform: rotate(-45deg) scale(1.2);
+    z-index: 1000;
+  }
+}
+
+@media (max-width: 768px) {
+  .mapContainer {
+    height: 60vh;
+    min-height: 400px;
+  }
+  
+  .resetButton {
+    width: 40px;
+    height: 40px;
+    
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .mapSection {
+    padding: 1rem 0;
+  }
+  
+  .container {
+    padding: 0 0.5rem;
+  }
+  
+  .mapContainer {
+    height: 55vh;
+    min-height: 350px;
+  }
+}

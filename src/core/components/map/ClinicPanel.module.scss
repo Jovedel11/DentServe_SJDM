@@ -1,171 +1,203 @@
-.panel {
+.clinicPanel {
   position: absolute;
-  bottom: 20px;
-  left: 20px;
-  background: #ffffff;
+  bottom: 1rem;
+  left: 1rem;
+  background: rgba(13, 25, 43, 0.95);
   border-radius: 12px;
   padding: 1.5rem;
-  max-width: 350px;
-  width: calc(100% - 40px);
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+  max-width: 400px;
+  width: calc(100% - 2rem);
   z-index: 999;
+  border: 1px solid rgba(58, 134, 255, 0.2);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
 }
 
 .header {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.titleRow {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1.25rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid #f1f5f9;
+  align-items: center;
+  margin-bottom: 0.75rem;
 }
 
-.clinicInfo {
-  flex: 1;
-  
-  h3 {
-    color: #1e40af;
-    font-size: 1.2rem;
-    font-weight: 700;
-    margin: 0 0 0.5rem 0;
-    line-height: 1.3;
-  }
-}
-
-.badge {
-  padding: 0.4rem 0.8rem;
-  border-radius: 20px;
-  font-size: 0.75rem;
+.clinicName {
+  color: #ffffff;
+  font-size: 1.2rem;
+  margin: 0;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  
-  &.high {
-    background: #dcfce7;
-    color: #166534;
-    border: 1px solid #bbf7d0;
-  }
-  
-  &.medium {
-    background: #fefce8;
-    color: #854d0e;
-    border: 1px solid #fde047;
-  }
-  
-  &.low {
-    background: #fef2f2;
-    color: #991b1b;
-    border: 1px solid #fecaca;
-  }
+  flex: 1;
 }
 
-.closeBtn {
+.closeButton {
   background: transparent;
   border: none;
-  color: #64748b;
+  color: #cbd5e0;
   cursor: pointer;
-  font-size: 1.5rem;
-  width: 32px;
-  height: 32px;
+  padding: 0.5rem;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
   
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+  
   &:hover {
-    background: #f1f5f9;
+    background: rgba(239, 68, 68, 0.1);
     color: #ef4444;
+  }
+  
+  &:focus {
+    outline: 2px solid #3a86ff;
+    outline-offset: 2px;
+  }
+}
+
+.feedbackBadge {
+  padding: 0.4rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: white;
+  display: inline-block;
+  
+  &.high {
+    background: #10b981;
+  }
+  
+  &.medium {
+    background: #f59e0b;
+  }
+  
+  &.low {
+    background: #ef4444;
   }
 }
 
 .details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   margin-bottom: 1.5rem;
 }
 
-.item {
+.detailItem {
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
-  margin-bottom: 0.75rem;
+}
+
+.iconWrapper {
+  flex-shrink: 0;
+  color: #60a5fa;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   
-  .icon {
-    font-size: 1rem;
-    flex-shrink: 0;
-    margin-top: 0.1rem;
+  svg {
+    width: 16px;
+    height: 16px;
   }
-  
-  span:last-child {
-    color: #374151;
-    font-size: 0.9rem;
-    line-height: 1.5;
-  }
+}
+
+.detailText {
+  color: #cbd5e0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin: 0;
 }
 
 .actions {
-  p {
-    color: #64748b;
-    font-size: 0.85rem;
-    text-align: center;
-    margin-bottom: 1rem;
-    line-height: 1.4;
-  }
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 1rem;
 }
 
-.buttons {
+.authPrompt {
+  color: #cbd5e0;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  text-align: center;
+  line-height: 1.4;
+  margin: 0 0 1rem 0;
+}
+
+.authButtons {
   display: flex;
   gap: 0.75rem;
   
   button {
     flex: 1;
-    padding: 0.7rem;
+    padding: 0.75rem;
     border-radius: 8px;
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     font-size: 0.85rem;
     border: none;
   }
 }
 
-.signupBtn {
-  background: #3b82f6;
-  color: white;
+.btnPrimary {
+  background: #3a86ff;
+  color: #ffffff;
   
   &:hover {
     background: #2563eb;
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  }
+  
+  &:focus {
+    outline: 2px solid #3a86ff;
+    outline-offset: 2px;
   }
 }
 
-.loginBtn {
+.btnOutline {
   background: transparent;
-  color: #3b82f6;
-  border: 1px solid #3b82f6;
+  color: #60a5fa;
+  border: 1px solid #60a5fa;
   
   &:hover {
-    background: #eff6ff;
+    background: rgba(96, 165, 250, 0.1);
     transform: translateY(-1px);
+  }
+  
+  &:focus {
+    outline: 2px solid #60a5fa;
+    outline-offset: 2px;
   }
 }
 
 @media (max-width: 768px) {
-  .panel {
-    left: 15px;
-    right: 15px;
-    bottom: 15px;
-    width: auto;
+  .clinicPanel {
     max-width: none;
+    left: 0.5rem;
+    right: 0.5rem;
+    width: auto;
     padding: 1.25rem;
   }
-  
-  .buttons {
+}
+
+@media (max-width: 480px) {
+  .authButtons {
     flex-direction: column;
-    
-    button {
-      padding: 0.8rem;
-    }
+  }
+  
+  .clinicName {
+    font-size: 1.1rem;
   }
 }

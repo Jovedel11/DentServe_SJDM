@@ -1,0 +1,435 @@
+.contactsPage {
+  max-width: 1400px;
+  margin: 0 auto;
+  min-height: 100vh;
+}
+
+#agreement {
+  scroll-margin-top: 120px;
+}
+
+/* Skeleton loader */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+  border-radius: 12px;
+  margin-bottom: 4rem;
+}
+
+@keyframes loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Hero Section */
+.contactHero {
+  background: linear-gradient(rgba(34, 139, 230, 0.9), rgba(34, 139, 230, 0.9)),
+    url('/images/contact.png');
+  background-size: cover;
+  background-position: center;
+  border-radius: 12px;
+  padding: 5rem 2rem;
+  margin-bottom: 4rem;
+  color: #ffffff;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100px;
+    background: linear-gradient(to top, #f8f9fa 0%, transparent 100%);
+    z-index: 0;
+    pointer-events: none;
+    filter: blur(10px);
+  }
+}
+
+.heroContainer {
+  max-width: 800px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 1;
+}
+
+.contactHero h1 {
+  font-size: 2.8rem;
+  margin-bottom: 1.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.heroSubtext {
+  font-size: 1.2rem;
+  line-height: 1.7;
+  opacity: 0.9;
+}
+
+/* Contact Cards */
+.contactCardsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  margin: 3rem auto;
+  max-width: 1200px;
+}
+
+.contactCard {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 2.5rem 2rem;
+  text-align: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(181, 181, 181, 0.5);
+  position: relative;
+  overflow: hidden;
+  
+  &:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.08);
+  }
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 5px;
+    background: linear-gradient(to right, #228be6, #51cf66);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  
+  &:hover::before {
+    opacity: 1;
+  }
+}
+
+.contactIcon {
+  width: 60px;
+  height: 60px;
+  padding: 15px;
+  background: #228be6;
+  color: #ffffff;
+  border-radius: 50%;
+  margin: 0 auto 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cardContent h3 {
+  color: #228be6;
+  margin-bottom: 1rem;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.cardMainText {
+  font-weight: 600;
+  color: #333333;
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.cardSubText {
+  color: #666666;
+  font-size: 0.95rem;
+}
+
+/* Benefits Section */
+.benefitsSection {
+  margin: 5rem auto;
+  text-align: center;
+  max-width: 1200px;
+  
+  h3 {
+    font-size: 2.2rem;
+    color: #333333;
+    margin-bottom: 3rem;
+    font-weight: 700;
+  }
+}
+
+.benefitsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 2rem;
+}
+
+.benefitCard {
+  background: #ffffff;
+  padding: 2.5rem 2rem;
+  border-radius: 12px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(181, 181, 181, 0.5);
+  transition: all 0.3s ease;
+  text-align: center;
+  
+  &:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.benefitIcon {
+  width: 60px;
+  height: 60px;
+  margin: 0 auto 1.5rem;
+  background: rgba(34, 139, 230, 0.1);
+  color: #228be6;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  svg {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+.benefitCard h4 {
+  color: #228be6;
+  margin-bottom: 1rem;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.benefitCard p {
+  color: #666666;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+/* Patient Section */
+.patientSection {
+  padding: 5rem 0;
+  background: #ffffff;
+  
+  .patientContainer {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 50px;
+  }
+}
+
+.patientForm {
+  background: #f8f9fa;
+  padding: 2.5rem;
+  border-radius: 12px;
+  box-shadow: 0 5px 20px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(181, 181, 181, 0.5);
+  
+  h3 {
+    font-size: 1.8rem;
+    color: #333333;
+    margin-bottom: 1rem;
+    font-weight: 700;
+  }
+  
+  p {
+    color: #666666;
+    margin-bottom: 2rem;
+  }
+}
+
+.patientFormContent {
+  .formGroup {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 1.5rem;
+  }
+  
+  .formField {
+    position: relative;
+    margin-bottom: 1.5rem;
+    
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #333333;
+      font-weight: 500;
+      font-size: 0.95rem;
+    }
+    
+    input,
+    textarea {
+      width: 100%;
+      padding: 1rem;
+      border: 1px solid rgba(181, 181, 181, 0.8);
+      border-radius: 8px;
+      background: #ffffff;
+      transition: all 0.3s ease;
+      font-size: 1rem;
+      
+      &:focus {
+        outline: none;
+        border-color: #228be6;
+        box-shadow: 0 0 0 3px rgba(34, 139, 230, 0.1);
+      }
+    }
+    
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+    }
+  }
+}
+
+.submitButton {
+  background: linear-gradient(to right, #228be6, #51cf66);
+  color: #ffffff;
+  padding: 1.1rem 2.5rem;
+  border: none;
+  border-radius: 50px;
+  font-weight: 600;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+  
+  &:hover {
+    box-shadow: 0 8px 20px rgba(34, 139, 230, 0.3);
+    transform: translateY(-2px);
+  }
+  
+  &:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+}
+
+.patientInfo {
+  h3 {
+    font-size: 1.8rem;
+    color: #333333;
+    margin-bottom: 1.5rem;
+    font-weight: 700;
+  }
+}
+
+.supportOptions {
+  display: grid;
+  gap: 20px;
+  margin-bottom: 3rem;
+}
+
+.supportCard {
+  display: flex;
+  gap: 15px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid rgba(181, 181, 181, 0.5);
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: translateX(5px);
+    border-color: #228be6;
+  }
+  
+  svg {
+    width: 40px;
+    height: 40px;
+    padding: 10px;
+    background: rgba(34, 139, 230, 0.1);
+    color: #228be6;
+    border-radius: 8px;
+    flex-shrink: 0;
+  }
+  
+  h4 {
+    color: #228be6;
+    margin-bottom: 0.3rem;
+    font-size: 1.1rem;
+  }
+  
+  p {
+    color: #666666;
+    font-size: 0.95rem;
+  }
+}
+
+.emergencyInfo {
+  background: rgba(255, 77, 79, 0.05);
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 4px solid #ff4d4f;
+  
+  h4 {
+    color: #ff4d4f;
+    margin-bottom: 0.8rem;
+    font-size: 1.2rem;
+  }
+  
+  p {
+    color: #666666;
+    font-size: 0.95rem;
+    margin-bottom: 0.5rem;
+  }
+}
+
+.emergencyNumber {
+  font-weight: 700;
+  color: #ff4d4f !important;
+  font-size: 1.2rem !important;
+  margin-top: 0.8rem !important;
+}
+
+/* Responsive Design */
+@media (max-width: 992px) {
+  .patientContainer {
+    grid-template-columns: 1fr !important;
+    gap: 40px !important;
+  }
+  
+  .contactHero {
+    padding: 3rem 1.5rem;
+  }
+  
+  .contactHero h1 {
+    font-size: 2.2rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .contactsPage {
+    padding: 85px 20px 0;
+  }
+  
+  .contactHero h1 {
+    font-size: 2rem;
+  }
+  
+  .heroSubtext {
+    font-size: 1.1rem;
+  }
+  
+  .patientFormContent .formGroup {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .contactHero h1 {
+    font-size: 1.8rem;
+  }
+  
+  .patientForm {
+    padding: 1.5rem;
+  }
+}

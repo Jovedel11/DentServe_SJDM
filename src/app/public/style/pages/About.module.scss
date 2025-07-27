@@ -1,0 +1,112 @@
+.aboutPage {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.sectionHeader {
+  text-align: center;
+  margin-bottom: 60px;
+
+  h2 {
+    font-size: 2.2rem;
+    color: #1a1a1a;
+    margin-bottom: 1rem;
+    font-weight: 700;
+  }
+
+  p {
+    color: #666;
+    font-size: 1.1rem;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+}
+
+/* Accreditations Section */
+.accreditations {
+  padding: 100px 0;
+  background: linear-gradient(to bottom, #f8f9fa 0%, #ffffff 100%);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 25px;
+  margin-top: 40px;
+}
+
+.badge {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background: #ffffff;
+  padding: 20px 30px;
+  border-radius: 50px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+  font-weight: 600;
+  color: #1a1a1a;
+  border: 1px solid rgba(224, 224, 224, 0.5);
+  
+  span:first-child {
+    font-size: 1.4rem;
+    color: #347CCC;
+  }
+}
+
+.backToTop {
+  position: fixed !important;
+  bottom: 2rem !important;
+  right: 2rem !important;
+  z-index: 1001;
+  border-radius: 50% !important;
+  box-shadow: 0 4px 20px rgba(9, 216, 113, 0.3) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  
+  &:hover {
+    transform: translateY(-3px) scale(1.05) !important;
+    box-shadow: 0 8px 30px rgba(9, 216, 113, 0.5) !important;
+  }
+  
+  &:focus {
+    outline: 2px solid #09d871 !important;
+    outline-offset: 2px !important;
+  }
+  
+  &:active {
+    transform: translateY(-1px) scale(0.98) !important;
+  }
+  
+  @media (max-width: 768px) {
+    bottom: 1.5rem !important;
+    right: 1.5rem !important;
+    width: 45px !important;
+    height: 45px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .accreditations {
+    padding: 70px 0;
+  }
+  
+  .badges {
+    flex-direction: column;
+    align-items: center;
+    
+    .badge {
+      width: 100%;
+      max-width: 320px;
+      justify-content: center;
+    }
+  }
+}

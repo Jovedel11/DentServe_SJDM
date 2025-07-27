@@ -1,100 +1,58 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useLocation } from "react-router-dom";
-import { RxHamburgerMenu, RxCross1 } from "react-icons/rx";
-import { useMediaQuery } from "react-responsive";
-
-import Logo from "../../../core/components/Logo";
-import NavLinks from "../../../core/components/nav_bar/NavLinks";
-import Dropdown from "../../../core/components/nav_bar/Dropdown";
-import AuthButtons from "../../../core/components/nav_bar/AuthButtons";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import { RxChevronDown, RxHamburgerMenu, RxCross1 } from "react-icons/rx";
 import styles from "../style/components/Navbar.module.scss";
+import { useMediaQuery } from "react-responsive";
+import { navLinks, dropdownItems } from "../../../data/home_data/homeData";
 
-// navbar component
-const Navbar = React.memo(function Navbar() {
+const Navbar = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-
   const location = useLocation();
   const dropdownRef = useRef(null);
-  const mobileMenuRef = useRef(null);
   const isMobile = useMediaQuery({ maxWidth: 768 });
 
-  // optimized scroll handler with RAF
+  // scroll detection
   useEffect(() => {
-    let ticking = false;
-
     const handleScroll = () => {
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          setIsScrolled(window.scrollY > 50);
-          ticking = false;
-        });
-        ticking = true;
-      }
+      setIsScrolled(window.scrollY > 50);
     };
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // handle click outside dropdown
+  // close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsDropdownOpen(false);
       }
-      if (
-        mobileMenuRef.current &&
-        !mobileMenuRef.current.contains(event.target) &&
-        isMobileMenuOpen
-      ) {
-        setIsMobileMenuOpen(false);
-      }
     };
 
-    if (isDropdownOpen || isMobileMenuOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () =>
-        document.removeEventListener("mousedown", handleClickOutside);
-    }
-  }, [isDropdownOpen, isMobileMenuOpen]);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-  // close menus on route change
+  // close menus when route changes
   useEffect(() => {
     setIsMobileMenuOpen(false);
     setIsDropdownOpen(false);
-  }, [location.pathname]);
+  }, [location]);
 
-  // keyboard event handlers
+  // close dropdown on escape key
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleEscape = (e) => {
       if (e.key === "Escape") {
         setIsDropdownOpen(false);
         setIsMobileMenuOpen(false);
       }
     };
 
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
   }, []);
-
-  // body scroll lock for mobile menu
-  useEffect(() => {
-    if (isMobileMenuOpen) {
-      const scrollY = window.scrollY;
-      document.body.style.position = "fixed";
-      document.body.style.top = `-${scrollY}px`;
-      document.body.style.width = "100%";
-
-      return () => {
-        document.body.style.position = "";
-        document.body.style.top = "";
-        document.body.style.width = "";
-        window.scrollTo(0, scrollY);
-      };
-    }
-  }, [isMobileMenuOpen]);
 
   const toggleMobileMenu = useCallback(() => {
     setIsMobileMenuOpen((prev) => !prev);
@@ -105,101 +63,206 @@ const Navbar = React.memo(function Navbar() {
     setIsDropdownOpen((prev) => !prev);
   }, []);
 
-  const closeDropdown = useCallback(() => {
-    setIsDropdownOpen(false);
-  }, []);
-
-  const handleKeyDown = useCallback((e, action) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      action();
-    }
+  const closeMobileMenu = useCallback(() => {
+    setIsMobileMenuOpen(false);
   }, []);
 
   return (
-    <header
-      className={`${styles.navbar} ${isScrolled ? styles.scrolled : ""}`}
-      role="banner"
-    >
-      <div className={styles.navbarContainer}>
-        <Logo />
+    <header className={`${styles.navbar} ${isScrolled ? styles.scrolled : ""}`}>
+      <div className={styles.container}>
+        {/* Logo */}
+        <Link to="/" className={styles.logo} aria-label="DentServe Home">
+          <div className={styles.logoContainer}>
+            <div className={styles.logoImageWrapper}>
+              <img
+                src="/assets/images/logo.png"
+                alt="DentServe Logo"
+                className={styles.logoImage}
+                loading="eager"
+                width="28"
+                height="28"
+              />
+            </div>
+            <span className={styles.logoText}>DentServe</span>
+          </div>
+        </Link>
 
         {/* Mobile Menu Toggle */}
         <button
-          className={styles.navbarToggle}
+          className={styles.mobileToggle}
           onClick={toggleMobileMenu}
-          onKeyDown={(e) => handleKeyDown(e, toggleMobileMenu)}
           aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
           aria-expanded={isMobileMenuOpen}
-          aria-controls="mobile-menu"
         >
-          {isMobileMenuOpen ? (
-            <RxCross1 className={styles.menuIcon} aria-hidden="true" />
-          ) : (
-            <RxHamburgerMenu className={styles.menuIcon} aria-hidden="true" />
-          )}
+          {isMobileMenuOpen ? <RxCross1 /> : <RxHamburgerMenu />}
         </button>
 
         {/* Desktop Navigation */}
-        <nav className={styles.navbarCenter} aria-label="Main navigation">
-          <NavLinks />
+        <nav className={styles.desktopNav} aria-label="Main navigation">
+          {navLinks.map((link) => (
+            <NavLink
+              key={link.path}
+              to={link.path}
+              className={({ isActive }) =>
+                `${styles.navLink} ${isActive ? styles.active : ""}`
+              }
+            >
+              {link.label}
+            </NavLink>
+          ))}
+
+          {/* Dropdown Menu */}
           <div
             ref={dropdownRef}
+            className={styles.dropdown}
             onMouseEnter={() => !isMobile && setIsDropdownOpen(true)}
             onMouseLeave={() => !isMobile && setIsDropdownOpen(false)}
           >
-            <Dropdown
-              isOpen={isDropdownOpen}
-              onToggle={toggleDropdown}
-              onClose={closeDropdown}
-            />
+            <button
+              className={`${styles.dropdownButton} ${
+                isDropdownOpen ? styles.dropdownOpen : ""
+              }`}
+              onClick={toggleDropdown}
+              aria-haspopup="true"
+              aria-expanded={isDropdownOpen}
+            >
+              More Links
+              <span
+                className={`${styles.chevron} ${
+                  isDropdownOpen ? styles.rotated : ""
+                }`}
+              >
+                <RxChevronDown />
+              </span>
+            </button>
+
+            {isDropdownOpen && (
+              <div className={styles.dropdownMenu}>
+                {dropdownItems.map((item) => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={styles.dropdownLink}
+                    onClick={() => setIsDropdownOpen(false)}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
         </nav>
 
-        <AuthButtons />
+        {/* Auth Buttons */}
+        <div className={styles.authButtons}>
+          <Link to="/login">
+            <button className={`${styles.btn} ${styles.loginBtn}`}>
+              Login
+            </button>
+          </Link>
+          <Link to="/signup">
+            <button className={`${styles.btn} ${styles.signupBtn}`}>
+              Sign Up
+            </button>
+          </Link>
+        </div>
 
         {/* Mobile Menu */}
         {isMobileMenuOpen && (
           <>
-            <div
-              className={styles.mobileMenuOverlay}
-              onClick={toggleMobileMenu}
-              role="presentation"
-              aria-hidden="true"
-            />
-            <nav
-              ref={mobileMenuRef}
-              className={`${styles.navbarMobile} ${
-                isMobileMenuOpen ? styles.mobileMenuOpen : ""
-              }`}
-              aria-label="Mobile navigation"
-              id="mobile-menu"
-            >
+            <div className={styles.overlay} onClick={closeMobileMenu} />
+            <nav className={styles.mobileNav} aria-label="Mobile navigation">
               <div className={styles.mobileHeader}>
-                <Logo />
-                <button
-                  className={styles.closeButton}
-                  onClick={toggleMobileMenu}
-                  aria-label="Close menu"
+                <Link
+                  to="/"
+                  className={styles.logo}
+                  aria-label="DentServe Home"
+                  onClick={closeMobileMenu}
                 >
+                  <div className={styles.logoContainer}>
+                    <div className={styles.logoImageWrapper}>
+                      <img
+                        src="/assets/images/logo.png"
+                        alt="DentServe Logo"
+                        className={styles.logoImage}
+                        loading="eager"
+                        width="28"
+                        height="28"
+                      />
+                    </div>
+                    <span className={styles.logoText}>DentServe</span>
+                  </div>
+                </Link>
+                <button className={styles.closeBtn} onClick={closeMobileMenu}>
                   <RxCross1 />
                 </button>
               </div>
 
-              <div className={styles.mobileNavContent}>
-                <div className={styles.mobileNavLinks}>
-                  <NavLinks isMobile onLinkClick={toggleMobileMenu} />
+              <div className={styles.mobileContent}>
+                {navLinks.map((link) => (
+                  <NavLink
+                    key={link.path}
+                    to={link.path}
+                    className={({ isActive }) =>
+                      `${styles.mobileLink} ${isActive ? styles.active : ""}`
+                    }
+                    onClick={closeMobileMenu}
+                  >
+                    {link.label}
+                  </NavLink>
+                ))}
+
+                <div className={styles.mobileDropdown}>
+                  <button
+                    className={`${styles.mobileDropdownBtn} ${
+                      isDropdownOpen ? styles.dropdownOpen : ""
+                    }`}
+                    onClick={toggleDropdown}
+                  >
+                    More Links
+                    <span
+                      className={`${styles.chevron} ${
+                        isDropdownOpen ? styles.rotated : ""
+                      }`}
+                    >
+                      <RxChevronDown />
+                    </span>
+                  </button>
+
+                  {isDropdownOpen && (
+                    <div className={styles.mobileDropdownMenu}>
+                      {dropdownItems.map((item) => (
+                        <Link
+                          key={item.path}
+                          to={item.path}
+                          className={styles.mobileDropdownLink}
+                          onClick={closeMobileMenu}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                <Dropdown
-                  isOpen={isDropdownOpen}
-                  onToggle={toggleDropdown}
-                  onClose={closeDropdown}
-                  isMobile
-                  onItemClick={toggleMobileMenu}
-                />
-
-                <AuthButtons isMobile onButtonClick={toggleMobileMenu} />
+                <div className={styles.mobileAuth}>
+                  <Link to="/login">
+                    <button
+                      className={`${styles.btn} ${styles.mobileBtn}`}
+                      onClick={closeMobileMenu}
+                    >
+                      Login
+                    </button>
+                  </Link>
+                  <Link to="/signup">
+                    <button
+                      className={`${styles.btn} ${styles.mobileBtn} ${styles.primary}`}
+                      onClick={closeMobileMenu}
+                    >
+                      Sign Up
+                    </button>
+                  </Link>
+                </div>
               </div>
             </nav>
           </>
@@ -207,6 +270,6 @@ const Navbar = React.memo(function Navbar() {
       </div>
     </header>
   );
-});
+};
 
 export default Navbar;
