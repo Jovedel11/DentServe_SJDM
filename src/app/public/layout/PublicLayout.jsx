@@ -5,17 +5,23 @@ import styles from "../style/layout/PublicLayout.module.scss";
 
 const PublicLayout = () => {
   const location = useLocation();
+
+  // Define routes that shouldn't show navbar and footer
+  const noLayoutRoutes = ["/login", "/signup"];
+  const shouldShowLayout = !noLayoutRoutes.includes(location.pathname);
+
+  // If no layout needed, render outlet directly
+  if (!shouldShowLayout) {
+    return <Outlet />;
+  }
+
   return (
-    <div>
-      {location.pathname !== "/login" && location.pathname !== "/signup" && (
-        <div className={styles.layoutContainer}>
-          <Navbar />
-          <main className={styles.mainContent}>
-            <Outlet />
-          </main>
-          <Footer />
-        </div>
-      )}
+    <div className={styles.layoutContainer}>
+      <Navbar />
+      <main className={styles.mainContent}>
+        <Outlet />
+      </main>
+      <Footer />
     </div>
   );
 };

@@ -1,0 +1,201 @@
+.mission {
+  padding: 70px 0;
+  background: #ffffff;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+.missionContent {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 60px;
+  align-items: flex-start;
+}
+
+.missionText {
+  h2 {
+    font-size: 2.2rem;
+    color: #1a1a1a;
+    margin-bottom: 1.5rem;
+    font-weight: 700;
+  }
+  
+  p {
+    color: #666;
+    font-size: 1.1rem;
+    line-height: 1.8;
+    margin-bottom: 2rem;
+  }
+}
+
+.securityNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 15px;
+  background: rgba(78, 205, 196, 0.08);
+  padding: 20px;
+  border-radius: 8px;
+  border-left: 3px solid #4ECDC4;
+  margin-bottom: 40px;
+  
+  span {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+  }
+  
+  p {
+    margin: 0;
+    font-size: 1rem;
+    color: #1a1a1a;
+  }
+}
+
+.coreValues {
+  h3 {
+    font-size: 1.5rem;
+    color: #1a1a1a;
+    margin-bottom: 25px;
+    position: relative;
+    padding-bottom: 15px;
+    
+    &::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 60px;
+      height: 3px;
+      background: #347CCC;
+      border-radius: 2px;
+    }
+  }
+}
+
+.valuesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 25px;
+}
+
+.valueCard {
+  background: rgba(52, 124, 204, 0.03);
+  border-radius: 12px;
+  padding: 25px;
+  border: 1px solid rgba(52, 124, 204, 0.1);
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: translateY(-5px);
+    border-color: rgba(52, 124, 204, 0.2);
+  }
+  
+  .valueIcon {
+    font-size: 1.8rem;
+    margin-bottom: 20px;
+  }
+  
+  h4 {
+    font-size: 1.3rem;
+    margin: 0 0 15px;
+    color: #1a1a1a;
+  }
+  
+  p {
+    color: #666;
+    margin: 0;
+    line-height: 1.7;
+  }
+}
+
+.missionSide {
+  .milestones {
+    background: #f8f9fa;
+    border-radius: 12px;
+    padding: 30px;
+    
+    h3 {
+      font-size: 1.5rem;
+      color: #1a1a1a;
+      margin-bottom: 25px;
+      position: relative;
+      padding-bottom: 15px;
+      
+      &::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 60px;
+        height: 3px;
+        background: #347CCC;
+        border-radius: 2px;
+      }
+    }
+  }
+}
+
+.timeline {
+  position: relative;
+  padding-left: 30px;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 10px;
+    bottom: 10px;
+    width: 3px;
+    background: rgba(52, 124, 204, 0.2);
+    border-radius: 2px;
+  }
+}
+
+.milestone {
+  position: relative;
+  padding: 0 0 30px 30px;
+  
+  &:last-child {
+    padding-bottom: 10px;
+  }
+  
+  &::before {
+    content: '';
+    position: absolute;
+    left: -6px;
+    top: 8px;
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: #347CCC;
+    z-index: 1;
+  }
+  
+  .year {
+    font-weight: 700;
+    color: #347CCC;
+    margin-bottom: 8px;
+    font-size: 1.1rem;
+  }
+  
+  .event {
+    color: #1a1a1a;
+    line-height: 1.6;
+  }
+}
+
+@media (max-width: 992px) {
+  .missionContent {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+}
+
+@media (max-width: 768px) {
+  .mission {
+    padding: 70px 0;
+  }
+}

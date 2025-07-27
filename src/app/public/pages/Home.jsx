@@ -1,50 +1,75 @@
-import HeroSection from "../components/HeroSection";
-import Map from "../components/Map";
-import AboutUs from "../components/AboutUs";
-import Services from "../components/Services";
-import Testimonials from "../components/Testimonials";
-import Collaboration from "../components/Collaboration";
-import FAQSection from "../components/FAQSection";
-import SatisfactionPromise from "../components/SatisfactionPromise";
+import HeroSection from "../components/home_components/HeroSection";
+import Map from "../components/home_components/Map";
+import AboutUs from "../components/home_components/AboutUs";
+import Services from "../components//home_components/Services";
+import Testimonials from "../components/home_components/Testimonials";
+import Collaboration from "../components//home_components/Collaboration";
+import FAQSection from "../components//home_components/FAQSection";
+import SatisfactionPromise from "../components/home_components/SatisfactionPromise";
 import styles from "../style/pages/Home.module.scss";
 import { FloatButton } from "antd";
 
 const Home = () => {
   return (
     <div className={styles.homeContainer}>
-      <div className={styles.sectionSpacing}>
+      <section className={`${styles.section}`} id="hero">
         <HeroSection />
-      </div>
-      <div>
+      </section>
+
+      <section className={`${styles.section}`} id="map">
         <Map />
-      </div>
-      <div>
+      </section>
+
+      <section className={`${styles.section}`} id="about">
         <AboutUs />
-      </div>
-      <div>
+      </section>
+
+      <section className={`${styles.section}`} id="services">
         <Services />
-      </div>
-      <div>
+      </section>
+
+      <section className={`${styles.section}`} id="testimonials">
         <Testimonials />
-      </div>
-      <div>
+      </section>
+
+      <section className={`${styles.section}`} id="collaboration">
         <Collaboration />
-      </div>
-      <div className={styles.sectionSpacing}>
+      </section>
+
+      <section
+        className={`${styles.section} ${styles.sectionSpacing}`}
+        id="faq"
+      >
         <FAQSection />
-      </div>
-      <div className={styles.sectionSpacing}>
+      </section>
+
+      <section
+        className={`${styles.section} ${styles.sectionSpacing}`}
+        id="satisfaction"
+      >
         <SatisfactionPromise />
-      </div>
+      </section>
+
+      {/* back to Top Button */}
       <FloatButton.BackTop
+        className={styles.backToTop}
         style={{
           right: 30,
           bottom: 30,
           height: 50,
           width: 50,
-          boxShadow: "10px 15px 20px rgba(9, 216, 113, 0.49)",
+          boxShadow: "0 4px 20px rgba(9, 216, 113, 0.3)",
+          transition: "all 0.3s ease",
         }}
+        onClick={() => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+        visibilityHeight={300}
+        duration={800}
       />
+
+      {/* Scroll Progress Indicator */}
+      <div className={styles.scrollProgress} id="scroll-progress" />
     </div>
   );
 };

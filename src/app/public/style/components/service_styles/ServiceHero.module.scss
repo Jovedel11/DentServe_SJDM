@@ -1,0 +1,191 @@
+.heroSection {
+  background: linear-gradient(105deg, #1d3557 45%, rgba(29, 53, 87, 0.9) 100%);
+  color: white;
+  padding: 4rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+
+.heroSection::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: linear-gradient(to right, #457b9d, #a8dadc, #457b9d);
+}
+
+.heroSection::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 100px;
+  background: linear-gradient(to top, #f8fafc, transparent);
+  z-index: 0;
+}
+
+.heroContent {
+  max-width: 600px;
+  z-index: 2;
+  margin: 0 auto;
+}
+
+.heroTitle {
+  font-size: 2.8rem;
+  font-weight: 800;
+  margin-bottom: 1.2rem;
+  line-height: 1.2;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  position: relative;
+}
+
+.heroTitle::after {
+  content: "";
+  position: absolute;
+  bottom: -10px;
+  left: 0;
+  width: 80px;
+  height: 4px;
+  background: #a8dadc;
+  border-radius: 2px;
+}
+
+.heroSubtitle {
+  font-size: 1.25rem;
+  max-width: 100%;
+  margin: 2rem auto 2.5rem;
+  color: rgba(255, 255, 255, 0.92);
+  line-height: 1.7;
+  font-weight: 300;
+}
+
+.heroButtons {
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  z-index: 2;
+}
+
+.heroButtons button {
+  padding: 1rem 2.2rem;
+  border-radius: 50px;
+  font-weight: 600;
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  border: none;
+  z-index: 2;
+}
+
+.primaryButton {
+  background: #fff;
+  color: #1d3557;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+}
+
+.primaryButton:hover {
+  background: #f0f7ff;
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+}
+
+.secondaryButton {
+  background: transparent;
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.secondaryButton:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: white;
+}
+
+.heroIllustration {
+  position: relative;
+  width: 45%;
+  height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.dentalChair {
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.1) 0%, transparent 70%),
+    url('assets/images/logo.png') center/contain no-repeat;
+  opacity: 0.9;
+}
+
+.skeleton {
+  width: 100%;
+  height: 200px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+  border-radius: 8px;
+}
+
+@keyframes loading {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@media (max-width: 1024px) {
+  .heroIllustration {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .heroSection {
+    padding: 2.5rem 1rem;
+    text-align: center;
+  }
+
+  .heroTitle {
+    font-size: 2.2rem;
+  }
+
+  .heroTitle::after {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  .heroSubtitle {
+    font-size: 1.1rem;
+  }
+
+  .heroButtons {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .heroButtons {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .heroButtons button {
+    width: 100%;
+    justify-content: center;
+  }
+}

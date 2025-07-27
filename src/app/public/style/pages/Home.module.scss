@@ -1,17 +1,86 @@
 .homeContainer {
   display: flex;
   flex-direction: column;
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden; /* Prevent horizontal scroll */
+}
+
+/* Consistent section spacing and layout */
+.section {
+  width: 100%;
+  position: relative;
+  
+  /* Remove excessive padding that causes layout issues */
+  &:not(:first-child) {
+    margin-top: -1px; /* Eliminate gaps between sections */
+  }
 }
 
 .sectionSpacing {
-  padding-top: 2rem 0;
-  
+  padding: 1rem 0;
   
   @media (min-width: 768px) {
+    padding: 1.5rem 0;
+  }
+  
+  @media (min-width: 1024px) {
     padding: 2rem 0;
-    
-    &:first-child {
-      padding-top: 3rem;
-    }
+  }
+}
+
+/* back to top button */
+.backToTop {
+  position: fixed !important;
+  bottom: 2rem !important;
+  right: 2rem !important;
+  z-index: 1001;
+  border-radius: 50% !important;
+  box-shadow: 0 4px 20px rgba(9, 216, 113, 0.3) !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  
+  &:hover {
+    transform: translateY(-3px) scale(1.05) !important;
+    box-shadow: 0 8px 30px rgba(9, 216, 113, 0.5) !important;
+  }
+  
+  &:focus {
+    outline: 2px solid #09d871 !important;
+    outline-offset: 2px !important;
+  }
+  
+  &:active {
+    transform: translateY(-1px) scale(0.98) !important;
+  }
+  
+  @media (max-width: 768px) {
+    bottom: 1.5rem !important;
+    right: 1.5rem !important;
+    width: 45px !important;
+    height: 45px !important;
+  }
+}
+
+/* Enhanced scroll progress indicator */
+.scrollProgress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0%;
+  height: 4px;
+  background: linear-gradient(90deg, #09d871 0%, #14d176 50%, #06a85a 100%);
+  z-index: 1002;
+  transition: width 0.1s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(9, 216, 113, 0.3);
+  
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 20px;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3));
+    opacity: 0.8;
   }
 }
