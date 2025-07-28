@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import Skeleton from "../../../../core/components/Skeleton";
 import { slides } from "../../../../data/home_data/homeData";
 import styles from "../../style/components/home_styles/HeroSection.module.scss";
+import Loader from "../../../../core/components/Loader";
 
 const HeroSection = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -81,7 +82,7 @@ const HeroSection = () => {
   }, [currentSlide, goToSlide, resetInterval, slides.length]);
 
   if (isLoading) {
-    return <Skeleton height="clamp(400px, 50vh, 600px)" />;
+    return <Loader type="skeleton" message="Loading hero section..." />;
   }
 
   return (

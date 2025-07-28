@@ -1,0 +1,400 @@
+.signupContainer {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 20px;
+}
+
+.signupWrapper {
+  display: flex;
+  width: 100%;
+  max-width: 1200px;
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  min-height: 700px;
+}
+
+.illustrationSection {
+  flex: 1;
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  position: relative;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.1);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+}
+
+.illustrationContent {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  color: #ffffff;
+}
+
+.welcomeText {
+  margin-top: 30px;
+  
+  h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 15px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  p {
+    font-size: 1.1rem;
+    line-height: 1.6;
+    opacity: 0.9;
+    max-width: 300px;
+    margin: 0 auto;
+  }
+}
+
+.formSection {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: #ffffff;
+  overflow-y: auto;
+}
+
+.formContainer {
+  width: 100%;
+  max-width: 450px;
+}
+
+.formHeader {
+  text-align: center;
+  margin-bottom: 30px;
+  
+  h2 {
+    font-size: 2rem;
+    font-weight: 600;
+    color: #333333;
+    margin-bottom: 8px;
+  }
+  
+  p {
+    color: #666666;
+    font-size: 0.95rem;
+  }
+}
+
+.signupForm {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.nameFields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}
+
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inputLabel {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #333333;
+  margin-bottom: 2px;
+}
+
+.inputField {
+  padding: 14px 16px;
+  border: 2px solid #e1e5e9;
+  border-radius: 10px;
+  font-size: 1rem;
+  color: #333333;
+  background: #ffffff;
+  transition: all 0.2s ease;
+  
+  &:focus {
+    outline: none;
+    border-color: #4A90E2;
+    box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+  }
+  
+  &::placeholder {
+    color: #999999;
+  }
+  
+  &.inputError {
+    border-color: #e74c3c;
+    
+    &:focus {
+      border-color: #e74c3c;
+      box-shadow: 0 0 0 3px rgba(231, 76, 60, 0.1);
+    }
+  }
+}
+
+.passwordWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.passwordToggle {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: #666666;
+  font-size: 1.2rem;
+  transition: color 0.2s ease;
+  
+  &:hover {
+    color: #4A90E2;
+  }
+  
+  &:focus {
+    outline: 2px solid #4A90E2;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+.passwordRequirements {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.requirement {
+  font-size: 0.8rem;
+  color: #666666;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  
+  &.valid {
+    color: #2ECC71;
+    font-weight: 500;
+  }
+  
+  &:not(.valid) {
+    opacity: 0.6;
+  }
+}
+
+.errorMessage {
+  font-size: 0.85rem;
+  color: #e74c3c;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  
+  &::before {
+    content: '⚠️';
+    font-size: 0.8rem;
+  }
+}
+
+.submitButton {
+  background: linear-gradient(135deg, #4A90E2 0%, #357ABD 100%);
+  color: #ffffff;
+  border: none;
+  padding: 16px 24px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 10px;
+  
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(74, 144, 226, 0.3);
+  }
+  
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  &:focus {
+    outline: 2px solid #4A90E2;
+    outline-offset: 2px;
+  }
+}
+
+.signInPrompt {
+  text-align: center;
+  font-size: 0.95rem;
+  color: #666666;
+  margin-top: 20px;
+}
+
+.signInLink {
+  color: #4A90E2;
+  text-decoration: none;
+  font-weight: 600;
+  transition: color 0.2s ease;
+  
+  &:hover {
+    color: #357ABD;
+    text-decoration: underline;
+  }
+  
+  &:focus {
+    outline: 2px solid #4A90E2;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 968px) {
+  .signupWrapper {
+    flex-direction: column;
+    max-width: 600px;
+  }
+  
+  .illustrationSection {
+    min-height: 300px;
+    padding: 30px;
+  }
+  
+  .welcomeText {
+    h1 {
+      font-size: 2rem;
+    }
+    
+    p {
+      font-size: 1rem;
+    }
+  }
+  
+  .formSection {
+    padding: 30px;
+  }
+}
+
+@media (max-width: 768px) {
+  .signupContainer {
+    padding: 15px;
+  }
+  
+  .illustrationSection {
+    min-height: 250px;
+    padding: 20px;
+  }
+  
+  .welcomeText {
+    h1 {
+      font-size: 1.8rem;
+    }
+  }
+  
+  .formSection {
+    padding: 20px;
+  }
+  
+  .formHeader {
+    h2 {
+      font-size: 1.7rem;
+    }
+  }
+  
+  .nameFields {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  
+  .passwordRequirements {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .signupContainer {
+    padding: 10px;
+  }
+  
+  .signupWrapper {
+    border-radius: 15px;
+  }
+  
+  .illustrationSection {
+    min-height: 200px;
+    padding: 15px;
+  }
+  
+  .welcomeText {
+    margin-top: 20px;
+    
+    h1 {
+      font-size: 1.5rem;
+    }
+    
+    p {
+      font-size: 0.9rem;
+    }
+  }
+  
+  .formSection {
+    padding: 15px;
+  }
+  
+  .formContainer {
+    max-width: 100%;
+  }
+  
+  .formHeader {
+    margin-bottom: 25px;
+    
+    h2 {
+      font-size: 1.5rem;
+    }
+  }
+  
+  .signupForm {
+    gap: 18px;
+  }
+  
+  .inputField {
+    padding: 12px 14px;
+    font-size: 0.95rem;
+  }
+  
+  .submitButton {
+    padding: 14px 20px;
+    font-size: 0.95rem;
+  }
+}

@@ -6,11 +6,6 @@ export const navLinks = [
   { path: "/contact", label: "Contact" },
 ];
 
-export const dropdownItems = [
-  { path: "/appointments", label: "Appointments" },
-  { path: "/testimonials", label: "Testimonials" },
-];
-
 // service component
 export const benefits = {
     patient: [

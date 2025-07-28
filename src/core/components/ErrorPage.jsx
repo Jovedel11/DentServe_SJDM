@@ -1,33 +1,55 @@
+import React from "react";
+import styles from "./ErrorPage.module.scss";
+import { useNavigate } from "react-router-dom";
+
 const ErrorPage = () => {
+  const navigate = useNavigate();
+
   return (
-    <main>
-      <div className="max-w-screen-xl mx-auto px-4 flex items-center justify-start h-screen md:px-8">
-        <div className="max-w-lg mx-auto space-y-3 text-center">
-          <h3 className="text-indigo-600 font-semibold">404 Error</h3>
-          <p className="text-gray-800 text-4xl font-semibold sm:text-5xl">
-            Page not found
-          </p>
-          <p className="text-gray-600">
-            Sorry, the page you are looking for could not be found or has been
-            removed.
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <a
-              href="javascript:void(0)"
-              className="block py-2 px-4 text-white font-medium bg-indigo-600 duration-150 hover:bg-indigo-500 active:bg-indigo-700 rounded-lg"
+    <div className={styles.container}>
+      <div className={styles.content}>
+        <div className={styles.illustration}>
+          <div className={styles.toothIcon}>
+            <div className={styles.toothCrown}></div>
+            <div className={styles.toothRoot}></div>
+          </div>
+          <div className={styles.errorIndicator}>404</div>
+        </div>
+
+        <h1 className={styles.title}>Oops! That page is missing</h1>
+        <p className={styles.description}>
+          We couldn't find the page you're looking for. It might have been moved
+          or deleted. Let's get you back on track for your dental care journey.
+        </p>
+
+        <div className={styles.actions}>
+          <button
+            className={styles.primaryButton}
+            onClick={() => navigate("/")}
+            aria-label="Return to homepage"
+          >
+            Return to Homepage
+          </button>
+
+          <div className={styles.secondaryActions}>
+            <button
+              className={styles.secondaryButton}
+              onClick={() => navigate("/contact")}
+              aria-label="Contact support"
             >
-              Go back
-            </a>
-            <a
-              href="javascript:void(0)"
-              className="block py-2 px-4 text-gray-700 hover:bg-gray-50 font-medium duration-150 active:bg-gray-100 border rounded-lg"
+              Contact Support
+            </button>
+            <button
+              className={styles.secondaryButton}
+              onClick={() => navigate("/report")}
+              aria-label="Report a broken link"
             >
-              Contact support
-            </a>
+              Report Broken Link
+            </button>
           </div>
         </div>
       </div>
-    </main>
+    </div>
   );
 };
 
