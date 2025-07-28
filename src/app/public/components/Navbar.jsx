@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { RxChevronDown, RxHamburgerMenu, RxCross1 } from "react-icons/rx";
+import { RxHamburgerMenu, RxCross1 } from "react-icons/rx";
 import styles from "../style/components/Navbar.module.scss";
-import { useMediaQuery } from "react-responsive";
-import { navLinks, dropdownItems } from "../../../data/home_data/homeData";
+import { navLinks } from "../../../data/home_data/homeData";
 
 const Navbar = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -11,7 +10,6 @@ const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const location = useLocation();
   const dropdownRef = useRef(null);
-  const isMobile = useMediaQuery({ maxWidth: 768 });
 
   // scroll detection
   useEffect(() => {
@@ -57,10 +55,6 @@ const Navbar = () => {
   const toggleMobileMenu = useCallback(() => {
     setIsMobileMenuOpen((prev) => !prev);
     setIsDropdownOpen(false);
-  }, []);
-
-  const toggleDropdown = useCallback(() => {
-    setIsDropdownOpen((prev) => !prev);
   }, []);
 
   const closeMobileMenu = useCallback(() => {
@@ -110,47 +104,6 @@ const Navbar = () => {
               {link.label}
             </NavLink>
           ))}
-
-          {/* Dropdown Menu */}
-          <div
-            ref={dropdownRef}
-            className={styles.dropdown}
-            onMouseEnter={() => !isMobile && setIsDropdownOpen(true)}
-            onMouseLeave={() => !isMobile && setIsDropdownOpen(false)}
-          >
-            <button
-              className={`${styles.dropdownButton} ${
-                isDropdownOpen ? styles.dropdownOpen : ""
-              }`}
-              onClick={toggleDropdown}
-              aria-haspopup="true"
-              aria-expanded={isDropdownOpen}
-            >
-              More Links
-              <span
-                className={`${styles.chevron} ${
-                  isDropdownOpen ? styles.rotated : ""
-                }`}
-              >
-                <RxChevronDown />
-              </span>
-            </button>
-
-            {isDropdownOpen && (
-              <div className={styles.dropdownMenu}>
-                {dropdownItems.map((item) => (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={styles.dropdownLink}
-                    onClick={() => setIsDropdownOpen(false)}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
         </nav>
 
         {/* Auth Buttons */}
@@ -211,39 +164,6 @@ const Navbar = () => {
                     {link.label}
                   </NavLink>
                 ))}
-
-                <div className={styles.mobileDropdown}>
-                  <button
-                    className={`${styles.mobileDropdownBtn} ${
-                      isDropdownOpen ? styles.dropdownOpen : ""
-                    }`}
-                    onClick={toggleDropdown}
-                  >
-                    More Links
-                    <span
-                      className={`${styles.chevron} ${
-                        isDropdownOpen ? styles.rotated : ""
-                      }`}
-                    >
-                      <RxChevronDown />
-                    </span>
-                  </button>
-
-                  {isDropdownOpen && (
-                    <div className={styles.mobileDropdownMenu}>
-                      {dropdownItems.map((item) => (
-                        <Link
-                          key={item.path}
-                          to={item.path}
-                          className={styles.mobileDropdownLink}
-                          onClick={closeMobileMenu}
-                        >
-                          {item.label}
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
 
                 <div className={styles.mobileAuth}>
                   <Link to="/login">
