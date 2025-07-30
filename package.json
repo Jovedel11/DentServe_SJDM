@@ -20,8 +20,10 @@
     "antd": "^5.26.6",
     "classnames": "^2.5.1",
     "framer-motion": "^12.23.9",
+    "gsap": "^3.13.0",
     "lodash": "^4.17.21",
     "lucide-react": "^0.526.0",
+    "nodemailer": "^7.0.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-hook-form": "^7.61.1",
@@ -32,7 +34,8 @@
     "react-toastify": "^11.0.5",
     "recharts": "^3.1.0",
     "sass": "^1.89.2",
-    "tailwindcss": "^4.1.11"
+    "tailwindcss": "^4.1.11",
+    "twilio": "^5.8.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.1",

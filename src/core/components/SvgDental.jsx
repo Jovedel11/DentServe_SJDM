@@ -10,7 +10,7 @@ const SvgDental = ({ className }) => {
       role="img"
       aria-label="Dental care illustration"
     >
-      {/* Tooth Icon */}
+      {/* tooth Icon */}
       <path
         d="M200 50C180 50 165 65 165 85C165 95 170 105 175 115C180 130 185 145 190 160C195 175 200 190 200 200C200 190 205 175 210 160C215 145 220 130 225 115C230 105 235 95 235 85C235 65 220 50 200 50Z"
         fill="#4A90E2"
@@ -21,7 +21,7 @@ const SvgDental = ({ className }) => {
         fill="#FFFFFF"
       />
 
-      {/* Stethoscope */}
+      {/* stethoscope */}
       <circle cx="320" cy="80" r="15" fill="#E74C3C" opacity="0.7" />
       <path
         d="M320 95C320 95 315 100 310 110C305 120 300 135 295 150C290 165 285 180 285 190"
@@ -32,7 +32,7 @@ const SvgDental = ({ className }) => {
       />
       <circle cx="285" cy="195" r="8" fill="#E74C3C" opacity="0.7" />
 
-      {/* Medical Cross */}
+      {/* medical cross */}
       <rect x="90" y="120" width="30" height="8" fill="#2ECC71" opacity="0.6" />
       <rect
         x="101"
@@ -43,7 +43,7 @@ const SvgDental = ({ className }) => {
         opacity="0.6"
       />
 
-      {/* Calendar Icon */}
+      {/* calendar icon */}
       <rect
         x="320"
         y="180"
@@ -79,7 +79,7 @@ const SvgDental = ({ className }) => {
         strokeWidth="2"
       />
 
-      {/* Location Pin */}
+      {/* location pin */}
       <path
         d="M80 200C80 185 92 173 107 173C122 173 134 185 134 200C134 215 107 240 107 240S80 215 80 200Z"
         fill="#F39C12"
