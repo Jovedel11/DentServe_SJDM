@@ -10,6 +10,7 @@ const Service = lazy(() => import("./app/public/pages/Service"));
 const Contact = lazy(() => import("./app/public/pages/Contact"));
 const Login = lazy(() => import("./auth/login/Login"));
 const Signup = lazy(() => import("./auth/signup/Signup"));
+const Dashboard = lazy(() => import("./app/patient/pages/Dashboard"));
 
 export const router = createBrowserRouter([
   {
@@ -41,5 +42,9 @@ export const router = createBrowserRouter([
         element: withSuspense(Signup),
       },
     ],
+  },
+  {
+    path: "/dashboard",
+    element: withSuspense(Dashboard),
   },
 ]);

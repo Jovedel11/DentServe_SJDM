@@ -1,9 +1,14 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import DentalIllustration from "../../core/components/SvgDental";
+import { useAuth } from "../context/AuthProvider";
 import styles from "./Login.module.scss";
 
 const Login = () => {
+  const { signInUser } = useAuth();
+  const navigate = useNavigate();
+
+  // Form state management
   const [formData, setFormData] = useState({
     emailOrPhone: "",
     password: "",
@@ -11,72 +16,94 @@ const Login = () => {
   const [errors, setErrors] = useState({});
   const [loginType, setLoginType] = useState("email");
   const [showPassword, setShowPassword] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState({
+    loading: false,
+    message: null,
+    success: false,
+  });
 
-  const validateEmail = (email) => {
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    return emailRegex.test(email);
-  };
+  // Validation functions
+  const validateEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const validatePhone = (phone) =>
+    /^[\+]?[1-9][\d]{0,15}$/.test(phone.replace(/\s+/g, ""));
 
-  const validatePhone = (phone) => {
-    const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-    return phoneRegex.test(phone.replace(/\s+/g, ""));
-  };
-
+  // Handle input changes
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
 
-    // Clear specific error when user starts typing
+    // Clear errors when user types
     if (errors[name]) {
-      setErrors((prev) => ({
-        ...prev,
-        [name]: "",
-      }));
+      setErrors((prev) => ({ ...prev, [name]: null }));
     }
   };
 
+  // Handle login type change
   const handleLoginTypeChange = (type) => {
     setLoginType(type);
-    setFormData((prev) => ({
-      ...prev,
-      emailOrPhone: "",
-    }));
-    setErrors({});
+    setFormData((prev) => ({ ...prev, emailOrPhone: "" }));
+    setErrors((prev) => ({ ...prev, emailOrPhone: null }));
   };
 
+  // Form validation
   const validateForm = () => {
     const newErrors = {};
+    const { emailOrPhone, password } = formData;
 
-    // Validate email or phone
-    if (!formData.emailOrPhone.trim()) {
+    if (!emailOrPhone.trim()) {
       newErrors.emailOrPhone = `${
         loginType === "email" ? "Email" : "Phone number"
       } is required`;
-    } else if (loginType === "email" && !validateEmail(formData.emailOrPhone)) {
+    } else if (loginType === "email" && !validateEmail(emailOrPhone)) {
       newErrors.emailOrPhone = "Please enter a valid email address";
-    } else if (loginType === "phone" && !validatePhone(formData.emailOrPhone)) {
+    } else if (loginType === "phone" && !validatePhone(emailOrPhone)) {
       newErrors.emailOrPhone = "Please enter a valid phone number";
     }
 
-    // Validate password
-    if (!formData.password) {
+    if (!password) {
       newErrors.password = "Password is required";
-    } else if (formData.password.length < 6) {
-      newErrors.password = "Password must be at least 6 characters long";
+    } else if (password.length < 6) {
+      newErrors.password = "Password must be at least 6 characters";
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  // Handle form submission
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (validateForm()) {
-      // Form submission logic will be handled by useActionState
-      console.log("Form is valid, ready for submission");
+
+    if (!validateForm()) return;
+
+    try {
+      setSubmitStatus({
+        loading: true,
+        message: "Signing in...",
+        success: false,
+      });
+
+      const { success, error } = await signInUser(
+        formData.emailOrPhone,
+        formData.password
+      );
+
+      if (success) {
+        setSubmitStatus({
+          loading: false,
+          message: "Sign-in successful! Redirecting...",
+          success: true,
+        });
+        navigate("/dashboard");
+      } else {
+        throw new Error(error?.message || "An error occurred during sign-in");
+      }
+    } catch (error) {
+      setSubmitStatus({
+        loading: false,
+        message: error.message,
+        success: false,
+      });
     }
   };
 
@@ -105,10 +132,23 @@ const Login = () => {
               <p>Enter your credentials to access your account</p>
             </div>
 
+            {/* Status Message */}
+            {submitStatus.message && (
+              <div
+                className={`${styles.statusMessage} ${
+                  submitStatus.success ? styles.success : styles.error
+                }`}
+                role="alert"
+              >
+                {submitStatus.message}
+              </div>
+            )}
+
             <form
               className={styles.loginForm}
               onSubmit={handleSubmit}
               noValidate
+              aria-label="Sign in form"
             >
               {/* Login Type Toggle */}
               <div className={styles.loginTypeToggle}>
@@ -157,7 +197,7 @@ const Login = () => {
                   aria-describedby={
                     errors.emailOrPhone ? "emailOrPhone-error" : undefined
                   }
-                  aria-invalid={errors.emailOrPhone ? "true" : "false"}
+                  aria-invalid={!!errors.emailOrPhone}
                 />
                 {errors.emailOrPhone && (
                   <span
@@ -190,7 +230,7 @@ const Login = () => {
                     aria-describedby={
                       errors.password ? "password-error" : undefined
                     }
-                    aria-invalid={errors.password ? "true" : "false"}
+                    aria-invalid={!!errors.password}
                   />
                   <button
                     type="button"
@@ -225,9 +265,9 @@ const Login = () => {
               <button
                 type="submit"
                 className={styles.submitButton}
-                disabled={!formData.emailOrPhone || !formData.password}
+                disabled={submitStatus.loading}
               >
-                Sign In
+                {submitStatus.loading ? "Processing..." : "Sign In"}
               </button>
 
               {/* Sign Up Link */}

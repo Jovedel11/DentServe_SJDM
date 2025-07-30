@@ -49,10 +49,10 @@ const SpinnerLoader = ({ size, color }) => {
 
 const DentalIcon = () => (
   <svg className={styles.dentalIcon} viewBox="0 0 64 64">
-    {/* Dental drill icon */}
+    {/* dental drill icon */}
     <path d="M32 12 L42 8 L48 18 L38 22 Z" className={styles.drillBody} />
     <circle cx="42" cy="15" r="3" className={styles.drillBit} />
-    {/* Tooth icon */}
+    {/* tooth icon */}
     <path
       d="M26 30 Q30 22 34 30 Q38 40 30 44 Q22 40 26 30 Z"
       className={styles.tooth}
