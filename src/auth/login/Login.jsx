@@ -5,9 +5,6 @@ import { useAuth } from "../context/AuthProvider";
 import styles from "./Login.module.scss";
 
 const Login = () => {
-  const { signInUser } = useAuth();
-  const navigate = useNavigate();
-
   // Form state management
   const [formData, setFormData] = useState({
     emailOrPhone: "",
@@ -75,36 +72,6 @@ const Login = () => {
     e.preventDefault();
 
     if (!validateForm()) return;
-
-    try {
-      setSubmitStatus({
-        loading: true,
-        message: "Signing in...",
-        success: false,
-      });
-
-      const { success, error } = await signInUser(
-        formData.emailOrPhone,
-        formData.password
-      );
-
-      if (success) {
-        setSubmitStatus({
-          loading: false,
-          message: "Sign-in successful! Redirecting...",
-          success: true,
-        });
-        navigate("/dashboard");
-      } else {
-        throw new Error(error?.message || "An error occurred during sign-in");
-      }
-    } catch (error) {
-      setSubmitStatus({
-        loading: false,
-        message: error.message,
-        success: false,
-      });
-    }
   };
 
   return (
