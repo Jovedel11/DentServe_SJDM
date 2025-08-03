@@ -118,7 +118,7 @@ const Contact = () => {
         <div className={styles.heroContainer}>
           <h1>Connect With Our Dental Network</h1>
           <p className={styles.heroSubtext}>
-            Partner with the leading dental care platform in Nueva Ecija.
+            Partner with the leading dental care platform in San Jose Del Monte Bulacan.
             Whether you're a patient or practitioner, we're here to elevate
             dental care experiences.
           </p>
