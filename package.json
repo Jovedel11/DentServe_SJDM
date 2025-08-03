@@ -40,7 +40,8 @@
     "recharts": "^3.1.0",
     "sass": "^1.89.2",
     "tailwindcss": "^4.1.11",
-    "twilio": "^5.8.0"
+    "twilio": "^5.8.0",
+    "zod": "^4.0.14"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.1",
