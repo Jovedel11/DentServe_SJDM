@@ -1,255 +1,212 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import supabase from "../../../supabaseClient";
-import { fetchUserRole } from "../hooks/useFetchUserRole";
-import { fetchUserProfile } from "../hooks/useFetchProfile";
-import { canRequestOtp, getOtpCooldownTime } from "../hooks/requestOtp";
+import { handleSupabaseError, supabase } from "../../../supabaseClient";
+import { useSessionManager } from "../hooks/useSessionManager";
+import { authService } from "../hooks/authService";
 
 const AuthContext = createContext();
 
 const AuthProvider = ({ children }) => {
-  const [session, setSession] = useState(undefined);
-  const [userRole, setUserRole] = useState(null);
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [userProfile, setUserProfile] = useState(null);
-  const [otpCoolDown, setOtpCoolDown] = useState(otpLocalStorage());
+  const [error, setError] = useState(null);
+  const [userRole, setUserRole] = useState(null);
 
-  function otpLocalStorage() {
-    const savedOTP = localStorage.getItem("otpCoolDown");
-    return savedOTP ? JSON.parse(savedOTP) : {};
-  }
-
-  useEffect(() => {
-    localStorage.setItem("otpCoolDown", JSON.stringify(otpCoolDown));
-  }, [otpCoolDown]);
+  // session management
+  const { showWarning, extendSession, handleAutoLogout, sessionLogout } =
+    useSessionManager();
 
   useEffect(() => {
-    const getSession = async () => {
-      setLoading(true);
-      try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
-
-        if (error) console.error("Error fetching session:", error);
-        setSession(session);
-        await handleSession(session);
-        setLoading(false);
-      } catch (error) {
-        console.error("Error fetching session:", error);
-        setLoading(false);
-      }
-    };
-
     getSession();
 
     // listen for auth state changes
-    const { data: subscription } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log("Auth state changed:", event, session);
-        setSession(session);
-        await handleSession(session);
-        setLoading(false);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("Auth state changed:", event, session);
+      if (session?.user) {
+        setUser(session?.user);
+        await fetchUserProfile(session?.user?.id);
+      } else {
+        setUser(null);
+        setUserProfile(null);
+        setUserRole(null);
       }
-    );
+      setLoading(false);
+    });
 
-    return () => subscription?.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
-  // login with password either email or phone
-  const loginWithPassword = async (
-    identifier,
-    password,
-    rememberMe = false
-  ) => {
-    const isEmail = identifier.includes("@");
-    if (isEmail) {
-      return await signInWithEmail(identifier, password, rememberMe);
-    } else {
-      return await signInWithPhoneAndPassword(identifier, password);
-    }
-  };
+  // user current session
+  const getSession = async () => {
+    setLoading(true);
+    try {
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
 
-  // login with OTP either email or phone
-  const loginWithOTP = async (identifier, otp = null) => {
-    const isEmail = identifier.includes("@");
-    if (otp) {
-      // if theres an existing OTP
-      const type = isEmail ? "email" : "sms";
-      return await verifyOtp(identifier, otp, type);
-    } else {
-      // not existing OTP, request a new one
-      if (isEmail) {
-        return await sendEmailOTP(identifier);
-      } else {
-        return await signInWithPhone(identifier);
+      if (error) console.error("Error fetching session:", error);
+      if (session?.user) {
+        setUser(session.user);
+        await fetchUserProfile(session.user.id);
+        startSessionTimer();
       }
+    } catch (error) {
+      console.error("Error fetching session:", error);
+      setError(handleSupabaseError(error));
+    } finally {
+      setLoading(false);
     }
   };
 
-  // call it later when signIn is email with password
-  async function signInWithEmail(email, password, rememberMe = false) {
+  // fetch user profile
+  const fetchUserProfile = async (authUserId) => {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
+      const { data, error } = await supabase
+        .from("users")
+        .select(
+          `
+          *,
+            user_profiles (
+              *,
+              patient_profiles (*),
+              staff_profiles (
+              *,
+              clinics (
+              id, name, address, phone, email, location, service_offered, rating
+              )
+              ),
+              admin_profiles (*)
+          )
+          `
+        )
+        .eq("auth_user_id", authUserId)
+        .single();
       if (error) throw error;
-
-      return { user: data?.user, session: data?.session };
+      setUserProfile(data);
+      setUserRole(data?.user_profiles?.user_type);
     } catch (error) {
-      console.error("Error signing in with email:", error);
+      console.error("Error fetching user profile:", error);
+      setError(handleSupabaseError(error));
+    } finally {
       setLoading(false);
-      throw error;
     }
-  }
+  };
 
-  // call it later when signIn is phone with OTP
-  async function signInWithPhone(phone) {
-    if (!canRequestOtp(phone)) {
-      const coolDownTime = getOtpCooldownTime(phone, otpCoolDown);
-      throw new Error(
-        `Please wait ${coolDownTime} seconds before requesting a new OTP.`
-      );
-    }
+  const getCurrentUserRole = async () => {
     try {
-      setLoading(true);
-      const { error } = await supabase.auth.signInWithOtp({
-        phone,
-      });
-
-      if (error) throw error.message;
-
-      setOtpCoolDown((prev) => ({
-        ...prev,
-        [phone]: Date.now(),
-      }));
-
-      return {
-        message: "Verification code sent to your phone.",
-        phone,
-        needsVerification: true,
-      };
+      const { data: role } = await supabase.rpc("get_current_user_role");
+      setUserRole(role);
+      return role;
     } catch (error) {
-      console.error("Error signing in with phone:", error);
-      setLoading(false);
-      throw error;
+      console.error("Error fetching user role:", error);
+      return null;
     }
-  }
+  };
 
-  // call it later when signIn is phone with password
-  async function signInWithPhoneAndPassword(phone, password) {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase.auth.signInWithPassword({
-        phone,
-        password,
-      });
+  const signInWithPassword = async (email, password) => {
+    setLoading(true);
+    setError(null);
+    const result = await authService.signInWithPassword(email, password);
 
-      if (error) throw error.message;
+    if (result.error) setError(result.error);
 
-      return { user: data?.user, session: data?.session };
-    } catch (error) {
-      console.error("Error signing in with phone and password:", error);
-      setLoading(false);
-      throw error;
+    setLoading(false);
+    return result;
+  };
+
+  const signInWithOTP = async (identifier, otpCode, type = "email") => {
+    setLoading(true);
+    setError(null);
+    const result = await authService.verifyOTPToken(identifier, otpCode, type);
+
+    if (result.error) setError(result.error);
+
+    setLoading(false);
+    return result;
+  };
+
+  const sendOTP = async (identifier, type = "email") => {
+    setLoading(true);
+    setError(null);
+    const result = await authService.sendOTP(identifier, type);
+
+    if (result.error) setError(result.error);
+
+    setLoading(false);
+    return result;
+  };
+
+  const signUpUser = async (userData) => {
+    setLoading(true);
+    setError(null);
+    const result = await authService.signUpUser(userData);
+
+    if (result.error) setError(result.error);
+
+    setLoading(false);
+    return result;
+  };
+
+  const signOut = async () => {
+    setLoading(true);
+    const result = await authService.signOut();
+
+    if (result.success) {
+      setUser(null);
+      setUserProfile(null);
+      setUserRole(null);
     }
-  }
 
-  // call it later when sending OTP to email
-  async function sendEmailOTP(email) {
-    if (!canRequestOtp(email, otpCoolDown)) {
-      const coolDownTime = getOtpCooldownTime(email, otpCoolDown);
-      throw new Error(
-        `Please wait ${coolDownTime} seconds before requesting a new OTP.`
-      );
-    }
+    setLoading(false);
+    return result;
+  };
 
-    try {
-      setLoading(true);
+  // get user role
+  const isPatient = () => userRole === "patient";
+  const isStaff = () => userRole === "staff";
+  const isAdmin = () => userRole === "admin";
 
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-      });
-
-      if (error) throw error.message;
-
-      setOtpCoolDown((prev) => ({
-        ...prev,
-        [email]: Date.now(),
-      }));
-
-      return {
-        message: "Verification code sent to your email.",
-        email,
-        needsVerification: true,
-      };
-    } catch (error) {
-      console.error("Error sending email OTP:", error);
-      setLoading(false);
-      throw error;
-    }
-  }
-
-  // call it later when verifying OTP
-  async function verifyOtp(identifier, otp, type = "email") {
-    try {
-      setLoading(true);
-      const isEmail = identifier.includes("@");
-      const verificationIdentifier = isEmail
-        ? { email: identifier, token: otp, type: type }
-        : { phone: identifier, token: otp, type: type };
-
-      const { data, error } = await supabase.auth.verifyOtp(
-        verificationIdentifier
-      );
-
-      if (error) throw error.message;
-
-      // clear OTP cooldown on successful verification
-      setOtpCoolDown((prev) => {
-        const updated = { ...prev };
-        delete updated[identifier];
-        return updated;
-      });
-
-      return { user: data?.user, session: data?.session };
-    } catch (error) {
-      console.error("Error signing out:", error);
-      setLoading(false);
-      throw error;
-    }
-  }
+  const getStaffClinic = () => {
+    if (!isStaff()) return null;
+    return userProfile?.user_profiles?.staff_profiles?.clinics || null;
+  };
 
   const value = {
     // State
-    session,
-    userRole,
     user,
     userProfile,
     loading,
-    // Auth methods
-    loginWithPassword,
-    loginWithOTP,
-  };
+    error,
+    showWarning,
 
-  async function handleSession(session) {
-    if (session) {
-      const role = await fetchUserRole(); // fetch user role based on session
-      const profile = await fetchUserProfile(session?.user?.id); // fetch user profile based on session
-      setUserRole(role);
-      setUser(session?.user);
-      setUserProfile(profile);
-    } else {
-      setUserRole(null);
-      setUser(null);
-      setUserProfile(null);
-    }
-  }
+    // Auth methods
+    signInWithPassword,
+    signInWithOTP,
+    sendOTP,
+    signUpUser,
+    signOut,
+
+    // session management
+    handleAutoLogout,
+    extendSession,
+    sessionLogout,
+
+    // helper methods
+    isPatient,
+    isStaff,
+    isAdmin,
+    getStaffClinic,
+    getCurrentUserRole,
+    refetchProfile: () => fetchUserProfile(user?.id),
+    setError,
+  };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

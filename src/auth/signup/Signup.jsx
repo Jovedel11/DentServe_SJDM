@@ -425,7 +425,7 @@ const SignUpPage = () => {
               {/* Submit Button */}
               <button
                 type="submit"
-                className={styles.submitButton}
+                className={styles.primaryButton}
                 disabled={
                   !formData.firstName ||
                   !formData.lastName ||
