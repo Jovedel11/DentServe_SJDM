@@ -217,6 +217,16 @@ export const useSessionManager = () => {
       }
     }, [clearAllTimeouts]);
 
+    // clean up when user close tab or refresh
+    useEffect(() => {
+      const handleUnload = () => {
+        clearAllTimeouts();
+      }
+
+      window.addEventListener('beforeunload', handleUnload);
+      return () => window.removeEventListener('beforeunload', handleUnload);
+    }, [])
+
     return {
       //state
       showWarning,

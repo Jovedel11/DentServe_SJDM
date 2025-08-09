@@ -11,6 +11,7 @@ const Contact = lazy(() => import("./app/public/pages/Contact"));
 const Login = lazy(() => import("./auth/login/Login"));
 const Signup = lazy(() => import("./auth/signup/Signup"));
 const Dashboard = lazy(() => import("./app/patient/pages/Dashboard"));
+const PrivateLayout = lazy(() => import("./app/patient/layout/PatientLayout"));
 
 export const router = createBrowserRouter([
   {
