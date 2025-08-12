@@ -13,6 +13,7 @@ export const useSessionManager = () => {
   const [showWarning, setShowWarning] = useState(false);
   const [sessionLogout, setSessionLogout] = useState(null);
   const [supabaseSession, setSupabaseSession] = useState(true);
+  const [rememberMeEnabled, setRememberMeEnabled] = useState(false);
 
   // Refs for managing timers and activity
   const customSessionRef = useRef(null);
@@ -35,22 +36,30 @@ export const useSessionManager = () => {
       setShowWarning(false);
     }, []);
 
+    // supabase validity
     const checkSupabaseSession = useCallback(async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
 
-      if (!session ||error) {
+      if (!session || error) {
         console.error("Error fetching session:", error);
         setSupabaseSession(false);
-        return;
+        return false;
       }
+
+      // check remember me status
+      const rememberMe = await authService.getRememberMeStatus();
+      setRememberMeEnabled(rememberMe);
 
       // check if supabase session is close to expiry
       const expireAt = new Date(session.expires_at * 1000);
       const timeUntilExpiry = expireAt - Date.now(); 
 
+      // if remember me enabled, refresh early to maintain session
+      const refreshThreshold = rememberMe ? 15 * 60 * 1000 : 10 * 60 * 1000
+
       // if supabase session expires within 10 minutes, refresh it
-      if (timeUntilExpiry < 10 * 60 * 1000 && timeUntilExpiry > 0) {
+      if (timeUntilExpiry < refreshThreshold && timeUntilExpiry > 0) {
           const { error: refreshError } = await supabase.auth.refreshSession();
           if (refreshError) {
             console.log("Error refreshing Supabase session:", refreshError);
@@ -72,16 +81,32 @@ export const useSessionManager = () => {
       try {
         clearAllTimeouts();
 
-        await authService.signOut();
-
-        setSessionLogout(true);
-        setSupabaseSession(false);
-
-        alert("Your session has expired for security. Please log in again.");
+        // for remember me, to show warning
+        if (rememberMeEnabled) {
+          setShowWarning(true);
+          setSessionLogout(false);
+          
+          // set a longer timer for remember me users
+          customSessionRef.current = setTimeout(() => {
+            // logout after extended time
+            authService.signOut();
+            setSessionLogout(true);
+            setSupabaseSession(false);
+            setRememberMeEnabled(false);
+          }, 24 * 60 * 60 * 1000); // 24 hours extended
+          
+          alert("Your session has been extended due to 'Remember Me'. You'll be logged out in 24 hours.");
+        } else {
+          await authService.signOut();
+          setSessionLogout(true);
+          setSupabaseSession(false);
+          setRememberMeEnabled(false);
+          alert("Your session has expired for security. Please log in again.");
+        }
       } catch (error) {
         console.error("Error during auto logout:", error);
       }
-    }, [clearAllTimeouts]);
+    }, [clearAllTimeouts, rememberMeEnabled]);
 
     // start session timer
     const startSessionTimer = useCallback(() => {
@@ -115,14 +140,14 @@ export const useSessionManager = () => {
     }, [clearAllTimeouts, handleAutoLogout, checkSupabaseSession]);
 
     // extend session
-    const extendSession = useCallback(() => {
+    const extendSession = useCallback(async () => {
       try {
         
         // refresh supabase session
-        const { error: refreshError } = supabase.auth.refreshSession();
+        const { error: refreshError } = await supabase.auth.refreshSession();
         if (refreshError) {
           console.error("Error refreshing Supabase session:", refreshError);
-          return;
+          return { success: false, error: refreshError.message };
         }
 
         // clear all warning and restart timers
@@ -130,18 +155,19 @@ export const useSessionManager = () => {
         clearAllTimeouts();
         startSessionTimer();
 
+
         return { success: true }
 
       } catch (error) {
         console.error("Error extending session:", error);
         return { success: false, error: error?.message };
       }
-    }, [clearAllTimeouts, startSessionTimer]);
+    }, [clearAllTimeouts, startSessionTimer, rememberMeEnabled]);
 
     // reset session timer
     const resetSessionTimer = useCallback(() => {
       const now = Date.now();
-      if (throttleRef.current || now - lastActivityRef.current > 1000) return;
+      if (throttleRef.current || now - lastActivityRef.current > ACTIVITY_THROTTLE) return;
 
       throttleRef.current = true;
       lastActivityRef.current = now;
@@ -184,12 +210,19 @@ export const useSessionManager = () => {
     useEffect(() => {
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_IN' && session) {
+
+          // Check Remember Me status
+          const rememberMe = await authService.getRememberMeStatus();
+          setRememberMeEnabled(rememberMe);
+
           setSessionLogout(false);
           setSupabaseSession(true);
           startSessionTimer();
+
         } else if (event === 'SIGNED_OUT') {
           clearAllTimeouts();
           setSupabaseSession(false);
+          setRememberMeEnabled(false);
         }
       });
 
@@ -198,6 +231,37 @@ export const useSessionManager = () => {
         clearAllTimeouts();
       }
     }, [startSessionTimer, clearAllTimeouts]);
+
+  const handleAuthStateChange = useCallback(async (event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      let retries = 0;
+      const maxRetries = 3;
+      
+      while (retries < maxRetries) {
+        try {
+          const { data: role } = await supabase.rpc('get_current_user_role');
+          if (role) {
+            setRememberMeEnabled(await authService.getRememberMeStatus());
+            setSessionLogout(false);
+            setSupabaseSession(true);
+            startSessionTimer();
+            break;
+          }
+        } catch (error) {
+          console.warn(`Retry ${retries + 1} - Profile not ready:`, error);
+        }
+        
+        retries++;
+        if (retries < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * retries));
+        }
+      }
+    } else if (event === 'SIGNED_OUT') {
+      clearAllTimeouts();
+      setSupabaseSession(false);
+      setRememberMeEnabled(false);
+    }
+  }, [startSessionTimer, clearAllTimeouts]);
 
     useEffect(() => {
       const events = ['click', 'mousemove', 'keydown', 'touchstart', 'scroll'];
@@ -219,22 +283,37 @@ export const useSessionManager = () => {
 
     // clean up when user close tab or refresh
     useEffect(() => {
-      const handleUnload = () => {
-        clearAllTimeouts();
-      }
+      const handleUnload = () => clearAllTimeouts();
 
       window.addEventListener('beforeunload', handleUnload);
-      return () => window.removeEventListener('beforeunload', handleUnload);
-    }, [])
+      return () => {
+        window.removeEventListener('beforeunload', handleUnload);
+        clearAllTimeouts()
+      }
+    }, [clearAllTimeouts])
+
+    const sessionTimeout = useCallback(async() => {
+      clearAllTimeouts();
+
+      await authService.signOut();
+      setSessionLogout(true);
+      setSupabaseSession(false);
+      setRememberMeEnabled(false);
+
+    }, [clearAllTimeouts]);
 
     return {
       //state
       showWarning,
       sessionLogout,
       supabaseSession,
+      rememberMeEnabled,
       //actions
       extendSession,
       handleAutoLogout,
+      startSessionTimer,
+      handleAuthStateChange,
+      sessionTimeout,
       // utilities
       getRemainingTime,
       isSessionExpiringSoon,

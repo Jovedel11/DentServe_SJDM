@@ -1,4 +1,10 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import { handleSupabaseError, supabase } from "../../../supabaseClient";
 import { useSessionManager } from "../hooks/useSessionManager";
 import { authService } from "../hooks/authService";
@@ -13,11 +19,19 @@ const AuthProvider = ({ children }) => {
   const [userRole, setUserRole] = useState(null);
 
   // session management
-  const { showWarning, extendSession, handleAutoLogout, sessionLogout } =
-    useSessionManager();
+  const {
+    showWarning,
+    extendSession,
+    handleAutoLogout,
+    sessionLogout,
+    startSessionTimer,
+    sessionTimeout,
+  } = useSessionManager();
 
   useEffect(() => {
-    getSession();
+    (async () => {
+      await getSession();
+    })();
 
     // listen for auth state changes
     const {
@@ -52,7 +66,7 @@ const AuthProvider = ({ children }) => {
       if (error) console.error("Error fetching session:", error);
       if (session?.user) {
         setUser(session.user);
-        await fetchUserProfile(session.user.id);
+        await fetchUserProfile(session?.user?.id);
         startSessionTimer();
       }
     } catch (error) {
@@ -68,29 +82,64 @@ const AuthProvider = ({ children }) => {
     try {
       setLoading(true);
 
-      const { data, error } = await supabase
+      // get user role and user_profile
+      const { data: userProfileRole, error: roleError } = await supabase
         .from("users")
-        .select(
-          `
-          *,
-            user_profiles (
-              *,
-              patient_profiles (*),
-              staff_profiles (
-              *,
-              clinics (
-              id, name, address, phone, email, location, service_offered, rating
-              )
-              ),
-              admin_profiles (*)
-          )
-          `
-        )
+        .select("user_profiles(id, user_type)")
         .eq("auth_user_id", authUserId)
         .single();
-      if (error) throw error;
-      setUserProfile(data);
-      setUserRole(data?.user_profiles?.user_type);
+
+      if (roleError) throw roleError;
+
+      const { id: profileId, user_type } = userProfileRole.user_profiles;
+
+      // fetch specific role
+      let profileData;
+      let profileError;
+
+      switch (user_type) {
+        case "staff":
+          ({ data: profileData, error: profileError } = await supabase
+            .from("staff_profiles")
+            .select(
+              `
+                *,
+                clinics (
+                  id, name, location, address, city, phone, email, operating_hours, service_offer, rating
+                )
+              `
+            )
+            .eq("user_profile_id", profileId)
+            .single());
+          break;
+
+        case "patient":
+          ({ data: profileData, error: profileError } = await supabase
+            .from("patient_profiles")
+            .select("*")
+            .eq("user_profile_id", profileId)
+            .single());
+          break;
+
+        case "admin":
+          ({ data: profileData, error: profileError } = await supabase
+            .from("admin_profiles")
+            .select("*")
+            .eq("user_profile_id", profileId)
+            .single());
+          break;
+
+        default:
+          throw new Error(`Unknown user type: ${user_type}`);
+      }
+
+      if (profileError) throw profileError;
+
+      setUserProfile({
+        ...profileData,
+        user_type,
+      });
+      setUserRole(user_type);
     } catch (error) {
       console.error("Error fetching user profile:", error);
       setError(handleSupabaseError(error));
@@ -99,9 +148,15 @@ const AuthProvider = ({ children }) => {
     }
   };
 
+  // check verification stats
+  const checkVerificationStatus = useCallback(async () => {
+    return await authService.checkVerificationStatus();
+  }, []);
+
   const getCurrentUserRole = async () => {
     try {
       const { data: role } = await supabase.rpc("get_current_user_role");
+      if (!role) return null;
       setUserRole(role);
       return role;
     } catch (error) {
@@ -110,10 +165,18 @@ const AuthProvider = ({ children }) => {
     }
   };
 
-  const signInWithPassword = async (email, password) => {
+  const signInWithPassword = async (
+    identifier,
+    password,
+    rememberMe = false
+  ) => {
     setLoading(true);
     setError(null);
-    const result = await authService.signInWithPassword(email, password);
+    const result = await authService.signInWithPassword(
+      identifier,
+      password,
+      rememberMe
+    );
 
     if (result.error) setError(result.error);
 
@@ -121,10 +184,20 @@ const AuthProvider = ({ children }) => {
     return result;
   };
 
-  const signInWithOTP = async (identifier, otpCode, type = "email") => {
+  const verifyOTPLogin = async (
+    identifier,
+    otpCode,
+    type = "email",
+    rememberMe = false
+  ) => {
     setLoading(true);
     setError(null);
-    const result = await authService.verifyOTPToken(identifier, otpCode, type);
+    const result = await authService.verifyOTPToken(
+      identifier,
+      otpCode,
+      type,
+      rememberMe
+    );
 
     if (result.error) setError(result.error);
 
@@ -162,6 +235,7 @@ const AuthProvider = ({ children }) => {
       setUser(null);
       setUserProfile(null);
       setUserRole(null);
+      sessionTimeout();
     }
 
     setLoading(false);
@@ -175,28 +249,31 @@ const AuthProvider = ({ children }) => {
 
   const getStaffClinic = () => {
     if (!isStaff()) return null;
-    return userProfile?.user_profiles?.staff_profiles?.clinics || null;
+    return isStaff() ? userProfile?.clinics || null : null;
   };
 
   const value = {
     // State
     user,
     userProfile,
+    userRole,
     loading,
     error,
     showWarning,
 
     // Auth methods
     signInWithPassword,
-    signInWithOTP,
+    verifyOTPLogin,
     sendOTP,
     signUpUser,
     signOut,
+    checkVerificationStatus,
 
     // session management
     handleAutoLogout,
     extendSession,
     sessionLogout,
+    sessionTimeout,
 
     // helper methods
     isPatient,

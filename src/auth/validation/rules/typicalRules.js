@@ -1,49 +1,70 @@
-import { z } from 'zod';
+// Helper function for validation results
+const createValidation = (valid, message = null) => ({
+  valid,
+  message
+});
 
-// email validation rule 
-export const emailRule = z
-  .string()
-  .min(1, "Email is required")
-  .email('Please enter a valid email address')
-  .max(100, 'Email is too long');
+// Email validation rule
+export const validateEmail = (email) => {
+  if (!email || email.trim() === "") return createValidation(false, "Email is required");
+  if (email.length > 100) return createValidation(false, "Email is too long");
+  
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) return createValidation(false, "Please enter a valid email address");
+  
+  return createValidation(true);
+};
 
-// phone validation rule
-export const phoneRule = z
-  .string()
-  .min(1, "Phone number is required")
-  .regex(/^[\+]?[1-9][\d]{0,15}$/, "Please enter a valid phone number")
-  .transform((phone) => phone.replace(/\s+/g, ""))
+// Phone validation rule
+export const validatePhone = (phone) => {
+  if (!phone || phone.trim() === "") return createValidation(false, "Phone number is required");
+  
+  const cleanedPhone = phone.replace(/\s+/g, "");
+  const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+  
+  if (!phoneRegex.test(cleanedPhone)) return createValidation(false, "Please enter a valid phone number");
+  
+  return createValidation(true, cleanedPhone);
+};
 
-// based password rule 
-export const passwordRule = z
-  .string()
-  .min(1, "Password is required")
-  .min(6, 'Password must be at least 6 characters')
-  .max(100, 'Password is too long')
+// Basic password rule
+export const validatePassword = (password) => {
+  if (!password || password.trim() === "") return createValidation(false, "Password is required");
+  if (password.length < 6) return createValidation(false, "Password must be at least 6 characters");
+  if (password.length > 100) return createValidation(false, "Password is too long");
+  
+  return createValidation(true);
+};
 
-// strong password rule
-export const strongPasswordRule = z
-  .string()
-  .min(1, "Password is required")
-  .min(8, "Password must be at least 8 characters")
-  .max(128, "Password is too long")
-  .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
-  .regex(/[a-z]/, "Password must contain at least one lowercase letter")
-  .regex(/\d/, "Password must contain at least one number")
-  .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character");
+// Strong password rule
+export const validateStrongPassword = (password) => {
+  const basic = validatePassword(password);
+  if (!basic.valid) return basic;
+  
+  if (password.length < 8) return createValidation(false, "Password must be at least 8 characters");
+  if (password.length > 128) return createValidation(false, "Password is too long");
+  if (!/[A-Z]/.test(password)) return createValidation(false, "Password must contain at least one uppercase letter");
+  if (!/[a-z]/.test(password)) return createValidation(false, "Password must contain at least one lowercase letter");
+  if (!/\d/.test(password)) return createValidation(false, "Password must contain at least one number");
+  if (!/[^A-Za-z0-9]/.test(password)) return createValidation(false, "Password must contain at least one special character");
+  
+  return createValidation(true);
+};
 
-// password confirmation 
-export const createPasswordConfirmRule = (passwordFieldName = "password") => (
-  z.string().min(1, "Password confirmation is required")
-)
+// Password confirmation rule
+export const validatePasswordConfirm = (password, confirmPassword) => {
+  if (!confirmPassword || confirmPassword.trim() === "") return createValidation(false, "Password confirmation is required");
+  if (password !== confirmPassword) return createValidation(false, "Passwords do not match");
+  
+  return createValidation(true);
+};
 
-// password match refinement
-export const addPasswordMatchValidation = (schema, passwordField = "password", confirmField = "confirmPassword") => 
-  schema.refine((data) => data[passwordField] === data[confirmField], {
-    message: "Passwords do not match",
-    path: [confirmField],
-  })
+// Throw error if validation fails (for your authService)
+export const validateStrongPasswordThrow = (password) => {
+  const result = validateStrongPassword(password);
+  if (!result.valid) {
+    throw new Error(result.message);
+  }
+  return true;
+};
 
-// optionals email and phone (for forms where email or phone might be optional)
-export const optionalEmailRule = emailRule.optional();
-export const optionalPhoneRule = phoneRule.optional();

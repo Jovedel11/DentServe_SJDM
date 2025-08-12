@@ -1,407 +1,502 @@
-import { useActionState, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import DentalIllustration from "../../core/components/SvgDental";
-import { useAuth } from "../context/AuthProvider";
-import styles from "./Login.module.scss";
-import {
-  passwordLoginSchema,
-  otpRequestSchema,
-  otpVerifySchema,
-} from "../validation/index";
-import {
-  detectInputType,
-  formatPhone,
-  formatFormErrors,
-} from "../../utils/formatter";
-
-async function loginAction(_prevState, formData) {
-  const rawData = {
-    identifier: formData.get("identifier")?.trim() || "",
-    password: formData.get("password") || "",
-    otp: formData.get("otp") || "",
-    rememberMe: formData.get("rememberMe") === "on",
-    loginType: formData.get("loginType") || "password",
-  };
-
-  const schemeMap = {
-    password: passwordLoginSchema,
-    "otp-request": otpRequestSchema,
-    "otp-verify": otpVerifySchema,
-  };
-
-  // select the appropriate schema based on login type
-  const schema = schemeMap[rawData.loginType];
-  if (!schema) {
-    return {
-      success: false,
-      errors: { form: "Invalid login type specified." },
-      data: rawData,
-    };
-  }
-
-  // validate the data
-  const validation = schema.safeParse(rawData);
-  if (!validation.success) {
-    return {
-      success: false,
-      errors: formatFormErrors(validation.error),
-      data: rawData,
-    };
-  }
-
-  return {
-    success: true,
-    errors: {},
-    data: validation.data,
-    action: rawData.loginType,
-  };
-}
+// Login.jsx - COMPLETELY FIXED
+import React, { useState } from "react";
+import { useAuth } from "@/auth/context/AuthProvider";
+import { useRolebasedRedirect } from "@/core/hooks/useRoleBasedRedirect";
 
 const Login = () => {
-  const navigate = useNavigate();
-  const { loginWithPassword, loginWithOTP } = useAuth();
-  const [loginMode, setLoginMode] = useState("password");
-  const [showPassword, setShowPassword] = useState(false);
+  const [loginMethod, setLoginMethod] = useState("password");
   const [otpSent, setOtpSent] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [statusMessage, setStatusMessage] = useState({ message: "", type: "" });
-
-  const [formState, formAction] = useActionState(loginAction, {
-    success: false,
-    errors: {},
-    data: {},
+  const [identifier, setIdentifier] = useState("");
+  const [identifierType, setIdentifierType] = useState("email");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [formData, setFormData] = useState({
+    identifier: "",
+    password: "",
+    otpCode: "",
+    rememberMe: false,
   });
 
-  // Handle successful form validation
-  const handleValidatedSubmit = async (validatedData) => {
-    setIsLoading(true);
-    setStatusMessage({ message: "", type: "" });
+  const {
+    signInWithPassword,
+    verifyOTPLogin,
+    sendOTP,
+    loading: authLoading,
+  } = useAuth();
+
+  // ✅ FIXED: Proper role-based redirect
+  useRolebasedRedirect();
+
+  // ✅ FIXED: Password login handler
+  const handlePasswordLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage("");
 
     try {
-      const inputType = detectInputType(validatedData.identifier);
+      const result = await signInWithPassword(
+        formData.identifier,
+        formData.password,
+        formData.rememberMe
+      );
 
-      switch (validatedData.action) {
-        case "password":
-          await loginWithPassword(
-            validatedData.identifier,
-            validatedData.password,
-            validatedData.rememberMe || false
-          );
-          setStatusMessage({
-            message: "Login successful! Redirecting...",
-            type: "success",
-          });
-          setTimeout(() => navigate("/dashboard"), 1000);
-          break;
-
-        case "otp-request":
-          if (inputType !== "phone") {
-            throw new Error("OTP login is only available for phone numbers");
-          }
-
-          const phone = formatPhone(validatedData.identifier);
-          await loginWithOTP(phone);
-
-          setOtpSent(true);
-          setStatusMessage({
-            message: "OTP sent successfully! Check your phone.",
-            type: "success",
-          });
-          break;
-
-        case "otp-verify":
-          const verifyPhone = formatPhone(validatedData.identifier);
-          await loginWithOTP(verifyPhone, validatedData.otp);
-
-          setStatusMessage({
-            message: "OTP verified! Redirecting...",
-            type: "success",
-          });
-          setTimeout(() => navigate("/dashboard"), 1000);
-          break;
-
-        default:
-          throw new Error("Invalid action type");
+      if (result.error) {
+        setMessage(`❌ ${result.error}`);
+      } else {
+        setMessage("✅ Login successful! Redirecting...");
+        // useRolebasedRedirect will handle navigation
       }
     } catch (error) {
-      console.error("Login error:", error);
-      setStatusMessage({
-        message:
-          error.message || "An unexpected error occurred. Please try again.",
-        type: "error",
-      });
-    } finally {
-      setIsLoading(false);
+      setMessage(`❌ Login failed: ${error.message}`);
     }
+
+    setLoading(false);
   };
 
-  // Handle form submission
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  // ✅ FIXED: OTP flow handler
+  const handleOTPFlow = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage("");
 
-    const formData = new FormData(event.currentTarget);
-    const result = await loginAction(formState, formData);
+    try {
+      if (!otpSent) {
+        // Send OTP
+        const result = await sendOTP(formData.identifier, identifierType);
 
-    if (result.success) {
-      await handleValidatedSubmit(result.data);
+        if (result.error) {
+          setMessage(`❌ ${result.error}`);
+        } else {
+          setOtpSent(true);
+          setIdentifier(formData.identifier);
+          setMessage(`📱 OTP sent to your ${identifierType}!`);
+        }
+      } else {
+        // Verify OTP
+        const result = await verifyOTPLogin(
+          identifier,
+          formData.otpCode,
+          identifierType,
+          formData.rememberMe
+        );
+
+        if (result.error) {
+          setMessage(`❌ ${result.error}`);
+        } else if (result.requireEmailVerification) {
+          setMessage("📧 Please check your email for the login link!");
+        } else {
+          setMessage("✅ Login successful! Redirecting...");
+          // useRolebasedRedirect will handle navigation
+        }
+      }
+    } catch (error) {
+      setMessage(`❌ OTP failed: ${error.message}`);
     }
+
+    setLoading(false);
   };
 
-  // Handle mode switching
-  const switchLoginMode = () => {
-    setLoginMode(loginMode === "password" ? "otp" : "password");
+  const resetOTPFlow = () => {
     setOtpSent(false);
-    setStatusMessage({ message: "", type: "" });
-  };
-
-  // Clear specific field error when user starts typing
-  const clearFieldError = (fieldName) => {
-    if (formState.errors[fieldName]) {
-      // This will be handled by the next form submission
-    }
+    setIdentifier("");
+    setFormData({ ...formData, otpCode: "" });
+    setMessage("");
   };
 
   return (
-    <div className={styles.loginContainer}>
-      <div className={styles.loginWrapper}>
-        {/* Left Side - Illustration */}
-        <div className={styles.illustrationSection}>
-          <div className={styles.illustrationContent}>
-            <DentalIllustration />
-            <div className={styles.welcomeText}>
-              <h1>Welcome Back!</h1>
-              <p>
-                Access your dental appointment dashboard and manage your oral
-                health journey.
-              </p>
-            </div>
-          </div>
-        </div>
+    <div style={{ maxWidth: "400px", margin: "50px auto", padding: "20px" }}>
+      <h2 style={{ textAlign: "center", marginBottom: "30px" }}>
+        🏥 Healthcare Login
+      </h2>
 
-        {/* Right Side - Login Form */}
-        <div className={styles.formSection}>
-          <div className={styles.formContainer}>
-            <div className={styles.formHeader}>
-              <h2>Sign In</h2>
-              <p>Enter your credentials to access your account</p>
-            </div>
+      {/* ✅ ENHANCED: Login method selector */}
+      <div
+        style={{
+          marginBottom: "30px",
+          display: "flex",
+          gap: "10px",
+          border: "1px solid #ddd",
+          borderRadius: "8px",
+          padding: "4px",
+          backgroundColor: "#f8f9fa",
+        }}
+      >
+        <button
+          onClick={() => {
+            setLoginMethod("password");
+            resetOTPFlow();
+          }}
+          style={{
+            flex: 1,
+            padding: "12px",
+            backgroundColor:
+              loginMethod === "password" ? "#007bff" : "transparent",
+            color: loginMethod === "password" ? "white" : "#007bff",
+            border: "none",
+            cursor: "pointer",
+            borderRadius: "4px",
+            fontWeight: loginMethod === "password" ? "bold" : "normal",
+          }}
+        >
+          🔑 Password
+        </button>
+        <button
+          onClick={() => {
+            setLoginMethod("otp");
+            resetOTPFlow();
+          }}
+          style={{
+            flex: 1,
+            padding: "12px",
+            backgroundColor: loginMethod === "otp" ? "#007bff" : "transparent",
+            color: loginMethod === "otp" ? "white" : "#007bff",
+            border: "none",
+            cursor: "pointer",
+            borderRadius: "4px",
+            fontWeight: loginMethod === "otp" ? "bold" : "normal",
+          }}
+        >
+          📱 OTP
+        </button>
+      </div>
 
-            {/* Status Message */}
-            {statusMessage.message && (
-              <div
-                className={`${styles.statusMessage} ${
-                  statusMessage.type === "success"
-                    ? styles.success
-                    : styles.error
-                }`}
-                role="alert"
-                aria-live="polite"
-              >
-                {statusMessage.message}
-              </div>
-            )}
-
-            <form
-              className={styles.loginForm}
-              action={formAction}
-              onSubmit={handleSubmit}
-              noValidate
-              aria-label="Sign in form"
+      {/* ✅ FIXED: Password Login Form */}
+      {loginMethod === "password" ? (
+        <form onSubmit={handlePasswordLogin}>
+          <div style={{ marginBottom: "20px" }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "8px",
+                fontWeight: "500",
+              }}
             >
-              {/* Hidden input for login type */}
+              Email or Phone Number
+            </label>
+            <input
+              type="text"
+              value={formData.identifier}
+              onChange={(e) =>
+                setFormData({ ...formData, identifier: e.target.value })
+              }
+              placeholder="Enter your email or phone number"
+              required
+              style={{
+                width: "100%",
+                padding: "12px",
+                border: "1px solid #ddd",
+                borderRadius: "4px",
+                fontSize: "16px",
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: "20px" }}>
+            <label
+              style={{
+                display: "block",
+                marginBottom: "8px",
+                fontWeight: "500",
+              }}
+            >
+              Password
+            </label>
+            <input
+              type="password"
+              value={formData.password}
+              onChange={(e) =>
+                setFormData({ ...formData, password: e.target.value })
+              }
+              placeholder="Enter your password"
+              required
+              style={{
+                width: "100%",
+                padding: "12px",
+                border: "1px solid #ddd",
+                borderRadius: "4px",
+                fontSize: "16px",
+              }}
+            />
+          </div>
+
+          <div style={{ marginBottom: "20px" }}>
+            <label
+              style={{ display: "flex", alignItems: "center", gap: "8px" }}
+            >
               <input
-                type="hidden"
-                name="loginType"
-                value={
-                  loginMode === "password"
-                    ? "password"
-                    : otpSent
-                    ? "otp-verify"
-                    : "otp-request"
+                type="checkbox"
+                checked={formData.rememberMe}
+                onChange={(e) =>
+                  setFormData({ ...formData, rememberMe: e.target.checked })
                 }
               />
+              Remember me for 24 hours
+            </label>
+          </div>
 
-              {/* Email/Phone Input */}
-              <div className={styles.inputGroup}>
-                <label htmlFor="identifier" className={styles.inputLabel}>
-                  Email or Phone Number
+          <button
+            type="submit"
+            disabled={loading || authLoading}
+            style={{
+              width: "100%",
+              padding: "12px",
+              backgroundColor: loading || authLoading ? "#ccc" : "#007bff",
+              color: "white",
+              border: "none",
+              borderRadius: "4px",
+              cursor: loading || authLoading ? "not-allowed" : "pointer",
+              fontSize: "16px",
+              fontWeight: "500",
+            }}
+          >
+            {loading || authLoading ? "Signing In..." : "🔐 Sign In"}
+          </button>
+
+          <div style={{ textAlign: "center", marginTop: "15px" }}>
+            <a
+              href="/reset-password"
+              style={{ color: "#007bff", textDecoration: "none" }}
+            >
+              Forgot your password?
+            </a>
+          </div>
+        </form>
+      ) : (
+        /* ✅ FIXED: OTP Login Form */
+        <form onSubmit={handleOTPFlow}>
+          {!otpSent ? (
+            <>
+              <div style={{ marginBottom: "20px" }}>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: "8px",
+                    fontWeight: "500",
+                  }}
+                >
+                  Verification Method
+                </label>
+                <select
+                  value={identifierType}
+                  onChange={(e) => setIdentifierType(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                    fontSize: "16px",
+                  }}
+                >
+                  <option value="email">📧 Email OTP</option>
+                  <option value="phone">📱 SMS OTP</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: "20px" }}>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: "8px",
+                    fontWeight: "500",
+                  }}
+                >
+                  {identifierType === "email"
+                    ? "Email Address"
+                    : "Phone Number"}
                 </label>
                 <input
                   type="text"
-                  id="identifier"
-                  name="identifier"
-                  defaultValue={formState.data?.identifier || ""}
-                  onChange={() => clearFieldError("identifier")}
-                  placeholder="Enter your email or phone number"
-                  className={`${styles.inputField} ${
-                    formState.errors.identifier ? styles.inputError : ""
-                  }`}
-                  autoComplete="email tel"
-                  aria-describedby={
-                    formState.errors.identifier ? "identifier-error" : undefined
+                  value={formData.identifier}
+                  onChange={(e) =>
+                    setFormData({ ...formData, identifier: e.target.value })
                   }
-                  aria-invalid={!!formState.errors.identifier}
-                  disabled={isLoading}
+                  placeholder={
+                    identifierType === "email"
+                      ? "Enter your email address"
+                      : "Enter your phone number"
+                  }
+                  required
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                    fontSize: "16px",
+                  }}
                 />
-                {formState.errors.identifier && (
-                  <span
-                    id="identifier-error"
-                    className={styles.errorMessage}
-                    role="alert"
-                  >
-                    {formState.errors.identifier}
-                  </span>
-                )}
               </div>
 
-              {/* Password Input (shown only in password mode) */}
-              {loginMode === "password" && (
-                <>
-                  <div className={styles.inputGroup}>
-                    <label htmlFor="password" className={styles.inputLabel}>
-                      Password
-                    </label>
-                    <div className={styles.passwordWrapper}>
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        id="password"
-                        name="password"
-                        onChange={() => clearFieldError("password")}
-                        placeholder="Enter your password"
-                        className={`${styles.inputField} ${
-                          formState.errors.password ? styles.inputError : ""
-                        }`}
-                        autoComplete="current-password"
-                        aria-describedby={
-                          formState.errors.password
-                            ? "password-error"
-                            : undefined
-                        }
-                        aria-invalid={!!formState.errors.password}
-                        disabled={isLoading}
-                      />
-                      <button
-                        type="button"
-                        className={styles.passwordToggle}
-                        onClick={() => setShowPassword(!showPassword)}
-                        aria-label={
-                          showPassword ? "Hide password" : "Show password"
-                        }
-                        disabled={isLoading}
-                      >
-                        {showPassword ? "👁️" : "👁️‍🗨️"}
-                      </button>
-                    </div>
-                    {formState.errors.password && (
-                      <span
-                        id="password-error"
-                        className={styles.errorMessage}
-                        role="alert"
-                      >
-                        {formState.errors.password}
-                      </span>
-                    )}
-                  </div>
+              <button
+                type="submit"
+                disabled={loading || authLoading}
+                style={{
+                  width: "100%",
+                  padding: "12px",
+                  backgroundColor: loading || authLoading ? "#ccc" : "#28a745",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: loading || authLoading ? "not-allowed" : "pointer",
+                  fontSize: "16px",
+                  fontWeight: "500",
+                }}
+              >
+                {loading || authLoading ? "Sending OTP..." : "📱 Send OTP"}
+              </button>
+            </>
+          ) : (
+            <>
+              <div
+                style={{
+                  marginBottom: "20px",
+                  padding: "15px",
+                  backgroundColor: "#e8f5e8",
+                  borderRadius: "4px",
+                  border: "1px solid #4caf50",
+                }}
+              >
+                <p style={{ margin: "0", color: "#2e7d32" }}>
+                  <strong>OTP sent to:</strong> {identifier}
+                </p>
+                <p
+                  style={{
+                    margin: "5px 0 0 0",
+                    fontSize: "14px",
+                    color: "#2e7d32",
+                  }}
+                >
+                  Enter the verification code you received
+                </p>
+              </div>
 
-                  {/* Remember Me & Forgot Password */}
-                  <div className={styles.optionsRow}>
-                    <label className={styles.rememberMe}>
-                      <input
-                        type="checkbox"
-                        name="rememberMe"
-                        disabled={isLoading}
-                      />
-                      Remember me
-                    </label>
-                    <Link to="/forgot-password" className={styles.forgotLink}>
-                      Forgot password?
-                    </Link>
-                  </div>
-                </>
-              )}
+              <div style={{ marginBottom: "20px" }}>
+                <label
+                  style={{
+                    display: "block",
+                    marginBottom: "8px",
+                    fontWeight: "500",
+                  }}
+                >
+                  Verification Code
+                </label>
+                <input
+                  type="text"
+                  value={formData.otpCode}
+                  onChange={(e) =>
+                    setFormData({ ...formData, otpCode: e.target.value })
+                  }
+                  placeholder="Enter 6-digit code"
+                  required
+                  maxLength="6"
+                  style={{
+                    width: "100%",
+                    padding: "12px",
+                    border: "1px solid #ddd",
+                    borderRadius: "4px",
+                    fontSize: "18px",
+                    textAlign: "center",
+                    letterSpacing: "2px",
+                  }}
+                />
+              </div>
 
-              {/* OTP Input (shown only in OTP mode after sending) */}
-              {loginMode === "otp" && otpSent && (
-                <div className={styles.inputGroup}>
-                  <label htmlFor="otp" className={styles.inputLabel}>
-                    OTP Code
-                  </label>
+              <div style={{ marginBottom: "20px" }}>
+                <label
+                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
+                >
                   <input
-                    type="text"
-                    inputMode="numeric"
-                    id="otp"
-                    name="otp"
-                    onChange={() => clearFieldError("otp")}
-                    placeholder="Enter 6-digit code"
-                    className={`${styles.inputField} ${
-                      formState.errors.otp ? styles.inputError : ""
-                    }`}
-                    autoComplete="one-time-code"
-                    aria-describedby={
-                      formState.errors.otp ? "otp-error" : undefined
+                    type="checkbox"
+                    checked={formData.rememberMe}
+                    onChange={(e) =>
+                      setFormData({ ...formData, rememberMe: e.target.checked })
                     }
-                    aria-invalid={!!formState.errors.otp}
-                    disabled={isLoading}
-                    maxLength="6"
                   />
-                  {formState.errors.otp && (
-                    <span
-                      id="otp-error"
-                      className={styles.errorMessage}
-                      role="alert"
-                    >
-                      {formState.errors.otp}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className={styles.actionButtons}>
-                <button
-                  type="submit"
-                  className={styles.primaryButton}
-                  disabled={isLoading}
-                >
-                  {isLoading
-                    ? "Processing..."
-                    : loginMode === "password"
-                    ? "Sign In"
-                    : otpSent
-                    ? "Verify OTP"
-                    : "Send OTP"}
-                </button>
-
-                {/* Alternate Login Method */}
-                <button
-                  type="button"
-                  className={styles.secondaryButton}
-                  onClick={switchLoginMode}
-                  disabled={isLoading}
-                >
-                  {loginMode === "password"
-                    ? "Login with OTP instead"
-                    : "Login with password instead"}
-                </button>
+                  Remember me for 24 hours
+                </label>
               </div>
 
-              {/* Form Errors */}
-              {formState.errors.form && (
-                <div className={styles.formError} role="alert">
-                  {formState.errors.form}
-                </div>
-              )}
+              <button
+                type="submit"
+                disabled={loading || authLoading}
+                style={{
+                  width: "100%",
+                  padding: "12px",
+                  backgroundColor: loading || authLoading ? "#ccc" : "#007bff",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: loading || authLoading ? "not-allowed" : "pointer",
+                  fontSize: "16px",
+                  fontWeight: "500",
+                  marginBottom: "10px",
+                }}
+              >
+                {loading || authLoading ? "Verifying..." : "✅ Verify & Login"}
+              </button>
 
-              {/* Sign Up Link */}
-              <div className={styles.signUpPrompt}>
-                <span>Don't have an account? </span>
-                <Link to="/signup" className={styles.signUpLink}>
-                  Sign Up
-                </Link>
-              </div>
-            </form>
-          </div>
+              <button
+                type="button"
+                onClick={resetOTPFlow}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  backgroundColor: "#6c757d",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                }}
+              >
+                🔄 Use Different Email/Phone
+              </button>
+            </>
+          )}
+        </form>
+      )}
+
+      {/* ✅ ENHANCED: Message display */}
+      {message && (
+        <div
+          style={{
+            marginTop: "20px",
+            padding: "12px",
+            border: "1px solid",
+            borderRadius: "4px",
+            backgroundColor: message.includes("❌") ? "#ffebee" : "#e8f5e8",
+            borderColor: message.includes("❌") ? "#f44336" : "#4caf50",
+            color: message.includes("❌") ? "#c62828" : "#2e7d32",
+          }}
+        >
+          {message}
         </div>
+      )}
+
+      <div style={{ marginTop: "30px", textAlign: "center" }}>
+        <a href="/signup" style={{ color: "#007bff", textDecoration: "none" }}>
+          Don't have an account? Create patient account
+        </a>
+      </div>
+
+      {/* ✅ ADDED: Test credentials */}
+      <div
+        style={{
+          marginTop: "20px",
+          padding: "15px",
+          backgroundColor: "#f8f9fa",
+          borderRadius: "4px",
+          border: "1px solid #e9ecef",
+        }}
+      >
+        <h4 style={{ margin: "0 0 10px 0", color: "#495057" }}>
+          🧪 Test Credentials
+        </h4>
+        <p style={{ margin: "5px 0", fontSize: "14px", color: "#6c757d" }}>
+          <strong>Phone:</strong> +639955507221
+        </p>
+        <p style={{ margin: "5px 0", fontSize: "12px", color: "#6c757d" }}>
+          Use this for testing phone verification and OTP login.
+        </p>
       </div>
     </div>
   );

@@ -1,98 +1,189 @@
-import { z } from "zod";
 import {
-  identifierField,
-  emailField,
-  phoneField,
-  passwordField,
-  strongPasswordField,
-  rememberMeField,
-  otpField,
-  firstNameField,
-  lastNameField,
+  validateIdentifier,
+  validateEmailField,
+  validatePhoneField,
+  validateStrongPasswordField,
+  validateRememberMe,
+  validateOtp,
+  validateFirstName,
+  validateLastName
 } from "./auth.js";
-import { addPasswordMatchValidation, createPasswordConfirmRule } from "../rules/typicalRules.js";
+import { validatePasswordConfirm } from "../rules/typicalRules.js";
 
-// for login
+// Base login validation
+const validateBaseLogin = (data) => {
+  const errors = {};
+  
+  const identifierResult = validateIdentifier(data.identifier);
+  if (!identifierResult.valid) errors.identifier = identifierResult.message;
+  
+  const rememberResult = validateRememberMe(data.rememberMe);
+  if (!rememberResult.valid) errors.rememberMe = rememberResult.message;
+  
+  return errors;
+};
 
-// Base login schema - works for both regular and admin login
-export const baseLoginSchema = z.object({
-  identifier: identifierField,
-  rememberMe: rememberMeField,
-});
+// Password login
+export const validatePasswordLogin = (data) => {
+  const errors = validateBaseLogin(data);
+  
+  const passwordResult = validatePasswordField(data.password);
+  if (!passwordResult.valid) errors.password = passwordResult.message;
+  
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors
+  };
+};
 
-// Password login - extends base login
-export const passwordLoginSchema = baseLoginSchema.extend({
-  password: passwordField,
-  loginType: z.literal("password"),
-});
+// OTP request
+export const validateOtpRequest = (data) => {
+  const errors = validateBaseLogin(data);
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors
+  };
+};
 
-// OTP request schema
-export const otpRequestSchema = baseLoginSchema.extend({
-  loginType: z.literal("otp-request"),
-});
+// OTP verification
+export const validateOtpVerify = (data) => {
+  const errors = validateBaseLogin(data);
+  
+  const otpResult = validateOtp(data.otp);
+  if (!otpResult.valid) errors.otp = otpResult.message;
+  
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors
+  };
+};
 
-// OTP verification schema
-export const otpVerifySchema = baseLoginSchema.extend({
-  otp: otpField,
-  loginType: z.literal("otp-verify"),
-});
+// Admin login
+export const validateAdminLogin = (data) => {
+  const errors = validateBaseLogin(data);
+  
+  const passwordResult = validateStrongPasswordField(data.password);
+  if (!passwordResult.valid) errors.password = passwordResult.message;
+  
+  if (data.adminCode && data.adminCode.trim() === "") {
+    errors.adminCode = "Admin code is required";
+  }
+  
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors
+  };
+};
 
-// Admin-specific login (might require stronger password or additional fields)
-export const adminLoginSchema = baseLoginSchema.extend({
-  password: strongPasswordField, // Admins might need stronger passwords
-  loginType: z.literal("password"),
-  adminCode: z.string().min(1, "Admin code is required").optional(), // Optional admin verification
-});
+// Signup validation
+export const validateSignup = (data) => {
+  const errors = {};
+  
+  // Personal info
+  const firstNameResult = validateFirstName(data.firstName);
+  if (!firstNameResult.valid) errors.firstName = firstNameResult.message;
+  
+  const lastNameResult = validateLastName(data.lastName);
+  if (!lastNameResult.valid) errors.lastName = lastNameResult.message;
+  
+  // Contact info
+  const emailResult = validateEmailField(data.email);
+  if (!emailResult.valid) errors.email = emailResult.message;
+  
+  if (data.phone) {
+    const phoneResult = validatePhoneField(data.phone);
+    if (!phoneResult.valid) errors.phone = phoneResult.message;
+  }
+  
+  // Password info
+  const passwordResult = validateStrongPasswordField(data.password);
+  if (!passwordResult.valid) errors.password = passwordResult.message;
+  
+  const confirmResult = validatePasswordConfirm(data.password, data.confirmPassword);
+  if (!confirmResult.valid) errors.confirmPassword = confirmResult.message;
+  
+  // Agreements
+  if (data.agreeToTerms !== true) {
+    errors.agreeToTerms = "You must agree to the terms and conditions";
+  }
+  
+  if (data.subscribeNewsletter && typeof data.subscribeNewsletter !== "boolean") {
+    errors.subscribeNewsletter = "Invalid newsletter preference";
+  }
+  
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors
+  };
+};
 
-// for signup
+// Admin signup
+export const validateAdminSignup = (data) => {
+  const baseResult = validateSignup(data);
+  
+  if (!baseResult.isValid) return baseResult;
+  
+  const errors = baseResult.errors;
+  
+  if (!data.adminInviteCode || data.adminInviteCode.trim() === "") {
+    errors.adminInviteCode = "Admin invite code is required";
+  }
+  
+  if (!data.department || data.department.trim() === "") {
+    errors.department = "Department is required";
+  }
+  
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors
+  };
+};
 
-// Base signup information
-const baseSignupSchema = z.object({
-  firstName: firstNameField,
-  lastName: lastNameField,
-  email: emailField,
-  phone: phoneField.optional(), // Phone might be optional in signup
-  password: strongPasswordField,
-  confirmPassword: createPasswordConfirmRule(),
-  agreeToTerms: z.boolean().refine((val) => val === true, {
-    message: "You must agree to the terms and conditions",
-  }),
-  subscribeNewsletter: z.boolean().optional(),
-});
+// Profile update
+export const validateProfileUpdate = (data) => {
+  const errors = {};
+  
+  if (data.firstName) {
+    const result = validateFirstName(data.firstName);
+    if (!result.valid) errors.firstName = result.message;
+  }
+  
+  if (data.lastName) {
+    const result = validateLastName(data.lastName);
+    if (!result.valid) errors.lastName = result.message;
+  }
+  
+  if (data.phone) {
+    const result = validatePhoneField(data.phone);
+    if (!result.valid) errors.phone = result.message;
+  }
+  
+  if (data.email) {
+    const result = validateEmailField(data.email);
+    if (!result.valid) errors.email = result.message;
+  }
+  
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors
+  };
+};
 
-// Add password matching validation
-export const signupSchema = addPasswordMatchValidation(baseSignupSchema);
-
-// User signup with role
-export const userSignupSchema = signupSchema.extend({
-  role: z.literal("user"),
-});
-
-// Admin signup (might have different requirements)
-export const adminSignupSchema = signupSchema.extend({
-  role: z.literal("admin"),
-  adminInviteCode: z.string().min(1, "Admin invite code is required"),
-  department: z.string().min(1, "Department is required"),
-});
-
-// Profile update schema (reuses fields but makes some optional)
-export const profileUpdateSchema = z.object({
-  firstName: firstNameField.optional(),
-  lastName: lastNameField.optional(),
-  phone: phoneField.optional(),
-  // Email changes might need special verification
-  email: emailField.optional(),
-});
-
-// Password change schema
-const passwordChangeSchema = z.object({
-  currentPassword: passwordField,
-  newPassword: strongPasswordField,
-  confirmNewPassword: createPasswordConfirmRule("newPassword"),
-});
-
-export const passwordChangeSchemaWithValidation = addPasswordMatchValidation(
-  passwordChangeSchema,
-  "newPassword",
-  "confirmNewPassword"
-);
+// Password change
+export const validatePasswordChange = (data) => {
+  const errors = {};
+  
+  const currentResult = validatePasswordField(data.currentPassword);
+  if (!currentResult.valid) errors.currentPassword = currentResult.message;
+  
+  const newResult = validateStrongPasswordField(data.newPassword);
+  if (!newResult.valid) errors.newPassword = newResult.message;
+  
+  const confirmResult = validatePasswordConfirm(data.newPassword, data.confirmNewPassword);
+  if (!confirmResult.valid) errors.confirmNewPassword = confirmResult.message;
+  
+  return {
+    isValid: Object.keys(errors).length === 0,
+    errors
+  };
+};

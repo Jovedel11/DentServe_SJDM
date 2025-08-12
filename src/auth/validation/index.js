@@ -1,32 +1,26 @@
-// Export all schemas for easy importing
+// Export all validators
 export {
-  // Login schemas
-  passwordLoginSchema,
-  otpRequestSchema,
-  otpVerifySchema,
-  adminLoginSchema,
-  
-  // Signup schemas
-  signupSchema,
-  userSignupSchema,
-  adminSignupSchema,
-  
-  // Profile schemas
-  profileUpdateSchema,
-  passwordChangeSchemaWithValidation,
+  validatePasswordLogin,
+  validateOtpRequest,
+  validateOtpVerify,
+  validateAdminLogin,
+  validateSignup,
+  validateAdminSignup,
+  validateProfileUpdate,
+  validatePasswordChange
 } from "./schemas/user.js";
 
-// Export individual field validators for custom forms
+// Export field validators
 export {
-  identifierField,
-  emailField,
-  phoneField,
-  passwordField,
-  strongPasswordField,
-  firstNameField,
-  lastNameField,
-  otpField,
+  validateIdentifier,
+  validateEmailField as validateEmail,
+  validatePhoneField as validatePhone,
+  validatePasswordField as validatePassword,
+  validateStrongPasswordField as validateStrongPassword,
+  validateFirstName,
+  validateLastName,
+  validateOtp
 } from "./schemas/auth.js";
 
-// Export validation rules for custom schemas
+// Export rules
 export * from "./rules/typicalRules.js";
