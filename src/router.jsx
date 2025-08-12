@@ -1,6 +1,7 @@
 import { lazy } from "react";
 import { createBrowserRouter } from "react-router-dom";
 import withSuspense from "./core/components/withSuspense";
+import { RoleBasedRoute } from "./core/routes/RoleBasedRoute";
 
 const PublicLayout = lazy(() => import("./app/public/layout/PublicLayout"));
 const ErrorPage = lazy(() => import("./core/components/ErrorPage"));
@@ -10,8 +11,7 @@ const Service = lazy(() => import("./app/public/pages/Service"));
 const Contact = lazy(() => import("./app/public/pages/Contact"));
 const Login = lazy(() => import("./auth/login/Login"));
 const Signup = lazy(() => import("./auth/signup/Signup"));
-const Dashboard = lazy(() => import("./app/patient/pages/Dashboard"));
-const PrivateLayout = lazy(() => import("./app/patient/layout/PatientLayout"));
+const PatientLayout = lazy(() => import("./app/patient/layout/PatientLayout"));
 
 export const router = createBrowserRouter([
   {
@@ -45,7 +45,31 @@ export const router = createBrowserRouter([
     ],
   },
   {
-    path: "/dashboard",
-    element: withSuspense(Dashboard),
+    path: "/patient/dashboard",
+    element: (
+      <RoleBasedRoute allowedRoles={["patient"]}>
+        {withSuspense(PatientLayout)}
+      </RoleBasedRoute>
+    ),
+  },
+  // {
+  //   path: "/staff/dashboard",
+  //   element: (
+  //     <RoleBasedRoute allowedRoles={["staff"]}>
+  //       <StaffLayout />
+  //     </RoleBasedRoute>
+  //   ),
+  // },
+  // {
+  //   path: "/admin/dashboard",
+  //   element: (
+  //     <RoleBasedRoute allowedRoles={["admin"]}>
+  //       <AdminLayout />
+  //     </RoleBasedRoute>
+  //   ),
+  // },
+  {
+    path: "/unauthorized",
+    element: withSuspense(ErrorPage),
   },
 ]);

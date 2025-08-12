@@ -10,7 +10,7 @@ export const formatPhone = (phone) => {
 
 export const formatFormErrors = (zodError) => {
   const fieldErrors = {};
-  zodError.errors.forEach((error) => {
+  zodError?.error?.forEach((error) => {
     const path = error.path[0];
     if (path) {
       fieldErrors[path] = error.message;

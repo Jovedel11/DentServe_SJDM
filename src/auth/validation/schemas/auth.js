@@ -1,46 +1,51 @@
-import { z } from "zod";
-import { emailRule, phoneRule, passwordRule, strongPasswordRule } from "../rules/typicalRules";
+import {
+  validateEmail,
+  validatePhone,
+  validatePassword,
+  validateStrongPassword,
+} from "../rules/typicalRules.js";
 
-// Identifier field - can be email OR phone
-export const identifierField = z
-  .string()
-  .min(1, "Email or phone is required")
-  .refine(
-    (value) => {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-      
-      const isEmail = emailRegex.test(value);
-      const isPhone = phoneRegex.test(value.replace(/\s+/g, ""));
-      
-      return isEmail || isPhone;
-    },
-    {
-      message: "Please enter a valid email address or phone number",
-    }
-  );
+// Identifier validation (email or phone)
+export const validateIdentifier = (identifier) => {
+  if (!identifier || identifier.trim() === "") return createValidation(false, "Email or phone is required");
+  
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const cleanedPhone = identifier.replace(/\s+/g, "");
+  const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+  
+  const isEmail = emailRegex.test(identifier);
+  const isPhone = phoneRegex.test(cleanedPhone);
+  
+  if (!isEmail && !isPhone) return createValidation(false, "Please enter a valid email address or phone number");
+  
+  return createValidation(true);
+};
 
-// Individual field schemas for flexibility
-export const emailField = emailRule;
-export const phoneField = phoneRule;
-export const passwordField = passwordRule;
-export const strongPasswordField = strongPasswordRule;
+// Individual field validators
+export const validateEmailField = validateEmail;
+export const validatePhoneField = validatePhone;
+export const validatePasswordField = validatePassword;
+export const validateStrongPasswordField = validateStrongPassword;
 
-// Common optional fields
-export const rememberMeField = z.boolean().optional();
-export const otpField = z.string().regex(/^\d{6}$/, "OTP must be exactly 6 digits");
+// Other field validators
+export const validateRememberMe = (value) => 
+  (typeof value === "boolean") 
+    ? createValidation(true) 
+    : createValidation(false, "Invalid remember me value");
 
-// First and last name fields
-export const firstNameField = z
-  .string()
-  .min(1, "First name is required")
-  .min(2, "First name must be at least 2 characters")
-  .max(50, "First name is too long")
-  .regex(/^[a-zA-Z\s]+$/, "First name can only contain letters and spaces");
+export const validateOtp = (otp) => 
+  (/^\d{6}$/.test(otp)) 
+    ? createValidation(true) 
+    : createValidation(false, "OTP must be exactly 6 digits");
 
-export const lastNameField = z
-  .string()
-  .min(1, "Last name is required")
-  .min(2, "Last name must be at least 2 characters")
-  .max(50, "Last name is too long")
-  .regex(/^[a-zA-Z\s]+$/, "Last name can only contain letters and spaces");
+export const validateName = (name, fieldName) => {
+  if (!name || name.trim() === "") return createValidation(false, `${fieldName} is required`);
+  if (name.length < 2) return createValidation(false, `${fieldName} must be at least 2 characters`);
+  if (name.length > 50) return createValidation(false, `${fieldName} is too long`);
+  if (!/^[a-zA-Z\s]+$/.test(name)) return createValidation(false, `${fieldName} can only contain letters and spaces`);
+  
+  return createValidation(true);
+};
+
+export const validateFirstName = (name) => validateName(name, "First name");
+export const validateLastName = (name) => validateName(name, "Last name");

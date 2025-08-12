@@ -1,20 +1,17 @@
 import {
-  AudioWaveform,
-  BookOpen,
-  Bot,
-  Command,
-  Frame,
-  GalleryVerticalEnd,
-  Map,
-  PieChart,
+  CalendarRange,
+  UserSearch,
+  MapPinned,
+  HeartPlus,
+  MessageSquareHeart,
+  BellRing,
+  Ambulance,
   Settings2,
-  SquareTerminal,
 } from "lucide-react";
 
 import { NavMain } from "@/app/patient/components/dashboard_components/nav-main";
 import { NavProjects } from "@/app/patient/components/dashboard_components/nav-projects";
 import { NavUser } from "@/app/patient/components/dashboard_components/nav-user";
-import { TeamSwitcher } from "@/app/patient/components/dashboard_components/team-switcher";
 import {
   Sidebar,
   SidebarContent,
@@ -22,6 +19,7 @@ import {
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import Logo from "@/core/components/Logo";
 
 const data = {
   user: {
@@ -29,105 +27,68 @@ const data = {
     email: "m@example.com",
     avatar: "/avatars/shadcn.jpg",
   },
-  teams: [
-    {
-      name: "Acme Inc",
-      logo: GalleryVerticalEnd,
-      plan: "Enterprise",
-    },
-    {
-      name: "Acme Corp.",
-      logo: AudioWaveform,
-      plan: "Startup",
-    },
-    {
-      name: "Evil Corp.",
-      logo: Command,
-      plan: "Free",
-    },
-  ],
   navMain: [
     {
-      title: "Playground",
+      title: "Appointments",
       url: "#",
-      icon: SquareTerminal,
+      icon: CalendarRange,
       isActive: true,
       items: [
+        {
+          title: "Book",
+          url: "#",
+        },
+        {
+          title: "Upcoming",
+          url: "#",
+        },
         {
           title: "History",
           url: "#",
         },
+      ],
+    },
+    {
+      title: "Clinics Near Me",
+      url: "#",
+      icon: MapPinned,
+      items: [
         {
-          title: "Starred",
+          title: "Map",
           url: "#",
         },
         {
-          title: "Settings",
+          title: "List",
           url: "#",
         },
       ],
     },
     {
-      title: "Models",
+      title: "Find Doctors",
       url: "#",
-      icon: Bot,
+      icon: UserSearch,
       items: [
         {
-          title: "Genesis",
+          title: "Search",
           url: "#",
         },
         {
-          title: "Explorer",
-          url: "#",
-        },
-        {
-          title: "Quantum",
+          title: "Favorites",
           url: "#",
         },
       ],
     },
     {
-      title: "Documentation",
+      title: "Health Insights",
       url: "#",
-      icon: BookOpen,
+      icon: HeartPlus,
       items: [
         {
-          title: "Introduction",
+          title: "Summary",
           url: "#",
         },
         {
-          title: "Get Started",
-          url: "#",
-        },
-        {
-          title: "Tutorials",
-          url: "#",
-        },
-        {
-          title: "Changelog",
-          url: "#",
-        },
-      ],
-    },
-    {
-      title: "Settings",
-      url: "#",
-      icon: Settings2,
-      items: [
-        {
-          title: "General",
-          url: "#",
-        },
-        {
-          title: "Team",
-          url: "#",
-        },
-        {
-          title: "Billing",
-          url: "#",
-        },
-        {
-          title: "Limits",
+          title: "Records",
           url: "#",
         },
       ],
@@ -135,19 +96,24 @@ const data = {
   ],
   projects: [
     {
-      name: "Design Engineering",
+      name: "Feedback",
       url: "#",
-      icon: Frame,
+      icon: MessageSquareHeart,
     },
     {
-      name: "Sales & Marketing",
+      name: "Reminders",
       url: "#",
-      icon: PieChart,
+      icon: BellRing,
     },
     {
-      name: "Travel",
+      name: "Submit Symptoms",
       url: "#",
-      icon: Map,
+      icon: Ambulance,
+    },
+    {
+      name: "Settings",
+      url: "#",
+      icon: Settings2,
     },
   ],
 };
@@ -156,7 +122,7 @@ export function AppSidebar(props) {
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <TeamSwitcher teams={data.teams} />
+        <Logo />
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={data.navMain} />
