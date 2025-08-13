@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authService } from "./authService";
-import { supabase } from "../../../supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 
 // session management
 const SESSION_DURATION = 60 * 60 * 1000; // 1 hour

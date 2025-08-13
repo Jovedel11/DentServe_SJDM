@@ -1,9 +1,12 @@
 import React from "react";
 import styles from "./ErrorPage.module.scss";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useRouteError } from "react-router-dom";
 
 const ErrorPage = () => {
+  const error = useRouteError();
   const navigate = useNavigate();
+
+  console.log("error:", error);
 
   return (
     <div className={styles.container}>
@@ -17,10 +20,18 @@ const ErrorPage = () => {
         </div>
 
         <h1 className={styles.title}>Oops! That page is missing</h1>
+        <h1>
+          <div style={{ color: "red" }}>Error: {String(error)}</div>
+        </h1>
         <p className={styles.description}>
           We couldn't find the page you're looking for. It might have been moved
           or deleted. Let's get you back on track for your dental care journey.
         </p>
+        {error && (
+          <div className="error-message">
+            {typeof error === "string" ? error : JSON.stringify(error)}
+          </div>
+        )}
 
         <div className={styles.actions}>
           <button
@@ -49,6 +60,7 @@ const ErrorPage = () => {
           </div>
         </div>
       </div>
+      <div></div>
     </div>
   );
 };

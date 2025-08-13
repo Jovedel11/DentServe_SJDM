@@ -1,219 +1,89 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
-import { handleSupabaseError, supabase } from "../../../supabaseClient";
-import { useSessionManager } from "../hooks/useSessionManager";
-import { authService } from "../hooks/authService";
+import { useState, useEffect, createContext, useContext } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { authService } from "@/auth/hooks/authService";
 
-const AuthContext = createContext();
+const AuthContext = createContext({});
 
-const AuthProvider = ({ children }) => {
+export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState(null);
-  const [error, setError] = useState(null);
   const [userRole, setUserRole] = useState(null);
-
-  // session management
-  const {
-    showWarning,
-    extendSession,
-    handleAutoLogout,
-    sessionLogout,
-    startSessionTimer,
-    sessionTimeout,
-  } = useSessionManager();
+  const [loading, setLoading] = useState(true);
+  const [profileComplete, setProfileComplete] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    (async () => {
-      await getSession();
-    })();
+    // Get initial session
+    getSession();
 
-    // listen for auth state changes
+    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("Auth state changed:", event, session);
+      console.log("Auth state changed:", event);
+
       if (session?.user) {
-        setUser(session?.user);
-        await fetchUserProfile(session?.user?.id);
+        setUser(session.user);
+        await checkUserProfile(session.user);
       } else {
         setUser(null);
-        setUserProfile(null);
         setUserRole(null);
+        setProfileComplete(false);
       }
       setLoading(false);
     });
 
-    return () => {
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
-  // user current session
   const getSession = async () => {
-    setLoading(true);
     try {
       const {
         data: { session },
-        error,
       } = await supabase.auth.getSession();
-
-      if (error) console.error("Error fetching session:", error);
       if (session?.user) {
         setUser(session.user);
-        await fetchUserProfile(session?.user?.id);
-        startSessionTimer();
+        await checkUserProfile(session.user);
       }
     } catch (error) {
-      console.error("Error fetching session:", error);
-      setError(handleSupabaseError(error));
+      console.error("Error getting session:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  // fetch user profile
-  const fetchUserProfile = async (authUserId) => {
+  const checkUserProfile = async (authUser) => {
     try {
-      setLoading(true);
+      // use your existing function to get user role
+      const { data: role, error: roleError } = await supabase.rpc(
+        "get_current_user_role"
+      );
 
-      // get user role and user_profile
-      const { data: userProfileRole, error: roleError } = await supabase
-        .from("users")
-        .select("user_profiles(id, user_type)")
-        .eq("auth_user_id", authUserId)
-        .single();
-
-      if (roleError) throw roleError;
-
-      const { id: profileId, user_type } = userProfileRole.user_profiles;
-
-      // fetch specific role
-      let profileData;
-      let profileError;
-
-      switch (user_type) {
-        case "staff":
-          ({ data: profileData, error: profileError } = await supabase
-            .from("staff_profiles")
-            .select(
-              `
-                *,
-                clinics (
-                  id, name, location, address, city, phone, email, operating_hours, service_offer, rating
-                )
-              `
-            )
-            .eq("user_profile_id", profileId)
-            .single());
-          break;
-
-        case "patient":
-          ({ data: profileData, error: profileError } = await supabase
-            .from("patient_profiles")
-            .select("*")
-            .eq("user_profile_id", profileId)
-            .single());
-          break;
-
-        case "admin":
-          ({ data: profileData, error: profileError } = await supabase
-            .from("admin_profiles")
-            .select("*")
-            .eq("user_profile_id", profileId)
-            .single());
-          break;
-
-        default:
-          throw new Error(`Unknown user type: ${user_type}`);
+      if (roleError) {
+        console.error("Error getting user role:", roleError);
+        return;
       }
 
-      if (profileError) throw profileError;
-
-      setUserProfile({
-        ...profileData,
-        user_type,
-      });
-      setUserRole(user_type);
-    } catch (error) {
-      console.error("Error fetching user profile:", error);
-      setError(handleSupabaseError(error));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // check verification stats
-  const checkVerificationStatus = useCallback(async () => {
-    return await authService.checkVerificationStatus();
-  }, []);
-
-  const getCurrentUserRole = async () => {
-    try {
-      const { data: role } = await supabase.rpc("get_current_user_role");
-      if (!role) return null;
       setUserRole(role);
-      return role;
+
+      // Check if profile is complete using your function
+      const { data: profileData, error: profileError } = await supabase.rpc(
+        "is_user_profile_complete"
+      );
+
+      if (profileError) {
+        console.error("Error checking profile:", profileError);
+        return;
+      }
+
+      setProfileComplete(profileData?.complete || false);
+
+      // Store in metadata for easy access
+      const metadata = authUser.user_metadata || {};
+      metadata.role = role;
+      metadata.profile_complete = profileData?.complete || false;
     } catch (error) {
-      console.error("Error fetching user role:", error);
-      return null;
+      console.error("Error checking user profile:", error);
     }
-  };
-
-  const signInWithPassword = async (
-    identifier,
-    password,
-    rememberMe = false
-  ) => {
-    setLoading(true);
-    setError(null);
-    const result = await authService.signInWithPassword(
-      identifier,
-      password,
-      rememberMe
-    );
-
-    if (result.error) setError(result.error);
-
-    setLoading(false);
-    return result;
-  };
-
-  const verifyOTPLogin = async (
-    identifier,
-    otpCode,
-    type = "email",
-    rememberMe = false
-  ) => {
-    setLoading(true);
-    setError(null);
-    const result = await authService.verifyOTPToken(
-      identifier,
-      otpCode,
-      type,
-      rememberMe
-    );
-
-    if (result.error) setError(result.error);
-
-    setLoading(false);
-    return result;
-  };
-
-  const sendOTP = async (identifier, type = "email") => {
-    setLoading(true);
-    setError(null);
-    const result = await authService.sendOTP(identifier, type);
-
-    if (result.error) setError(result.error);
-
-    setLoading(false);
-    return result;
   };
 
   const signUpUser = async (userData) => {
@@ -221,77 +91,111 @@ const AuthProvider = ({ children }) => {
     setError(null);
     const result = await authService.signUpUser(userData);
 
-    if (result.error) setError(result.error);
+    if (result?.error) setError(result?.error);
 
     setLoading(false);
     return result;
   };
 
-  const signOut = async () => {
+  const staffInvitation = async (inviteData) => {
     setLoading(true);
-    const result = await authService.signOut();
+    setError(null);
 
-    if (result.success) {
-      setUser(null);
-      setUserProfile(null);
-      setUserRole(null);
-      sessionTimeout();
-    }
+    const result = await authService.staffInvitation(inviteData);
+
+    if (result?.error) setError(result?.error);
 
     setLoading(false);
     return result;
   };
 
-  // get user role
+  const adminInvitation = async (inviteData) => {
+    setLoading(true);
+    setError(null);
+
+    const result = await authService.adminInvitation(inviteData);
+
+    if (result?.error) setError(result?.error);
+
+    setLoading(false);
+    return result;
+  };
+
+  const resetPassword = async (email) => {
+    setLoading(true);
+    setError(null);
+
+    const result = await authService.resetPassword(email);
+
+    if (result?.error) setError(result?.error);
+
+    setLoading(false);
+    return result;
+  };
+
+  const updatePassword = async (newPassword) => {
+    setLoading(true);
+    setError(null);
+
+    const result = await authService.updatePassword(newPassword);
+
+    if (result?.error) setError(result?.error);
+
+    setLoading(false);
+    return result;
+  };
+
+  const isVerifiedEmail = !!user?.email_confirmed_at;
+  const isVerifiedPhone = !!user?.phone_confirmed_at;
+
   const isPatient = () => userRole === "patient";
   const isStaff = () => userRole === "staff";
   const isAdmin = () => userRole === "admin";
 
-  const getStaffClinic = () => {
-    if (!isStaff()) return null;
-    return isStaff() ? userProfile?.clinics || null : null;
+  const getVerificationStep = () => {
+    if (!user) return null;
+    if (!profileComplete) {
+      if (!isVerifiedEmail) return "verify-email";
+      if ((isStaff() || isAdmin()) && !isVerifiedPhone) return "verify-phone";
+      return "complete-profile";
+    }
+    return null;
   };
 
   const value = {
-    // State
+    // state
     user,
-    userProfile,
     userRole,
     loading,
     error,
-    showWarning,
+    profileComplete,
 
-    // Auth methods
-    signInWithPassword,
-    verifyOTPLogin,
-    sendOTP,
+    // auth verification
+    isVerifiedEmail,
+    isVerifiedPhone,
+
+    // auth action
     signUpUser,
-    signOut,
-    checkVerificationStatus,
+    staffInvitation,
+    adminInvitation,
+    resetPassword,
+    updatePassword,
+    checkUserProfile,
+    getVerificationStep,
 
-    // session management
-    handleAutoLogout,
-    extendSession,
-    sessionLogout,
-    sessionTimeout,
-
-    // helper methods
+    // auth roles
     isPatient,
     isStaff,
     isAdmin,
-    getStaffClinic,
-    getCurrentUserRole,
-    refetchProfile: () => fetchUserProfile(user?.id),
-    setError,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
+    throw new Error("useAuth must be used within AuthProvider");
   }
   return context;
 };
-export default AuthProvider;

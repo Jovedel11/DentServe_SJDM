@@ -12,6 +12,16 @@ const Contact = lazy(() => import("./app/public/pages/Contact"));
 const Login = lazy(() => import("./auth/login/Login"));
 const Signup = lazy(() => import("./auth/signup/Signup"));
 const PatientLayout = lazy(() => import("./app/patient/layout/PatientLayout"));
+const AuthCallback = lazy(() => import("./auth/components/AuthCallback"));
+const ForgotPassword = lazy(() => import("./auth/components/ForgotPassword"));
+const ResetPassword = lazy(() => import("./auth/components/ResetPassword"));
+const PhoneVerification = lazy(() =>
+  import("./auth/components/PhoneVerification")
+);
+const EmailVerification = lazy(() =>
+  import("./auth/components/EmailVerification")
+);
+const CompleteProfile = lazy(() => import("./auth/components/CompleteProfile"));
 
 export const router = createBrowserRouter([
   {
@@ -43,6 +53,36 @@ export const router = createBrowserRouter([
         element: withSuspense(Signup),
       },
     ],
+  },
+  {
+    path: "auth/callback",
+    errorElement: <ErrorPage />,
+    element: withSuspense(AuthCallback),
+  },
+  {
+    path: "forgot-password",
+    errorElement: <ErrorPage />,
+    element: withSuspense(ForgotPassword),
+  },
+  {
+    path: "reset-password",
+    errorElement: <ErrorPage />,
+    element: withSuspense(ResetPassword),
+  },
+  {
+    path: "verify-phone",
+    errorElement: <ErrorPage />,
+    element: withSuspense(PhoneVerification),
+  },
+  {
+    path: "verify-email",
+    errorElement: <ErrorPage />,
+    element: withSuspense(EmailVerification),
+  },
+  {
+    path: "complete-profile",
+    errorElement: <ErrorPage />,
+    element: withSuspense(CompleteProfile),
   },
   {
     path: "/patient/dashboard",

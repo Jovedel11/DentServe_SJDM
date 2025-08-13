@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth/context/AuthProvider"
-import { supabase } from "../../../supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 
 export const useLocationService = () => {
   const { user, isPatient } = useAuth();

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "../../../supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 
 const CompleteInvitation = () => {
   const [searchParams] = useSearchParams();

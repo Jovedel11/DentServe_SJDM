@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/context/AuthProvider";
 import { useLocationService } from "./useLocationService";
-import { supabase } from "../../../supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 
 export const useClinicDiscovery = () => {
   const { userLocation } = useLocationService();
