@@ -3,23 +3,33 @@ import { useAuth } from "../../auth/context/AuthProvider"
 import { useEffect } from "react"
 
 export const useRolebasedRedirect = () => {
-  const { userProfile, isPatient, isStaff, isAdmin } = useAuth()
-
+  const { user, userRole, profileComplete, getVerificationStep } = useAuth()
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (userProfile) {
-      // use the helper methods 
-      if (isPatient()) {
-        navigate('/patient/dashboard', { replace: true });
-      } else if (isStaff()) {
-        navigate('/staff/dashboard', { replace: true });
-      } else if (isAdmin()) {
-        navigate('/admin/dashboard', { replace: true });
-      } else {
-        navigate('/unauthorized', { replace: true });
+    if (user && userRole && profileComplete) {
+      // If there's a verification step needed, redirect there first
+      const verificationStep = getVerificationStep();
+      if (verificationStep) {
+        navigate(`/${verificationStep}`, { replace: true });
+        return;
+      }
+
+      // Otherwise redirect based on role
+      switch (userRole) {
+        case 'patient':
+          navigate('/patient/dashboard', { replace: true });
+          break;
+        case 'staff':
+          navigate('/staff/dashboard', { replace: true });
+          break;
+        case 'admin':
+          navigate('/admin/dashboard', { replace: true });
+          break;
+        default:
+          navigate('/unauthorized', { replace: true });
+          break;
       }
     }
-  }, [userProfile, isPatient, isStaff, isAdmin, navigate])
-
+  }, [user, userRole, profileComplete, getVerificationStep, navigate])
 }

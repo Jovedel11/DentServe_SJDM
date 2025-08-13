@@ -1,186 +1,290 @@
-// PhoneVerification.jsx - COMPLETE VERSION
-import React, { useState } from "react";
-import { authService } from "@/auth/hooks/authService";
+import { useState, useEffect } from "react";
+import { useVerification } from "../hooks/useVerification";
+import { useAuth } from "@/auth/context/AuthProvider";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
-const PhoneVerification = ({ onComplete }) => {
-  const [step, setStep] = useState("send"); // 'send' or 'verify'
-  const [phone, setPhone] = useState("");
-  const [token, setToken] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+export const PhoneVerification = () => {
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [userPhone, setUserPhone] = useState("");
+  const [countdown, setCountdown] = useState(0);
+  const [phoneInput, setPhoneInput] = useState("");
+  const [needsPhoneInput, setNeedsPhoneInput] = useState(false);
 
-  const handleSendCode = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
+  const { sendPhoneOTP, verifyPhoneOTP, loading, error } = useVerification();
+  const { user, isPatient, isStaff, isAdmin, checkUserProfile } = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-    const result = await authService.sendPhoneVerification(phone);
+  const tempPassword = searchParams.get("temp_password");
 
-    if (result.success) {
-      setStep("verify");
-      setMessage("Verification code sent to your phone!");
-    } else {
-      setError(result.error);
+  useEffect(() => {
+    if (!user) {
+      navigate("/login");
+      return;
     }
 
-    setLoading(false);
-  };
-
-  const handleVerifyCode = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    const result = await authService.verifyPhoneSignup(phone, token);
-
-    if (result.success) {
-      setMessage("Phone verified successfully!");
-      onComplete();
-    } else {
-      setError(result.error);
+    // Check if user already has phone verified
+    if (user.phone_confirmed_at) {
+      navigateToCorrectDestination();
+      return;
     }
 
-    setLoading(false);
+    // Check if user has a phone number
+    if (!user.phone && isPatient()) {
+      setNeedsPhoneInput(true);
+    } else if (user.phone && !otpSent) {
+      handleSendOTP();
+    }
+  }, [user, isPatient]);
+
+  useEffect(() => {
+    // Countdown timer for resend button
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
+
+  const navigateToCorrectDestination = () => {
+    if (isPatient()) {
+      navigate("/patient/dashboard");
+    } else if (isStaff()) {
+      navigate("/staff/complete-profile");
+    } else if (isAdmin()) {
+      navigate("/admin/dashboard");
+    } else {
+      navigate("/dashboard");
+    }
   };
+
+  const handleSendOTP = async () => {
+    const result = await sendPhoneOTP();
+
+    if (result.success) {
+      setOtpSent(true);
+      setUserPhone(result.phone);
+      setCountdown(60); // 60 second cooldown
+      setNeedsPhoneInput(false);
+
+      // For testing - remove in production
+      if (result.otp_for_testing) {
+        console.log("Testing OTP:", result.otp_for_testing);
+      }
+    }
+  };
+
+  const handleAddPhoneAndSendOTP = async (e) => {
+    e.preventDefault();
+
+    if (!phoneInput) {
+      alert("Please enter your phone number");
+      return;
+    }
+
+    // Clean and validate phone
+    const cleanPhone = phoneInput.replace(/\D/g, "");
+    if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+      alert("Please enter a valid phone number");
+      return;
+    }
+
+    // Update user phone in auth
+    const { error: updateError } = await supabase.auth.updateUser({
+      phone: `+${cleanPhone}`,
+    });
+
+    if (updateError) {
+      console.error("Error updating phone:", updateError);
+      alert("Error updating phone number");
+      return;
+    }
+
+    // Send OTP
+    handleSendOTP();
+  };
+
+  const handleVerifyOTP = async (e) => {
+    e.preventDefault();
+
+    if (otpCode.length !== 6) {
+      alert("Please enter a 6-digit OTP code");
+      return;
+    }
+
+    const result = await verifyPhoneOTP(userPhone, otpCode);
+
+    if (result.success) {
+      // Update user profile status
+      await checkUserProfile(user);
+
+      // Navigate to appropriate destination
+      navigateToCorrectDestination();
+    }
+  };
+
+  const handleResendOTP = () => {
+    if (countdown === 0) {
+      handleSendOTP();
+    }
+  };
+
+  if (!user) {
+    return null;
+  }
 
   return (
-    <div style={{ maxWidth: "400px", margin: "50px auto", padding: "20px" }}>
-      <h2>📱 Phone Verification Required</h2>
-      <p>Please verify your phone number to complete your account setup.</p>
+    <div className="phone-verification">
+      <div className="verification-container">
+        <div className="verification-icon">📱</div>
 
-      {step === "send" ? (
-        <form onSubmit={handleSendCode}>
-          <div style={{ marginBottom: "15px" }}>
+        <h2>Phone Verification Required</h2>
+
+        {/* Show temp password for staff/admin */}
+        {tempPassword && (isStaff() || isAdmin()) && (
+          <div className="temp-password-notice">
+            <h3>Welcome! Your temporary password is:</h3>
+            <div className="temp-password-display">
+              <strong>{tempPassword}</strong>
+            </div>
+            <p>
+              Please save this password. You can change it after completing
+              verification.
+            </p>
+          </div>
+        )}
+
+        {/* Role-specific welcome messages */}
+        {isStaff() && (
+          <div className="role-welcome">
+            <h3>Welcome to the Team!</h3>
+            <p>
+              Please verify your phone number to activate your staff account.
+            </p>
+          </div>
+        )}
+
+        {isAdmin() && (
+          <div className="role-welcome">
+            <h3>Admin Account Setup</h3>
+            <p>Phone verification is required for admin account security.</p>
+          </div>
+        )}
+
+        {/* Phone input form (for users without phone) */}
+        {needsPhoneInput && !otpSent && (
+          <form
+            onSubmit={handleAddPhoneAndSendOTP}
+            className="phone-input-form"
+          >
+            <h3>Enter Your Phone Number</h3>
+            <p>We need your phone number to send the verification code.</p>
+
             <input
               type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="Phone Number (09XXXXXXXX or +639XXXXXXXX)"
+              placeholder="Enter phone number (e.g., +1234567890)"
+              value={phoneInput}
+              onChange={(e) => setPhoneInput(e.target.value)}
               required
-              style={{ width: "100%", padding: "8px" }}
             />
+
+            <button type="submit" disabled={loading}>
+              {loading ? "Sending..." : "Send Verification Code"}
+            </button>
+          </form>
+        )}
+
+        {/* Sending OTP state */}
+        {!needsPhoneInput && !otpSent && (
+          <div className="sending-otp">
+            <p>Sending verification code to your phone...</p>
+            <div className="spinner"></div>
           </div>
+        )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: "10px",
-              backgroundColor: "#28a745",
-              color: "white",
-              border: "none",
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
-          >
-            {loading ? "Sending..." : "📱 Send Verification Code"}
-          </button>
-        </form>
-      ) : (
-        <form onSubmit={handleVerifyCode}>
-          <p>
-            Enter the code sent to: <strong>{phone}</strong>
-          </p>
+        {/* OTP verification form */}
+        {otpSent && (
+          <div className="verify-otp">
+            <div className="phone-display">
+              <p>We've sent a 6-digit verification code to:</p>
+              <strong>{userPhone}</strong>
+            </div>
 
-          <div style={{ marginBottom: "15px" }}>
-            <input
-              type="text"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Enter 6-digit verification code"
-              required
-              maxLength="6"
-              style={{
-                width: "100%",
-                padding: "8px",
-                fontSize: "18px",
-                textAlign: "center",
-              }}
-            />
+            <form onSubmit={handleVerifyOTP}>
+              <div className="otp-input-container">
+                <input
+                  type="text"
+                  placeholder="Enter 6-digit code"
+                  value={otpCode}
+                  onChange={(e) =>
+                    setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
+                  maxLength="6"
+                  required
+                  autoFocus
+                  className="otp-input"
+                />
+              </div>
+
+              {error && <div className="error-message">{error}</div>}
+
+              <button type="submit" disabled={loading || otpCode.length !== 6}>
+                {loading ? "Verifying..." : "Verify Phone Number"}
+              </button>
+            </form>
+
+            <div className="resend-section">
+              {countdown > 0 ? (
+                <p className="countdown">Resend code in {countdown} seconds</p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleResendOTP}
+                  className="resend-button"
+                >
+                  Resend Code
+                </button>
+              )}
+            </div>
           </div>
+        )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: "10px",
-              backgroundColor: "#007bff",
-              color: "white",
-              border: "none",
-              cursor: loading ? "not-allowed" : "pointer",
-              marginBottom: "10px",
-            }}
-          >
-            {loading ? "Verifying..." : "✅ Verify Code"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setStep("send")}
-            style={{
-              width: "100%",
-              padding: "8px",
-              backgroundColor: "#6c757d",
-              color: "white",
-              border: "none",
-              cursor: "pointer",
-            }}
-          >
-            🔄 Change Phone Number
-          </button>
-        </form>
-      )}
-
-      {error && (
-        <div
-          style={{
-            marginTop: "15px",
-            padding: "10px",
-            backgroundColor: "#ffebee",
-            border: "1px solid #f44336",
-            borderRadius: "4px",
-            color: "#c62828",
-          }}
-        >
-          ❌ {error}
+        {/* Next steps information */}
+        <div className="next-steps">
+          <h4>After phone verification:</h4>
+          {isPatient() && (
+            <ul>
+              <li>Full access to book appointments</li>
+              <li>Find nearest clinics</li>
+              <li>View your medical history</li>
+            </ul>
+          )}
+          {isStaff() && (
+            <ul>
+              <li>Complete your staff profile</li>
+              <li>Access clinic management dashboard</li>
+              <li>Manage appointments and patients</li>
+            </ul>
+          )}
+          {isAdmin() && (
+            <ul>
+              <li>Access admin dashboard</li>
+              <li>Manage system settings</li>
+              <li>Review partnership requests</li>
+            </ul>
+          )}
         </div>
-      )}
 
-      {message && (
-        <div
-          style={{
-            marginTop: "15px",
-            padding: "10px",
-            backgroundColor: "#e8f5e8",
-            border: "1px solid #4caf50",
-            borderRadius: "4px",
-            color: "#2e7d32",
-          }}
-        >
-          ✅ {message}
+        <div className="help-section">
+          <h4>Not receiving the code?</h4>
+          <ul>
+            <li>Check if your phone can receive SMS</li>
+            <li>Make sure the phone number is correct</li>
+            <li>Try resending the code</li>
+            <li>Contact support if needed</li>
+          </ul>
         </div>
-      )}
-
-      <div
-        style={{
-          marginTop: "20px",
-          padding: "15px",
-          backgroundColor: "#f8f9fa",
-          borderRadius: "4px",
-        }}
-      >
-        <h4>📋 Test Phone Number</h4>
-        <p>
-          <strong>09955507221</strong> or <strong>+639955507221</strong>
-        </p>
-        <p style={{ fontSize: "12px", color: "#666" }}>
-          Use this number for testing SMS verification.
-        </p>
       </div>
     </div>
   );
 };
-
-export default PhoneVerification;

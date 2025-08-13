@@ -1,308 +1,168 @@
-// ResetPassword.jsx - NEW COMPONENT
-import React, { useState, useEffect } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
-import { authService } from "@/auth/hooks/authService";
+import { useState, useEffect } from "react";
+import { useAuth } from "../context/AuthProvider";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/lib/supabaseClient";
 
-const ResetPassword = () => {
-  const [searchParams] = useSearchParams();
-  const [step, setStep] = useState("request"); // 'request' or 'reset'
-  const [email, setEmail] = useState("");
-  const [newPassword, setNewPassword] = useState("");
+export const ResetPassword = () => {
+  const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
+  const [isResetting, setIsResetting] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
 
+  const { updatePassword, loading } = useAuth();
   const navigate = useNavigate();
 
-  // ✅ Check if this is a password reset callback
   useEffect(() => {
-    const accessToken = searchParams.get("access_token");
-    const refreshToken = searchParams.get("refresh_token");
-    const type = searchParams.get("type");
+    // Check if we have a valid session for password reset
+    checkResetSession();
+  }, []);
 
-    if (type === "recovery" && accessToken && refreshToken) {
-      // This is a password reset callback
-      setStep("reset");
-      setMessage("✅ Email verified! Please enter your new password.");
-    }
-  }, [searchParams]);
-
-  const handleRequestReset = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage("");
-
+  const checkResetSession = async () => {
     try {
-      const result = await authService.resetPassword(email);
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
 
-      if (result.error) {
-        setMessage(`❌ ${result.error}`);
-      } else {
-        setMessage(
-          "📧 Password reset link sent to your email! Please check your inbox."
-        );
-      }
-    } catch (error) {
-      setMessage(`❌ Failed to send reset email: ${error.message}`);
-    }
-
-    setLoading(false);
-  };
-
-  const handlePasswordReset = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage("");
-
-    try {
-      // Validate passwords match
-      if (newPassword !== confirmPassword) {
-        setMessage("❌ Passwords do not match");
-        setLoading(false);
+      if (error || !session) {
+        // No valid session, redirect to forgot password
+        navigate("/forgot-password");
         return;
       }
 
-      const result = await authService.updatePassword(newPassword);
-
-      if (result.error) {
-        setMessage(`❌ ${result.error}`);
-      } else {
-        setMessage("✅ Password updated successfully! Redirecting to login...");
-        setTimeout(() => {
-          navigate("/login");
-        }, 2000);
-      }
+      setIsResetting(true);
     } catch (error) {
-      setMessage(`❌ Failed to update password: ${error.message}`);
+      console.error("Error checking reset session:", error);
+      navigate("/forgot-password");
     }
-
-    setLoading(false);
   };
 
-  if (step === "reset") {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+
+    // Validate passwords
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters long");
+      return;
+    }
+
+    // Password strength validation
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumbers = /\d/.test(password);
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumbers) {
+      setError(
+        "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+      );
+      return;
+    }
+
+    const result = await updatePassword(password);
+
+    if (result.success) {
+      setSuccess(true);
+      // Redirect to login after 3 seconds
+      setTimeout(() => {
+        navigate("/login");
+      }, 3000);
+    } else {
+      setError(result.error);
+    }
+  };
+
+  if (!isResetting) {
     return (
-      <div style={{ maxWidth: "400px", margin: "50px auto", padding: "20px" }}>
-        <h2 style={{ textAlign: "center", marginBottom: "30px" }}>
-          🔐 Set New Password
-        </h2>
+      <div className="reset-password-loading">
+        <h2>Verifying reset link...</h2>
+        <div className="spinner"></div>
+      </div>
+    );
+  }
 
-        <form onSubmit={handlePasswordReset}>
-          <div style={{ marginBottom: "20px" }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "8px",
-                fontWeight: "500",
-              }}
-            >
-              New Password *
-            </label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="8+ characters, uppercase, lowercase, number, special character"
-              required
-              style={{
-                width: "100%",
-                padding: "12px",
-                border: "1px solid #ddd",
-                borderRadius: "4px",
-                fontSize: "16px",
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: "20px" }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: "8px",
-                fontWeight: "500",
-              }}
-            >
-              Confirm New Password *
-            </label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Re-enter your new password"
-              required
-              style={{
-                width: "100%",
-                padding: "12px",
-                border: "1px solid #ddd",
-                borderRadius: "4px",
-                fontSize: "16px",
-              }}
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: "12px",
-              backgroundColor: loading ? "#ccc" : "#007bff",
-              color: "white",
-              border: "none",
-              borderRadius: "4px",
-              cursor: loading ? "not-allowed" : "pointer",
-              fontSize: "16px",
-              fontWeight: "500",
-            }}
-          >
-            {loading ? "Updating Password..." : "🔐 Update Password"}
-          </button>
-        </form>
-
-        {message && (
-          <div
-            style={{
-              marginTop: "20px",
-              padding: "12px",
-              border: "1px solid #ccc",
-              backgroundColor: message.includes("❌") ? "#ffebee" : "#e8f5e8",
-              borderRadius: "4px",
-              borderColor: message.includes("❌") ? "#f44336" : "#4caf50",
-            }}
-          >
-            {message}
-          </div>
-        )}
-
-        <div
-          style={{
-            marginTop: "20px",
-            padding: "15px",
-            backgroundColor: "#f8f9fa",
-            borderRadius: "4px",
-            border: "1px solid #e9ecef",
-          }}
-        >
-          <h4 style={{ margin: "0 0 10px 0", color: "#495057" }}>
-            🔐 Password Requirements
-          </h4>
-          <ul
-            style={{
-              margin: "0",
-              paddingLeft: "20px",
-              fontSize: "14px",
-              color: "#6c757d",
-            }}
-          >
-            <li>At least 8 characters long</li>
-            <li>Contains uppercase and lowercase letters</li>
-            <li>Contains at least one number</li>
-            <li>Contains at least one special character</li>
-          </ul>
-        </div>
+  if (success) {
+    return (
+      <div className="reset-password-success">
+        <h2>Password Updated Successfully!</h2>
+        <p>
+          Your password has been updated. You can now login with your new
+          password.
+        </p>
+        <p>Redirecting to login page in 3 seconds...</p>
+        <a href="/login" className="login-link">
+          Go to Login Now
+        </a>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: "400px", margin: "50px auto", padding: "20px" }}>
-      <h2 style={{ textAlign: "center", marginBottom: "30px" }}>
-        🔐 Reset Password
-      </h2>
+    <div className="reset-password">
+      <div className="reset-container">
+        <h2>Reset Your Password</h2>
+        <p>Please enter your new password below.</p>
 
-      <form onSubmit={handleRequestReset}>
-        <div style={{ marginBottom: "20px" }}>
-          <label
-            style={{ display: "block", marginBottom: "8px", fontWeight: "500" }}
+        <form onSubmit={handleSubmit} className="reset-form">
+          <div className="form-group">
+            <input
+              type="password"
+              placeholder="New Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength="8"
+            />
+            <div className="password-requirements">
+              <p>Password must contain:</p>
+              <ul>
+                <li className={password.length >= 8 ? "valid" : ""}>
+                  At least 8 characters
+                </li>
+                <li className={/[A-Z]/.test(password) ? "valid" : ""}>
+                  One uppercase letter
+                </li>
+                <li className={/[a-z]/.test(password) ? "valid" : ""}>
+                  One lowercase letter
+                </li>
+                <li className={/\d/.test(password) ? "valid" : ""}>
+                  One number
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <input
+              type="password"
+              placeholder="Confirm New Password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
+          </div>
+
+          {error && <div className="error-message">{error}</div>}
+
+          <button
+            type="submit"
+            disabled={loading || !password || !confirmPassword}
+            className="reset-button"
           >
-            Email Address
-          </label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Enter your email address"
-            required
-            style={{
-              width: "100%",
-              padding: "12px",
-              border: "1px solid #ddd",
-              borderRadius: "4px",
-              fontSize: "16px",
-            }}
-          />
-          <small style={{ color: "#666" }}>
-            We'll send you a link to reset your password
-          </small>
+            {loading ? "Updating Password..." : "Update Password"}
+          </button>
+        </form>
+
+        <div className="reset-help">
+          <a href="/login">← Back to Login</a>
         </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            width: "100%",
-            padding: "12px",
-            backgroundColor: loading ? "#ccc" : "#007bff",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: loading ? "not-allowed" : "pointer",
-            fontSize: "16px",
-            fontWeight: "500",
-          }}
-        >
-          {loading ? "Sending Reset Link..." : "📧 Send Reset Link"}
-        </button>
-      </form>
-
-      {message && (
-        <div
-          style={{
-            marginTop: "20px",
-            padding: "12px",
-            border: "1px solid #ccc",
-            backgroundColor: message.includes("❌") ? "#ffebee" : "#e8f5e8",
-            borderRadius: "4px",
-            borderColor: message.includes("❌") ? "#f44336" : "#4caf50",
-          }}
-        >
-          {message}
-        </div>
-      )}
-
-      <div style={{ textAlign: "center", marginTop: "20px" }}>
-        <a href="/login" style={{ color: "#007bff", textDecoration: "none" }}>
-          ← Back to Login
-        </a>
-      </div>
-
-      <div
-        style={{
-          marginTop: "20px",
-          padding: "15px",
-          backgroundColor: "#f8f9fa",
-          borderRadius: "4px",
-          border: "1px solid #e9ecef",
-        }}
-      >
-        <h4 style={{ margin: "0 0 10px 0", color: "#495057" }}>
-          📋 Instructions
-        </h4>
-        <ol
-          style={{
-            margin: "0",
-            paddingLeft: "20px",
-            fontSize: "14px",
-            color: "#6c757d",
-          }}
-        >
-          <li>Enter your registered email address</li>
-          <li>Check your email for the reset link</li>
-          <li>Click the link to set a new password</li>
-          <li>Return to login with your new password</li>
-        </ol>
       </div>
     </div>
   );
 };
-
-export default ResetPassword;
