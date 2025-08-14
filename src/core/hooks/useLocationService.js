@@ -74,7 +74,7 @@ export const useLocationService = () => {
         longitude,
       });
 
-      if (error) throw error;
+      if (error) throw new Error(error?.message || 'Location update failed');
 
       if (!data) throw new Error('Failed to update location');
 
@@ -106,7 +106,7 @@ export const useLocationService = () => {
       if (error.message.includes('denied')) {
         setLocationPermission('denied');
       }
-      throw error;
+      throw new Error(error?.message || 'Location access failed');
     } finally {
       setLoading(false);
     }

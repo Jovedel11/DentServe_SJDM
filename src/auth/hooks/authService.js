@@ -1,7 +1,6 @@
 import { supabase } from "../../lib/supabaseClient";
 import { validateStrongPassword } from "@/auth/validation/rules/typicalRules";
 import { phoneUtils } from "@/utils/phoneUtils";
-import { useRecaptcha } from "./useRecaptcha";
 
 const generateTempPassword = () => {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$'
@@ -15,9 +14,7 @@ const generateTempPassword = () => {
 export const authService = {
   // sign up new user
   async signUpUser(userData) {
-    const { executeRecaptcha } = useRecaptcha();
     try {
-
       validateStrongPassword(userData.password);
 
       let normalizedPhone = null;
@@ -28,18 +25,10 @@ export const authService = {
         }
       }
 
-      // execute reCAPTCHA
-      const recaptchaToken = await executeRecaptcha('patient_signup')
-      if (!recaptchaToken) {
-        throw new Error('reCAPTCHA verification failed')
-      }
-
-      // validate required fields
       if (!userData.email || !userData.password || !userData.first_name || !userData.last_name) {
         throw new Error('Please fill in all required fields')
       }
 
-      // email validation
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
       if (!emailRegex.test(userData.email)) {
         throw new Error('Please enter a valid email address')
@@ -61,23 +50,24 @@ export const authService = {
             insurance_provider: userData.insurance_provider,
             medical_conditions: userData.medical_conditions || [],
             allergies: userData.allergies || [],
-            recaptcha_token: recaptchaToken
+            recaptcha_token: userData.recaptchaToken
           },
-          emailRedirectTo: `${window.location.origin}/auth/callback?type=patient`
+          // single domain redirect
+          emailRedirectTo: `${window.location.origin}/auth-callback?type=patient`
         }
       })
 
-      if (signupError) throw signupError
+      if (signupError) throw new Error(signupError.message || 'Signup failed')
 
       return {
         success: true,
         user: data.user,
-        message: 'Please check your email to verify your account. For patients with phone numbers, phone verification will be automatic after email confirmation.'
+        message: 'Please check your email to verify your account.'
       }
 
     } catch (error) {
       console.error('Patient signup error:', error)
-      return { success: false, error: error.message }
+      return { success: false, error: error.message || 'Patient signup failed' }
     }
   },
 
@@ -88,7 +78,6 @@ export const authService = {
       if (!inviteData.email || !inviteData.first_name || !inviteData.last_name || !inviteData.clinic_id) {
         throw new Error('Please fill in all required fields')
       }
-
       // Generate temporary password
       const tempPassword = generateTempPassword()
 
@@ -105,14 +94,15 @@ export const authService = {
             department: inviteData.department,
             employee_id: inviteData.employee_id,
             hire_date: inviteData.hire_date || new Date().toISOString().split('T')[0],
+            phone: inviteData.phone, // required for staff
             temp_password: tempPassword,
             invited_by: 'admin'
           },
-          emailRedirectTo: `${window.location.origin}/auth/callback?type=staff&temp_password=${encodeURIComponent(tempPassword)}`
+          emailRedirectTo: `${window.location.origin}/auth-callback?type=staff&temp_password=${encodeURIComponent(tempPassword)}`
         }
       })
 
-      if (signupError) throw signupError
+      if (signupError) throw new Error(signupError?.message || 'Staff signup failed')
 
       // Your trigger creates staff profile with is_active = false
       // They become active after phone verification
@@ -125,7 +115,8 @@ export const authService = {
 
     } catch (error) {
       console.error('Staff invitation error:', error)
-      return { success: false, error: error.message }
+      const errorMsg = error?.message || String(error) || 'Staff invitation failed'
+      return { success: false, error: errorMsg }
     }
   },
 
@@ -147,11 +138,11 @@ export const authService = {
             phone: inviteData.phone, // required for admin
             invited_by: 'super_admin'
           },
-          emailRedirectTo: `${window.location.origin}/auth/callback?type=admin&temp_password=${encodeURIComponent(tempPassword)}`
+          emailRedirectTo: `${window.location.origin}/auth-callback?type=admin&temp_password=${encodeURIComponent(tempPassword)}`
         }
       })
 
-      if (signupError) throw signupError
+      if (signupError) throw new Error(signupError?.message || 'Admin signup failed')
 
       return {
         success: true,
@@ -161,7 +152,24 @@ export const authService = {
 
     } catch (error) {
       console.error('Admin invitation error:', error)
-      return { success: false, error: error.message }
+      const errorMsg = error?.message || String(error) || 'Admin invitation failed'
+      return { success: false, error: errorMsg }
+    }
+  },
+
+  async getAuthStatus (authUserId = null) {
+    try {
+      const { data, error } = await supabase.rpc('get_user_auth_status', {
+        p_auth_user_id: authUserId
+      })
+
+      if (error) throw new Error(error.message || 'Failed to fetch auth status')
+
+      return { success: true, data }
+    } catch (error) {
+      console.error('Get auth status error:', error)
+      const errorMsg = error?.message || String(error) || 'Get auth status failed'
+      return { success: false, error: errorMsg }
     }
   },
 
@@ -171,11 +179,11 @@ export const authService = {
       const { data, error: resetError } = await supabase.auth.resetPasswordForEmail(
         email,
         {
-          redirectTo: `${window.location.origin}/auth/reset-password`
+          redirectTo: `${window.location.origin}/reset-password`
         }
       )
 
-      if (resetError) throw resetError
+      if (resetError) throw new Error(resetError?.message || 'Failed to send reset email')
 
       return {
         success: true,
@@ -184,7 +192,8 @@ export const authService = {
 
     } catch (error) {
       console.error('Password reset request error:', error)
-      return { success: false, error: error.message }
+      const errorMsg = error?.message || String(error) || 'Password reset failed'
+      return { success: false, error: errorMsg }
     }
   },
 
@@ -199,13 +208,14 @@ export const authService = {
         password: newPassword
       })
 
-      if (updateError) throw updateError
+      if (updateError) throw new Error(updateError?.message || 'Password update failed')
 
       return { success: true, message: 'Password updated successfully' }
 
     } catch (error) {
       console.error('Password update error:', error)
-      return { success: false, error: error.message }
+      const errorMsg = error?.message || String(error) || 'Password update failed'
+      return { success: false, error: errorMsg }
     }
   },
 }

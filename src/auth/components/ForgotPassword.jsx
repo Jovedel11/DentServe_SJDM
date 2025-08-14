@@ -1,9 +1,8 @@
-// src/components/ForgotPassword.jsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthProvider";
 import { useRecaptcha } from "../hooks/useRecaptcha";
 
-export const ForgotPassword = () => {
+const ForgotPassword = () => {
   const [email, setEmail] = useState("");
   const [emailSent, setEmailSent] = useState(false);
   const [countdown, setCountdown] = useState(0);
@@ -138,3 +137,5 @@ export const ForgotPassword = () => {
     </div>
   );
 };
+
+export default ForgotPassword;

@@ -1,7 +1,7 @@
+// auth/signup/Signup.jsx
 import { useState } from "react";
 import { useAuth } from "../context/AuthProvider";
 import { useRecaptcha } from "@/auth/hooks/useRecaptcha";
-import { useRolebasedRedirect } from "@/core/hooks/useRoleBasedRedirect";
 
 const Signup = () => {
   const [formData, setFormData] = useState({
@@ -20,11 +20,10 @@ const Signup = () => {
     allergies: [],
   });
   const [success, setSuccess] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   const { signUpUser, loading, error } = useAuth();
-  const { isLoaded } = useRecaptcha();
-
-  useRolebasedRedirect();
+  const { executeRecaptcha, isLoaded } = useRecaptcha();
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -53,29 +52,66 @@ const Signup = () => {
       return;
     }
 
-    // Validate passwords match
-    if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match");
-      return;
-    }
+    try {
+      const recaptchaToken = await executeRecaptcha("patient_signup");
+      if (!recaptchaToken) {
+        alert("Security verification failed. Please try again.");
+        return;
+      }
 
-    const result = await signUpUser(formData);
+      // Validate passwords match
+      if (formData.password !== formData.confirmPassword) {
+        alert("Passwords do not match");
+        return;
+      }
 
-    if (result.success) {
-      setSuccess(true);
+      const result = await signUpUser({ ...formData, recaptchaToken });
+
+      if (result && result.success) {
+        setSuccess(true);
+        setShowEmailModal(true);
+      } else {
+        console.error("Signup failed:", result);
+      }
+    } catch (error) {
+      console.error("Signup error:", error);
+      alert("An error occurred during signup. Please try again.");
     }
   };
 
-  if (success) {
+  if (showEmailModal) {
     return (
-      <div className="signup-success">
-        <h2>Account Created Successfully!</h2>
-        <p>Please check your email to verify your account.</p>
-        <p>
-          For patients with phone numbers, phone verification will be automatic
-          after email confirmation.
-        </p>
-        <a href="/login">Go to Login</a>
+      <div className="signup-success-modal">
+        <div className="modal-content">
+          <div className="success-icon">📧</div>
+          <h2>Check Your Email!</h2>
+          <p>We've sent a verification link to:</p>
+          <strong>{formData.email}</strong>
+
+          <div className="instructions">
+            <h3>Next Steps:</h3>
+            <ol>
+              <li>Check your email inbox (and spam folder)</li>
+              <li>Click the verification link</li>
+              <li>You'll be automatically taken to your dashboard</li>
+            </ol>
+          </div>
+
+          <div className="email-note">
+            <p>
+              💡 <strong>Note:</strong> Keep this tab open and check your email
+              in another tab. After clicking the verification link, you'll be
+              redirected here automatically.
+            </p>
+          </div>
+
+          <button
+            onClick={() => (window.location.href = "/login")}
+            className="secondary-button"
+          >
+            Go to Login Instead
+          </button>
+        </div>
       </div>
     );
   }
@@ -143,7 +179,7 @@ const Signup = () => {
           <input
             type="tel"
             name="phone"
-            placeholder="Phone Number (for automatic verification)"
+            placeholder="Phone Number (for SMS notifications)"
             value={formData.phone}
             onChange={handleInputChange}
           />

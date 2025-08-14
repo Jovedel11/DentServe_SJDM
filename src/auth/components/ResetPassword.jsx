@@ -3,7 +3,7 @@ import { useAuth } from "../context/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 
-export const ResetPassword = () => {
+const ResetPassword = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isResetting, setIsResetting] = useState(false);
@@ -166,3 +166,5 @@ export const ResetPassword = () => {
     </div>
   );
 };
+
+export default ResetPassword;

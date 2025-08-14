@@ -50,7 +50,7 @@ export const useAllRolesUserData = () => {
         }
 
     } catch (error) {
-      throw error
+      throw new Error(error?.message || 'Failed to fetch patient data')
     }
   }
 
@@ -101,7 +101,7 @@ export const useAllRolesUserData = () => {
       }
 
     } catch (error) {
-      throw error;
+      throw new Error(error?.message || 'Failed to fetch staff data');
     }
   }
 
@@ -133,7 +133,7 @@ export const useAllRolesUserData = () => {
       }
 
     } catch (error) {
-      throw error;
+      throw new Error(error?.message || 'Failed to fetch admin data');
     }
   }
 
@@ -161,7 +161,8 @@ export const useAllRolesUserData = () => {
       setDashboardData(data)
     } catch (error) {
       console.error('Dashboard data fetch error', error)
-      setError(error?.message)
+      const errorMsg = error?.message || String(error) || 'Dashboard data fetch failed'
+      setError(errorMsg)
     } finally {
       setLoading(false)
     }

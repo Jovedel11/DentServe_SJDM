@@ -3,34 +3,46 @@ import { useAuth } from "@/auth/context/AuthProvider";
 import { useVerification } from "../hooks/useVerification";
 import { useNavigate } from "react-router-dom";
 
-export const EmailVerification = () => {
+const EmailVerification = () => {
   const [emailSent, setEmailSent] = useState(false);
   const [countdown, setCountdown] = useState(0);
-  const { user, isPatient, isStaff, isAdmin } = useAuth();
-  const { resendEmailVerification, loading, error } = useVerification();
+  const { user, userRole, isVerifiedEmail, getVerificationStep, loading } =
+    useAuth();
+  const {
+    resendEmailVerification,
+    loading: verificationLoading,
+    error,
+  } = useVerification();
   const navigate = useNavigate();
 
-  const userEmail = user?.email ? String(user.email) : "";
-
+  // ✅ FIX: Redirect logic based on verification status
   useEffect(() => {
-    // check if email is already verified
-    if (user?.email_confirmed_at) {
-      if (isPatient()) {
-        // for patients with phone, check if auto-verified
-        if (user.phone_confirmed_at || !user.phone) {
-          navigate("/patient/dashboard");
-        } else {
-          navigate("/verify-phone");
-        }
-      } else if (isStaff() || isAdmin()) {
-        // staff and admin need phone verification after email
-        navigate("/verify-phone");
-      }
+    if (loading) return; // Wait for auth to load
+
+    if (!user) {
+      console.log("No user, redirecting to login");
+      navigate("/login", { replace: true });
+      return;
     }
-  }, [user, isPatient, isStaff, isAdmin, navigate]);
+
+    // ✅ FIX: If email is already verified, check next step
+    if (isVerifiedEmail) {
+      console.log("Email already verified, checking next step");
+      const nextStep = getVerificationStep();
+      if (nextStep) {
+        console.log("Redirecting to next step:", nextStep);
+        navigate(`/${nextStep}`, { replace: true });
+      } else {
+        // No verification needed, go to dashboard
+        console.log("All verifications complete, redirecting to dashboard");
+        navigate("/dashboard", { replace: true });
+      }
+      return;
+    }
+  }, [user, userRole, isVerifiedEmail, getVerificationStep, loading, navigate]);
 
   useEffect(() => {
-    // countdown timer for resend button
+    // Countdown timer for resend button
     if (countdown > 0) {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
       return () => clearTimeout(timer);
@@ -44,14 +56,26 @@ export const EmailVerification = () => {
 
     if (result.success) {
       setEmailSent(true);
-      setCountdown(60); // 60 second cooldown
+      setCountdown(60);
     }
   };
 
-  if (!user) {
-    navigate("/login");
+  // ✅ FIX: Show loading while auth is loading
+  if (loading) {
+    return (
+      <div className="verification-loading">
+        <div className="spinner"></div>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  // ✅ FIX: Don't render if user is already verified or no user
+  if (!user || isVerifiedEmail) {
     return null;
   }
+
+  const userEmail = user?.email || "";
 
   return (
     <div className="email-verification">
@@ -70,12 +94,12 @@ export const EmailVerification = () => {
           <ol>
             <li>Check your email inbox (and spam folder)</li>
             <li>Click the verification link in the email</li>
-            <li>You'll be automatically redirected to your dashboard</li>
+            <li>You'll be automatically redirected to complete your setup</li>
           </ol>
         </div>
 
         {/* Role-specific information */}
-        {isPatient() && (
+        {userRole === "patient" && (
           <div className="role-specific-info">
             <h4>For Patients:</h4>
             <p>After email verification:</p>
@@ -84,14 +108,13 @@ export const EmailVerification = () => {
                 If you provided a phone number, it will be automatically
                 verified
               </li>
-              <li>
-                You'll have full access to book appointments and clinic features
-              </li>
+              <li>You'll be redirected to complete your profile</li>
+              <li>Then you'll have access to book appointments</li>
             </ul>
           </div>
         )}
 
-        {isStaff() && (
+        {userRole === "staff" && (
           <div className="role-specific-info">
             <h4>For Staff Members:</h4>
             <p>After email verification:</p>
@@ -103,13 +126,15 @@ export const EmailVerification = () => {
           </div>
         )}
 
-        {isAdmin() && (
+        {userRole === "admin" && (
           <div className="role-specific-info">
             <h4>For Administrators:</h4>
             <p>After email verification:</p>
             <ul>
               <li>Phone verification is required for security</li>
-              <li>You'll have full admin dashboard access</li>
+              <li>
+                You'll have full admin dashboard access after verification
+              </li>
             </ul>
           </div>
         )}
@@ -128,10 +153,10 @@ export const EmailVerification = () => {
             <button
               type="button"
               onClick={handleResendEmail}
-              disabled={loading}
+              disabled={verificationLoading}
               className="resend-button"
             >
-              {loading ? "Sending..." : "Resend Verification Email"}
+              {verificationLoading ? "Sending..." : "Resend Verification Email"}
             </button>
           )}
         </div>
@@ -147,11 +172,17 @@ export const EmailVerification = () => {
         </div>
 
         <div className="auth-actions">
-          <a href="/login" className="back-to-login">
+          <button
+            type="button"
+            onClick={() => navigate("/login")}
+            className="back-to-login"
+          >
             ← Back to Login
-          </a>
+          </button>
         </div>
       </div>
     </div>
   );
 };
+
+export default EmailVerification;

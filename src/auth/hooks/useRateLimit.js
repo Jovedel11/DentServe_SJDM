@@ -15,7 +15,7 @@ export const useRateLimit = () => {
           p_time_window_minutes: timeWindowMinutes
         })
 
-      if (rateLimitError) throw rateLimitError
+      if (rateLimitError) throw new Error(rateLimitError?.message || 'Rate limit check failed')
 
       if (!data) {
         setRateLimited(true)

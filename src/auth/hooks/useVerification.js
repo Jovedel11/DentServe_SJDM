@@ -1,22 +1,15 @@
-import { useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
-export const useVerification = () => {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-
+export const useVerification = {
   // handle email verification callback
-  const handleEmailVerification = async (token, type) => {
-    setLoading(true)
-    setError(null)
-
+  async handleEmailVerification (token, type) {
     try {
       const { data, error: verifyError } = await supabase.auth.verifyOtp({
         token_hash: token,
         type: type
       })
 
-      if (verifyError) throw verifyError
+      if (verifyError) throw new Error(verifyError?.message || 'Email verification failed')
 
       // trigger 'handle_email_verification' automatically:
       // 1. Updates email_verified = true in public.users
@@ -27,23 +20,19 @@ export const useVerification = () => {
 
     } catch (error) {
       console.error('Email verification error:', error)
-      setError(error.message)
-      return { success: false, error: error.message }
+      return { success: false, error: error.message || 'Email verification failed' }
     } finally {
       setLoading(false)
     }
-  }
+  },
 
   // send phone OTP using your database function
-  const sendPhoneOTP = async (userId = null) => {
-    setLoading(true)
-    setError(null)
-
+  async sendPhoneOTP(userId = null) {
     try {
       const { data, error: otpError } = await supabase
         .rpc('send_phone_verification_otp', { p_user_id: userId })
 
-      if (otpError) throw otpError
+      if (otpError) throw new Error(otpError?.message || 'Failed to send OTP')
 
       if (!data?.success) {
         throw new Error(data?.error || 'Failed to send OTP')
@@ -53,21 +42,21 @@ export const useVerification = () => {
         success: true,
         message: 'OTP sent to your phone',
         phone: data.phone,
-        // remove in production:
         otp_for_testing: data.otp_for_testing
       }
 
     } catch (error) {
       console.error('Send phone OTP error:', error)
-      setError(error.message)
-      return { success: false, error: error.message }
+      const errorMsg = error?.message || String(error) || 'Failed to send phone OTP'
+      setError(errorMsg)
+      return { success: false, error: errorMsg }
     } finally {
       setLoading(false)
     }
-  }
+  },
 
   // verify phone OTP using your database function
-  const verifyPhoneOTP = async (identifier, otpCode, purpose = 'phone_verification') => {
+  async verifyPhoneOTP(identifier, otpCode, purpose = 'phone_verification') {
     setLoading(true)
     setError(null)
 
@@ -79,7 +68,7 @@ export const useVerification = () => {
           p_purpose: purpose
         })
 
-      if (verifyError) throw verifyError
+      if (verifyError) throw new Error(verifyError?.message || 'OTP verification failed')
 
       if (!data) {
         throw new Error('Invalid or expired OTP code')
@@ -94,15 +83,16 @@ export const useVerification = () => {
 
     } catch (error) {
       console.error('Phone OTP verification error:', error)
-      setError(error.message)
-      return { success: false, error: error.message }
+      const errorMsg = error?.message || String(error) || 'Phone verification failed'
+      setError(errorMsg)
+      return { success: false, error: errorMsg }
     } finally {
       setLoading(false)
     }
-  }
+  },
 
   // manual phone verification with metadata update
-  const manualVerifyPhone = async (userAuthId, phone) => {
+  async manualVerifyPhone(userAuthId, phone) {
     setLoading(true)
     setError(null)
 
@@ -113,21 +103,22 @@ export const useVerification = () => {
           p_phone: phone
         })
 
-      if (verifyError) throw verifyError
+      if (verifyError) throw new Error(verifyError?.message || 'Phone verification update failed')
 
       return { success: data?.success, data }
 
     } catch (error) {
       console.error('Manual phone verification error:', error)
-      setError(error.message)
-      return { success: false, error: error.message }
+      const errorMsg = error?.message || String(error) || 'Manual phone verification failed'
+      setError(errorMsg)
+      return { success: false, error: errorMsg }
     } finally {
       setLoading(false)
     }
-  }
+  },
 
   // resend email verification
-  const resendEmailVerification = async () => {
+  async resendEmailVerification() {
     setLoading(true)
     setError(null)
 
@@ -137,26 +128,17 @@ export const useVerification = () => {
         email: (await supabase.auth.getUser()).data.user?.email
       })
 
-      if (resendError) throw resendError
+      if (resendError) throw new Error(resendError?.message || 'Failed to resend verification email')
 
       return { success: true, message: 'Verification email sent' }
 
     } catch (error) {
       console.error('Resend email error:', error)
-      setError(error.message)
-      return { success: false, error: error.message }
+      const errorMsg = error?.message || String(error) || 'Failed to resend email'
+      setError(errorMsg)
+      return { success: false, error: errorMsg }
     } finally {
       setLoading(false)
     }
-  }
-
-  return {
-    handleEmailVerification,
-    sendPhoneOTP,
-    verifyPhoneOTP,
-    manualVerifyPhone,
-    resendEmailVerification,
-    loading,
-    error
   }
 }
