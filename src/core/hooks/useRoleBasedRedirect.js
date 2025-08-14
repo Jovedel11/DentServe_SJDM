@@ -1,20 +1,22 @@
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useLocation } from "react-router-dom"
 import { useAuth } from "../../auth/context/AuthProvider"
 import { useEffect } from "react"
 
-export const useRolebasedRedirect = () => {
-  const { user, userRole, profileComplete, getVerificationStep } = useAuth()
+export const useRoleBasedRedirect = () => {
+  const { user, userRole, profileComplete, getRedirectPath, authStatus } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
-    if (user && userRole && profileComplete) {
+    if (user && userRole && authStatus.can_access_app) {
       // If there's a verification step needed, redirect there first
-      const verificationStep = getVerificationStep();
-      if (verificationStep) {
-        navigate(`/${verificationStep}`, { replace: true });
-        return;
+    if (!authStatus.can_access_app) {
+      const redirectPath = getRedirectPath();
+      if (location.pathname !== redirectPath) {
+        navigate(redirectPath);
       }
-
+      return;
+    }
       // Otherwise redirect based on role
       switch (userRole) {
         case 'patient':
@@ -31,5 +33,5 @@ export const useRolebasedRedirect = () => {
           break;
       }
     }
-  }, [user, userRole, profileComplete, getVerificationStep, navigate])
+  }, [user, userRole, profileComplete, getRedirectPath, navigate])
 }

@@ -38,7 +38,8 @@ export const useClinicDiscovery = () => {
 
       return true;
     } catch (error) {
-      setError(error.message);
+      const errorMsg = error?.message || String(error) || 'Search rate limit error'
+      setError(errorMsg);
       return false;
     }
   }, [user?.email]);
@@ -69,7 +70,7 @@ export const useClinicDiscovery = () => {
         limit_count: 50
       });
 
-      if (clinicError) throw clinicError;
+      if (clinicError) throw new Error(clinicError?.message || 'Failed to fetch nearby clinics');
 
       // additional clinics data to filter 
       const clinicIds = nearbyClinicData?.map(clinic => clinic.id) || [];
@@ -96,7 +97,7 @@ export const useClinicDiscovery = () => {
       .eq('is_active', true)
       .eq('doctor_clinics.is_active', true)
 
-      if (detailError) throw detailError;
+      if (detailError) throw new Error(detailError?.message || 'Failed to fetch clinic details');
 
       // merge with distance and badge data
       const enrichedClinics = nearbyClinicData?.map(nearbyClinic => {
@@ -126,7 +127,8 @@ export const useClinicDiscovery = () => {
       return enrichedClinics;
     } catch (error) {
       console.error('Clinics discovery error:', error);
-      setError(error.message);
+      const errorMsg = error?.message || String(error) || 'Clinic discovery failed'
+      setError(errorMsg);
       return [];
     } finally {
       setLoading(false);
@@ -229,12 +231,13 @@ export const useClinicDiscovery = () => {
         .eq('is_active', true)
         .limit(20);
 
-        if (error) throw error;
+        if (error) throw new Error(error?.message || 'Clinic search failed');
 
         setFilteredClinics(searchResults || []);
     } catch (error) {
       console.error('Clinic search error:', error);
-      setError(error.message);
+      const errorMsg = error?.message || String(error) || 'Clinic search failed'
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }

@@ -23,7 +23,7 @@ const Login = () => {
     error,
   } = useLogin();
 
-  const { executeRecaptcha, isLoaded } = useRecaptcha();
+  const { isLoaded } = useRecaptcha();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -76,9 +76,9 @@ const Login = () => {
         break;
     }
 
-    if (result?.success && result.user) {
-      // Navigation handled by AuthProvider
-      console.log("Login successful");
+    // ✅ SIMPLIFIED: Let AuthProvider handle all navigation
+    if (result?.success) {
+      console.log("Login successful - AuthProvider will handle navigation");
     }
   };
 

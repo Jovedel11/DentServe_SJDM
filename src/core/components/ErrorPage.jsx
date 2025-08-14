@@ -6,7 +6,18 @@ const ErrorPage = () => {
   const error = useRouteError();
   const navigate = useNavigate();
 
-  console.log("error:", error);
+  // Safe error extraction
+  const getErrorMessage = () => {
+    if (!error) return "Unknown error";
+    if (typeof error === "string") return error;
+    if (error.message) return error.message;
+    if (error.statusText) return error.statusText;
+    if (error.status) return `Error ${error.status}`;
+    return "An error occurred";
+  };
+
+  const errorMessage = getErrorMessage();
+  console.log("Route error:", errorMessage);
 
   return (
     <div className={styles.container}>
@@ -20,16 +31,26 @@ const ErrorPage = () => {
         </div>
 
         <h1 className={styles.title}>Oops! That page is missing</h1>
-        <h1>
-          <div style={{ color: "red" }}>Error: {String(error)}</div>
-        </h1>
+
         <p className={styles.description}>
           We couldn't find the page you're looking for. It might have been moved
           or deleted. Let's get you back on track for your dental care journey.
         </p>
-        {error && (
-          <div className="error-message">
-            {typeof error === "string" ? error : JSON.stringify(error)}
+
+        {errorMessage && errorMessage !== "Unknown error" && (
+          <div
+            className="error-details"
+            style={{
+              color: "red",
+              fontSize: "14px",
+              marginBottom: "20px",
+              padding: "10px",
+              backgroundColor: "#ffebee",
+              borderRadius: "4px",
+              border: "1px solid #ffcdd2",
+            }}
+          >
+            Error Details: {errorMessage}
           </div>
         )}
 

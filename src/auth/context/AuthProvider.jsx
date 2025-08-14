@@ -1,33 +1,31 @@
 import { useState, useEffect, createContext, useContext } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { authService } from "@/auth/hooks/authService";
+import { authService } from "../hooks/authService";
+import { useVerification } from "../hooks/useVerification";
+import { useRedirectPath } from "../hooks/useRedirectPath";
 
 const AuthContext = createContext({});
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [userRole, setUserRole] = useState(null);
+  const [authStatus, setAuthStatus] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [profileComplete, setProfileComplete] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Get initial session
-    getSession();
+    initializeAuth();
 
-    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("Auth state changed:", event);
+      console.log("Auth state changed:", event, session?.user?.email);
 
       if (session?.user) {
         setUser(session.user);
-        await checkUserProfile(session.user);
+        // wait for database triggers to complete
+        setTimeout(() => refreshAuthStatus(session.user.id), 1000);
       } else {
-        setUser(null);
-        setUserRole(null);
-        setProfileComplete(false);
+        resetAuthState();
       }
       setLoading(false);
     });
@@ -35,158 +33,216 @@ export const AuthProvider = ({ children }) => {
     return () => subscription.unsubscribe();
   }, []);
 
-  const getSession = async () => {
+  const initializeAuth = async () => {
     try {
       const {
         data: { session },
       } = await supabase.auth.getSession();
       if (session?.user) {
         setUser(session.user);
-        await checkUserProfile(session.user);
+        await refreshAuthStatus(session.user.id);
       }
     } catch (error) {
-      console.error("Error getting session:", error);
+      console.error("Error initializing auth:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const checkUserProfile = async (authUser) => {
+  const refreshAuthStatus = async (authUserId = null) => {
     try {
-      // use your existing function to get user role
-      const { data: role, error: roleError } = await supabase.rpc(
-        "get_current_user_role"
-      );
+      const targetId = authUserId || user?.id;
+      if (!targetId) return;
 
-      if (roleError) {
-        console.error("Error getting user role:", roleError);
-        return;
+      const result = await authService.getAuthStatus(targetId);
+
+      if (result.success) {
+        setAuthStatus(result.data);
+        setError(null);
+      } else {
+        setError(result.error);
       }
-
-      setUserRole(role);
-
-      // Check if profile is complete using your function
-      const { data: profileData, error: profileError } = await supabase.rpc(
-        "is_user_profile_complete"
-      );
-
-      if (profileError) {
-        console.error("Error checking profile:", profileError);
-        return;
-      }
-
-      setProfileComplete(profileData?.complete || false);
-
-      // Store in metadata for easy access
-      const metadata = authUser.user_metadata || {};
-      metadata.role = role;
-      metadata.profile_complete = profileData?.complete || false;
     } catch (error) {
-      console.error("Error checking user profile:", error);
+      console.error("Error refreshing auth status:", error);
+      setError("Failed to get authentication status");
     }
   };
 
-  const signUpUser = async (userData) => {
-    setLoading(true);
+  const resetAuthState = () => {
+    setUser(null);
+    setAuthStatus(null);
     setError(null);
-    const result = await authService.signUpUser(userData);
-
-    if (result?.error) setError(result?.error);
-
-    setLoading(false);
-    return result;
   };
 
-  const staffInvitation = async (inviteData) => {
-    setLoading(true);
-    setError(null);
+  // from auth status
+  const userRole = authStatus?.user_role;
+  const isEmailVerified = authStatus?.email_verified || false;
+  const isPhoneVerified = authStatus?.phone_verified || false;
+  const phoneRequired = authStatus?.phone_required || false;
+  const canAccessApp = authStatus?.can_access_app || false;
+  const nextStep = authStatus?.next_step;
 
-    const result = await authService.staffInvitation(inviteData);
-
-    if (result?.error) setError(result?.error);
-
-    setLoading(false);
-    return result;
-  };
-
-  const adminInvitation = async (inviteData) => {
-    setLoading(true);
-    setError(null);
-
-    const result = await authService.adminInvitation(inviteData);
-
-    if (result?.error) setError(result?.error);
-
-    setLoading(false);
-    return result;
-  };
-
-  const resetPassword = async (email) => {
-    setLoading(true);
-    setError(null);
-
-    const result = await authService.resetPassword(email);
-
-    if (result?.error) setError(result?.error);
-
-    setLoading(false);
-    return result;
-  };
-
-  const updatePassword = async (newPassword) => {
-    setLoading(true);
-    setError(null);
-
-    const result = await authService.updatePassword(newPassword);
-
-    if (result?.error) setError(result?.error);
-
-    setLoading(false);
-    return result;
-  };
-
-  const isVerifiedEmail = !!user?.email_confirmed_at;
-  const isVerifiedPhone = !!user?.phone_confirmed_at;
-
+  // Role checks
   const isPatient = () => userRole === "patient";
   const isStaff = () => userRole === "staff";
   const isAdmin = () => userRole === "admin";
 
-  const getVerificationStep = () => {
-    if (!user) return null;
-    if (!profileComplete) {
-      if (!isVerifiedEmail) return "verify-email";
-      if ((isStaff() || isAdmin()) && !isVerifiedPhone) return "verify-phone";
-      return "complete-profile";
+  // Auth actions
+  const signUpUser = async (userData) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await authService.signUpUser(userData);
+      if (result.error) setError(result.error);
+      return result;
+    } catch (error) {
+      setError(error.message);
+      return { success: false, error: error.message };
+    } finally {
+      setLoading(false);
     }
-    return null;
+  };
+
+  const inviteStaff = async (inviteData) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await authService.staffInvitation(inviteData);
+      if (result.error) setError(result.error);
+      return result;
+    } catch (error) {
+      setError(error.message);
+      return { success: false, error: error.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const inviteAdmin = async (inviteData) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await authService.adminInvitation(inviteData);
+      if (result.error) setError(result.error);
+      return result;
+    } catch (error) {
+      setError(error.message);
+      return { success: false, error: error.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendPhoneOTP = async () => {
+    setLoading(true);
+    try {
+      const result = await useVerification.sendPhoneOTP(user?.id);
+      if (result.error) setError(result.error);
+      return result;
+    } catch (error) {
+      setError(error.message);
+      return { success: false, error: error.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verifyPhoneOTP = async (phone, otpCode) => {
+    setLoading(true);
+    try {
+      const result = await useVerification.verifyPhoneOTP(phone, otpCode);
+      if (result.success) {
+        setTimeout(() => refreshAuthStatus(), 1000);
+      }
+      if (result.error) setError(result.error);
+      return result;
+    } catch (error) {
+      setError(error.message);
+      return { success: false, error: error.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updatePassword = async (newPassword) => {
+    setLoading(true);
+    try {
+      const result = await authService.updatePassword(newPassword);
+      if (result.success) {
+        setTimeout(() => refreshAuthStatus(), 1000);
+      }
+      if (result.error) setError(result.error);
+      return result;
+    } catch (error) {
+      setError(error.message);
+      return { success: false, error: error.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetPassword = async (email) => {
+    setLoading(true);
+    try {
+      const result = await authService.resetPassword(email);
+      if (result.success) {
+        setTimeout(() => refreshAuthStatus(), 1000);
+      }
+      if (result.error) setError(result.error);
+      return result;
+    } catch (error) {
+      setError(error.message);
+      return { success: false, error: error.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      resetAuthState();
+      return { success: true };
+    } catch (error) {
+      setError(error.message);
+      return { success: false, error: error.message };
+    }
   };
 
   const value = {
-    // state
+    // Core state
     user,
-    userRole,
+    authStatus,
     loading,
     error,
-    profileComplete,
 
-    // auth verification
-    isVerifiedEmail,
-    isVerifiedPhone,
+    // Derived state
+    userRole,
+    isEmailVerified,
+    isPhoneVerified,
+    phoneRequired,
+    canAccessApp,
+    nextStep,
 
-    // auth action
-    signUpUser,
-    staffInvitation,
-    adminInvitation,
-    resetPassword,
-    updatePassword,
-    checkUserProfile,
-    getVerificationStep,
-
-    // auth roles
+    // Role checks
     isPatient,
     isStaff,
     isAdmin,
+
+    // Navigation
+    useRedirectPath,
+
+    // Actions
+    signUpUser,
+    inviteStaff,
+    inviteAdmin,
+    sendPhoneOTP,
+    verifyPhoneOTP,
+    signOut,
+    refreshAuthStatus,
+    updatePassword,
+    resetPassword,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
