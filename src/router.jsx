@@ -11,12 +11,12 @@ const AuthLayout = () => {
   return <Outlet />;
 };
 
-const PublicLayout = lazy(() => import("./app/public/layout/PublicLayout"));
+const PublicLayout = lazy(() => import("./public/layout/PublicLayout"));
 const ErrorPage = lazy(() => import("./core/components/ErrorPage"));
-const Home = lazy(() => import("./app/public/pages/Home"));
-const About = lazy(() => import("./app/public/pages/About"));
-const Service = lazy(() => import("./app/public/pages/Service"));
-const Contact = lazy(() => import("./app/public/pages/Contact"));
+const Home = lazy(() => import("./public/pages/Home"));
+const About = lazy(() => import("./public/pages/About"));
+const Service = lazy(() => import("./public/pages/Service"));
+const Contact = lazy(() => import("./public/pages/Contact"));
 const Login = lazy(() => import("./auth/login/Login"));
 const Signup = lazy(() => import("./auth/signup/Signup"));
 const PatientLayout = lazy(() => import("./app/patient/layout/PatientLayout"));
@@ -30,6 +30,8 @@ const PhoneVerification = lazy(() =>
 );
 const ResetPassword = lazy(() => import("./auth/components/ResetPassword"));
 const CompleteProfile = lazy(() => import("./auth/components/CompleteProfile"));
+const StaffLayout = lazy(() => import("./app/staff/layout/StaffLayout"));
+const AdminLayout = lazy(() => import("./app/admin/layout/AdminLayout"));
 
 export const router = createBrowserRouter([
   {
@@ -75,7 +77,7 @@ export const router = createBrowserRouter([
         path: "/staff/dashboard",
         element: (
           <AuthGuard allowedRoles={["staff"]}>
-            <div>Staff Dashboard Coming Soon</div>
+            {withSuspense(StaffLayout)}
           </AuthGuard>
         ),
       },
@@ -83,7 +85,7 @@ export const router = createBrowserRouter([
         path: "/admin/dashboard",
         element: (
           <AuthGuard allowedRoles={["admin"]}>
-            <div>Admin Dashboard Coming Soon</div>
+            {withSuspense(AdminLayout)}
           </AuthGuard>
         ),
       },

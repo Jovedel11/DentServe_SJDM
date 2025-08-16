@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/auth/context/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import { useRedirectPath } from "../hooks/useRedirectPath";
 
