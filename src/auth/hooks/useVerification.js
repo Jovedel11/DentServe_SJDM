@@ -21,8 +21,6 @@ export const useVerification = {
     } catch (error) {
       console.error('Email verification error:', error)
       return { success: false, error: error.message || 'Email verification failed' }
-    } finally {
-      setLoading(false)
     }
   },
 
@@ -48,17 +46,12 @@ export const useVerification = {
     } catch (error) {
       console.error('Send phone OTP error:', error)
       const errorMsg = error?.message || String(error) || 'Failed to send phone OTP'
-      setError(errorMsg)
       return { success: false, error: errorMsg }
-    } finally {
-      setLoading(false)
     }
   },
 
   // verify phone OTP using your database function
   async verifyPhoneOTP(identifier, otpCode, purpose = 'phone_verification') {
-    setLoading(true)
-    setError(null)
 
     try {
       const { data, error: verifyError } = await supabase
@@ -84,17 +77,12 @@ export const useVerification = {
     } catch (error) {
       console.error('Phone OTP verification error:', error)
       const errorMsg = error?.message || String(error) || 'Phone verification failed'
-      setError(errorMsg)
       return { success: false, error: errorMsg }
-    } finally {
-      setLoading(false)
     }
   },
 
   // manual phone verification with metadata update
   async manualVerifyPhone(userAuthId, phone) {
-    setLoading(true)
-    setError(null)
 
     try {
       const { data, error: verifyError } = await supabase
@@ -110,17 +98,12 @@ export const useVerification = {
     } catch (error) {
       console.error('Manual phone verification error:', error)
       const errorMsg = error?.message || String(error) || 'Manual phone verification failed'
-      setError(errorMsg)
       return { success: false, error: errorMsg }
-    } finally {
-      setLoading(false)
     }
   },
 
   // resend email verification
   async resendEmailVerification() {
-    setLoading(true)
-    setError(null)
 
     try {
       const { data, error: resendError } = await supabase.auth.resend({
@@ -135,10 +118,7 @@ export const useVerification = {
     } catch (error) {
       console.error('Resend email error:', error)
       const errorMsg = error?.message || String(error) || 'Failed to resend email'
-      setError(errorMsg)
       return { success: false, error: errorMsg }
-    } finally {
-      setLoading(false)
     }
   }
 }

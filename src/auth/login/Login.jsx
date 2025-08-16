@@ -23,7 +23,7 @@ const Login = () => {
     error,
   } = useLogin();
 
-  const { isLoaded } = useRecaptcha();
+  const { isLoaded, executeRecaptcha } = useRecaptcha();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -39,7 +39,8 @@ const Login = () => {
       case "email-password":
         result = await loginWithEmailPassword(
           credentials.email,
-          credentials.password
+          credentials.password,
+          executeRecaptcha
         );
         break;
       case "phone-password":

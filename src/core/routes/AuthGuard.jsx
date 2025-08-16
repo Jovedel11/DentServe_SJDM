@@ -1,7 +1,7 @@
-// components/AuthGuard.jsx
 import { useEffect } from "react";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useRedirectPath } from "@/auth/hooks/useRedirectPath";
 import Loading from "../common/loading_error/Loading";
 
 const AuthGuard = ({
@@ -9,9 +9,11 @@ const AuthGuard = ({
   requiredRole = null,
   requireVerification = true,
 }) => {
-  const { user, authStatus, loading, getRedirectPath } = useAuth();
+  const { user, authStatus, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const redirectPath = useRedirectPath();
 
   useEffect(() => {
     if (loading) return;
@@ -35,13 +37,12 @@ const AuthGuard = ({
 
     // Handle verification/completion requirements
     if (requireVerification && !authStatus.can_access_app) {
-      const redirectPath = getRedirectPath();
       if (location.pathname !== redirectPath) {
         navigate(redirectPath);
       }
       return;
     }
-  }, [user, authStatus, loading, requiredRole, requireVerification, location]);
+  }, [user, authStatus, loading, location, useRedirectPath]);
 
   // Loading state
   if (loading) return <Loading />;

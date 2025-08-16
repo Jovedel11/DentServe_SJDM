@@ -11,7 +11,7 @@ export const useLogin = () => {
   const { checkRateLimit } = useRateLimit()
 
   // Method 1: Email + Password
-  const loginWithEmailPassword = async (email, password) => {
+  const loginWithEmailPassword = async (email, password, executeRecaptcha) => {
     setLoading(true)
     setError(null)
 
