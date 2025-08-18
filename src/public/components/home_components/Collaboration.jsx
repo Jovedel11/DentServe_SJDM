@@ -1,10 +1,26 @@
-import React from "react";
+import React, { useCallback, useRef } from "react";
 import { FaHandshake } from "react-icons/fa";
 import { benefits } from "@/core/common/icons/homeIcons";
 import { stats } from "@/data/home_data/homeData";
 import styles from "../../style/components/home_styles/Collaboration.module.scss";
+import { useNavigate } from "react-router-dom";
 
 const Collaboration = () => {
+  const navigate = useNavigate();
+  const cooldownRef = useRef(false);
+
+  const handleNavigate = useCallback(() => {
+    if (cooldownRef.current) return;
+
+    // ✅ Pass target id via state (no hash)
+    navigate("/contact", { state: { scrollToId: "agreement" } });
+
+    cooldownRef.current = true;
+    setTimeout(() => {
+      cooldownRef.current = false;
+    }, 3000);
+  }, [navigate]);
+
   return (
     // collaboration section
     <section className={styles.collaboration}>
@@ -36,7 +52,7 @@ const Collaboration = () => {
             </div>
             {/* call to action */}
             <div className={styles.ctaContainer}>
-              <button className={styles.ctaButton}>
+              <button className={styles.ctaButton} onClick={handleNavigate}>
                 <FaHandshake className={styles.buttonIcon} />
                 Join Our Network Today
               </button>

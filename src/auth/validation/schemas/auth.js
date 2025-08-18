@@ -3,6 +3,7 @@ import {
   validatePhone,
   validatePassword,
   validateStrongPassword,
+  createValidation
 } from "../rules/typicalRules.js";
 
 // Identifier validation (email or phone)
@@ -18,7 +19,7 @@ export const validateIdentifier = (identifier) => {
   
   if (!isEmail && !isPhone) return createValidation(false, "Please enter a valid email address or phone number");
   
-  return createValidation(true);
+  return createValidation(false, "Please enter a valid email address or phone number", identifier);
 };
 
 // Individual field validators
@@ -34,18 +35,25 @@ export const validateRememberMe = (value) =>
     : createValidation(false, "Invalid remember me value");
 
 export const validateOtp = (otp) => 
-  (/^\d{6}$/.test(otp)) 
-    ? createValidation(true) 
+  (/^\d{6}$/.test(otp))
+    ? createValidation(true, null, otp)
     : createValidation(false, "OTP must be exactly 6 digits");
 
 export const validateName = (name, fieldName) => {
-  if (!name || name.trim() === "") return createValidation(false, `${fieldName} is required`);
-  if (name.length < 2) return createValidation(false, `${fieldName} must be at least 2 characters`);
-  if (name.length > 50) return createValidation(false, `${fieldName} is too long`);
-  if (!/^[a-zA-Z\s]+$/.test(name)) return createValidation(false, `${fieldName} can only contain letters and spaces`);
-  
-  return createValidation(true);
-};
+  if (!name || name.trim() === "")
+    return createValidation(false, `${fieldName} is required`, name);
+
+  if (name.length < 2)
+    return createValidation(false, `${fieldName} must be at least 2 characters`, name);
+
+  if (name.length > 50)
+    return createValidation(false, `${fieldName} is too long`, name);
+
+  if (!/^[a-zA-Z\s]+$/.test(name))
+    return createValidation(false, `${fieldName} can only contain letters and spaces`, name);
+
+  return createValidation(true, null, name.trim());
+}
 
 export const validateFirstName = (name) => validateName(name, "First name");
 export const validateLastName = (name) => validateName(name, "Last name");

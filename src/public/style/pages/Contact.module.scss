@@ -24,8 +24,7 @@
 
 /* Hero Section */
 .contactHero {
-  background: linear-gradient(rgba(34, 139, 230, 0.9), rgba(34, 139, 230, 0.9)),
-    url('/images/contact.png');
+  background: linear-gradient(rgba(#1D3557, 0.9), rgba(#1D3557, 0.9)), url('/images/contact.png');
   background-size: cover;
   background-position: center;
   border-radius: 12px;
@@ -80,7 +79,7 @@
 }
 
 .contactCard {
-  background: #ffffff;
+  background: #F1FAEE;
   border-radius: 12px;
   padding: 2.5rem 2rem;
   text-align: center;
@@ -116,7 +115,7 @@
   width: 60px;
   height: 60px;
   padding: 15px;
-  background: #228be6;
+  background: #1D3557;
   color: #ffffff;
   border-radius: 50%;
   margin: 0 auto 1.5rem;

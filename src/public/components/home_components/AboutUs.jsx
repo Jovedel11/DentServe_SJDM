@@ -1,19 +1,26 @@
 import { motion } from "framer-motion";
 import styles from "../../style/components/home_styles/AboutUs.module.scss";
+import { useNavigate } from "react-router-dom";
 
 // mock images
-import Example1 from "/assets/images/example1.png";
+import Example1 from "../../../../public/assets/images/example1.png";
 import Example2 from "/assets/images/example2.png";
 import Example3 from "/assets/images/example3.png";
 import Example4 from "/assets/images/example4.png";
 
 const AboutUs = () => {
+  const navigate = useNavigate();
   const images = [Example1, Example2, Example3, Example4];
   const stats = [
     { number: "250+", label: "Clinics Served" },
     { number: "98%", label: "Patient Satisfaction" },
     { number: "40%", label: "Reduced Wait Times" },
   ];
+
+  const handleAbout = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    navigate("/about");
+  };
 
   return (
     <section className={styles.aboutIntro}>
@@ -40,7 +47,9 @@ const AboutUs = () => {
               the unique challenges of managing dental appointments and
               delivering exceptional patient care.
             </p>
-            <button className={styles.button}>Discover Our Story</button>
+            <button className={styles.button} onClick={handleAbout}>
+              Discover Our Story
+            </button>
           </motion.div>
 
           <motion.div

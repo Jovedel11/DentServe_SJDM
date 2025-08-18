@@ -1,4 +1,4 @@
-import { adminSupabase } from "@/lib/supabaseSuperAdmin";
+import { adminSupabase } from "backend/lib/supabaseSuperAdmin";
 
 const Delete = () => {
   const handleDelete = async () => {

@@ -1,6 +1,4 @@
 import React from "react";
-import styles from "./Skeleton.module.scss";
-
 const Skeleton = ({
   width = "100%",
   height = "1rem",
@@ -9,13 +7,12 @@ const Skeleton = ({
   className = "",
   style = {},
 }) => {
-  const skeletonClasses = [
-    styles.skeleton,
-    circle ? styles.circle : "",
-    className,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const skeletonClasses = `
+    relative overflow-hidden 
+    bg-gray-300 
+    ${circle ? "rounded-full" : "rounded"} 
+    ${className}
+  `;
 
   const skeletonStyle = {
     width,
@@ -31,7 +28,13 @@ const Skeleton = ({
       aria-label="Loading content"
       role="status"
     >
-      <div className={styles.shimmer} />
+      <div
+        className="
+          absolute inset-0 w-full h-full
+          bg-gradient-to-r from-transparent via-white/80 to-transparent
+          animate-shimmer
+        "
+      />
     </div>
   );
 };

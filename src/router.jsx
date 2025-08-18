@@ -12,13 +12,16 @@ const AuthLayout = () => {
 };
 
 const PublicLayout = lazy(() => import("./public/layout/PublicLayout"));
-const ErrorPage = lazy(() => import("./core/components/ErrorPage"));
+const ErrorPage = lazy(() => import("./core/components/ui/ErrorPage"));
+const UnauthorizedPage = lazy(() =>
+  import("./core/components/ui/UnauthorizedPage")
+);
 const Home = lazy(() => import("./public/pages/Home"));
 const About = lazy(() => import("./public/pages/About"));
 const Service = lazy(() => import("./public/pages/Service"));
 const Contact = lazy(() => import("./public/pages/Contact"));
-const Login = lazy(() => import("./auth/login/Login"));
-const Signup = lazy(() => import("./auth/signup/Signup"));
+const Login = lazy(() => import("./auth/Login.jsx"));
+const Signup = lazy(() => import("./auth/Signup"));
 const PatientLayout = lazy(() => import("./app/patient/layout/PatientLayout"));
 const AuthCallback = lazy(() => import("./auth/components/AuthCallback"));
 const EmailVerification = lazy(() =>
@@ -91,7 +94,7 @@ export const router = createBrowserRouter([
       },
 
       // Utility routes
-      { path: "/unauthorized", element: withSuspense(ErrorPage) },
+      { path: "/unauthorized", element: withSuspense(UnauthorizedPage) },
       { path: "*", element: withSuspense(ErrorPage) },
     ],
   },

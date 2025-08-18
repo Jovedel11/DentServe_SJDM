@@ -1,6 +1,6 @@
 import { AppSidebar } from "../components/app-sidebar";
 import { SiteHeader } from "../components/site-header";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/core/components/ui/sidebar";
 
 const Dashboard = () => {
   return (
@@ -9,16 +9,7 @@ const Dashboard = () => {
         <SiteHeader />
         <div className="flex flex-1">
           <AppSidebar />
-          <SidebarInset>
-            <div className="flex flex-1 flex-col gap-4 p-4">
-              <div className="grid auto-rows-min gap-4 md:grid-cols-3">
-                <div className="bg-muted/50 aspect-video rounded-xl" />
-                <div className="bg-muted/50 aspect-video rounded-xl" />
-                <div className="bg-muted/50 aspect-video rounded-xl" />
-              </div>
-              <div className="bg-muted/50 min-h-[100vh] flex-1 rounded-xl md:min-h-min" />
-            </div>
-          </SidebarInset>
+          <SidebarInset className="flex-1 overflow-y-auto p-6 bg-muted/20"></SidebarInset>
         </div>
       </SidebarProvider>
     </div>

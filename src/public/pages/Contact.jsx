@@ -8,6 +8,7 @@ import styles from "../style/pages/Contact.module.scss";
 import PartnershipForm from "../components/contact_components/PartnershipForm";
 import MapSection from "../components/contact_components/MapSection";
 import { benefits } from "@/core/common/icons/contactIcons";
+import Skeleton from "@/core/components/Skeleton";
 
 const Contact = () => {
   const location = useLocation();
@@ -25,7 +26,7 @@ const Contact = () => {
 
   // Hero loading effect
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 500);
+    const timer = setTimeout(() => setIsLoading(false), 300);
     return () => clearTimeout(timer);
   }, []);
 
@@ -104,11 +105,7 @@ const Contact = () => {
   ];
 
   if (isLoading) {
-    return (
-      <div className={styles.contactsPage}>
-        <div className={styles.skeleton} style={{ height: "400px" }}></div>
-      </div>
-    );
+    return <Skeleton width="100%" height="400px" />;
   }
 
   return (

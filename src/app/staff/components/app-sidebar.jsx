@@ -1,8 +1,8 @@
 import React from "react";
 import { ArchiveX, File, Inbox, Send, Trash2 } from "lucide-react";
 
-import { NavUser } from "../components/nav-user";
-import { Label } from "@/components/ui/label";
+import { NavUser } from "../../shared/nav-user";
+import { Label } from "@/core/components/ui/label";
 import {
   Sidebar,
   SidebarContent,
@@ -15,9 +15,10 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
-} from "@/components/ui/sidebar";
-import { Switch } from "@/components/ui/switch";
-import { SearchForm } from "./search-form";
+} from "@/core/components/ui/sidebar";
+import { Switch } from "@/core/components/ui/switch";
+import { SearchForm } from "../../shared/search-form";
+import { Link } from "react-router-dom";
 
 // This is sample data
 const data = {
@@ -164,7 +165,7 @@ export function AppSidebar(props) {
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton size="lg" asChild className="md:h-8 md:p-0">
-                <a href="#">
+                <Link to="/staff/dashboard">
                   <div className="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg">
                     <div className="flex items-center gap-2">
                       <img
@@ -178,7 +179,7 @@ export function AppSidebar(props) {
                     </div>
                   </div>
                   <div className="grid flex-1 text-left text-sm leading-tight"></div>
-                </a>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

@@ -1,7 +1,8 @@
 // Helper function for validation results
-const createValidation = (valid, message = null) => ({
+export const createValidation = (valid, message = null, value) => ({
   valid,
-  message
+  message,
+  value
 });
 
 // Email validation rule
@@ -12,7 +13,7 @@ export const validateEmail = (email) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) return createValidation(false, "Please enter a valid email address");
   
-  return createValidation(true);
+  return createValidation(true, null, email.trim().toLowerCase());
 };
 
 // Phone validation rule
@@ -24,7 +25,7 @@ export const validatePhone = (phone) => {
   
   if (!phoneRegex.test(cleanedPhone)) return createValidation(false, "Please enter a valid phone number");
   
-  return createValidation(true, cleanedPhone);
+  return createValidation(true, null, cleanedPhone);
 };
 
 // Basic password rule
@@ -33,7 +34,7 @@ export const validatePassword = (password) => {
   if (password.length < 6) return createValidation(false, "Password must be at least 6 characters");
   if (password.length > 100) return createValidation(false, "Password is too long");
   
-  return createValidation(true);
+  return createValidation(true, null, password);
 };
 
 // Strong password rule
@@ -48,7 +49,7 @@ export const validateStrongPassword = (password) => {
   if (!/\d/.test(password)) return createValidation(false, "Password must contain at least one number");
   if (!/[^A-Za-z0-9]/.test(password)) return createValidation(false, "Password must contain at least one special character");
   
-  return createValidation(true);
+  return createValidation(true, null, password);
 };
 
 // Password confirmation rule
@@ -56,7 +57,7 @@ export const validatePasswordConfirm = (password, confirmPassword) => {
   if (!confirmPassword || confirmPassword.trim() === "") return createValidation(false, "Password confirmation is required");
   if (password !== confirmPassword) return createValidation(false, "Passwords do not match");
   
-  return createValidation(true);
+  return createValidation(true, null, confirmPassword);
 };
 
 // Throw error if validation fails (for your authService)

@@ -1,9 +1,16 @@
-import styles from "./SvgDental.module.scss";
-
 const SvgDental = ({ className }) => {
   return (
     <svg
-      className={`${styles.dentalIllustration} ${className || ""}`}
+      className={`
+        w-full h-full 
+        max-w-[400px] max-h-[300px] 
+        object-contain 
+        transition-transform duration-300 ease-in-out 
+        hover:scale-[1.02]
+        md:max-w-[300px] md:max-h-[225px] 
+        sm:max-w-[250px] sm:max-h-[187px]
+        ${className || ""}
+      `}
       viewBox="0 0 400 300"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"

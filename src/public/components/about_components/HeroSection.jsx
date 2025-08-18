@@ -1,8 +1,20 @@
 import { FaUserShield, FaRegLightbulb } from "react-icons/fa";
 import { stats } from "@/data/about_data/aboutData";
 import styles from "../../style/components/about_styles/HeroSection.module.scss";
+import { useEffect, useState } from "react";
+import Skeleton from "@/core/components/Skeleton";
 
 const HeroSection = () => {
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 300);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (isLoading) {
+    return <Skeleton width="100%" height="400px" />;
+  }
   return (
     <section className={styles.hero}>
       <div className={styles.container}>

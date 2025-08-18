@@ -1,5 +1,6 @@
 import React from "react";
 import styles from "./ClinicPanel.module.scss";
+import { useNavigate } from "react-router-dom";
 
 const getFeedbackClass = (count) => {
   if (count >= 8) return styles.high;
@@ -14,6 +15,18 @@ const getFeedbackText = (count) => {
 };
 
 const ClinicPanel = React.memo(({ clinic, onClose }) => {
+  const navigate = useNavigate();
+
+  const handleLogin = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    navigate("/login");
+  };
+
+  const handleSignup = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    navigate("/signup");
+  };
+
   return (
     <div
       className={styles.clinicPanel}
@@ -89,16 +102,10 @@ const ClinicPanel = React.memo(({ clinic, onClose }) => {
           Sign in to view services and book appointments
         </p>
         <div className={styles.authButtons}>
-          <button
-            className={styles.btnOutline}
-            onClick={() => console.log("Login initiated")}
-          >
+          <button className={styles.btnOutline} onClick={handleLogin}>
             Log In
           </button>
-          <button
-            className={styles.btnPrimary}
-            onClick={() => console.log("Signup initiated")}
-          >
+          <button className={styles.btnPrimary} onClick={handleSignup}>
             Sign Up
           </button>
         </div>

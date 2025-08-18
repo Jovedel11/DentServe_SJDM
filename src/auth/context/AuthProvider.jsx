@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from "react";
+import { useState, useEffect, createContext, useContext, use } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { authService } from "../hooks/authService";
 import { useVerification } from "../hooks/useVerification";
@@ -9,6 +9,7 @@ const AuthContext = createContext({});
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [authStatus, setAuthStatus] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -22,7 +23,7 @@ export const AuthProvider = ({ children }) => {
 
       if (session?.user) {
         setUser(session.user);
-        // wait for database triggers to complete
+        console.log("User logged in:", session.user.email);
         setTimeout(() => refreshAuthStatus(session.user.id), 1000);
       } else {
         resetAuthState();
@@ -32,6 +33,47 @@ export const AuthProvider = ({ children }) => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchProfile = async () => {
+      setLoading(true);
+
+      const { data: userRow, error: userError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("auth_user_id", user.id)
+        .maybeSingle();
+
+      if (userError) {
+        console.error("Error fetching user row:", userError);
+        return;
+      }
+
+      if (!userRow) {
+        console.log("No user row found for this auth user");
+        return;
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("*")
+        .eq("user_id", userRow.id)
+        .maybeSingle();
+
+      if (profileError) {
+        console.error("Error fetching profile:", profileError);
+      } else {
+        console.log("User profile found:", profile);
+        setProfile(profile);
+      }
+
+      setLoading(false);
+    };
+
+    fetchProfile();
+  }, [user]);
 
   const initializeAuth = async () => {
     try {
@@ -72,6 +114,7 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setAuthStatus(null);
     setError(null);
+    setProfile(null);
   };
 
   // from auth status
@@ -230,6 +273,8 @@ export const AuthProvider = ({ children }) => {
     isStaff,
     isAdmin,
 
+    //users profile
+    profile,
     // Navigation
     useRedirectPath,
 
