@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useLogin } from "../hooks/useLogin";
-import { useRecaptcha } from "../hooks/useRecaptcha";
+import { useLogin } from "./hooks/useLogin";
+import { useRecaptcha } from "./hooks/useRecaptcha";
 
 const Login = () => {
   const [loginMethod, setLoginMethod] = useState("email-password");

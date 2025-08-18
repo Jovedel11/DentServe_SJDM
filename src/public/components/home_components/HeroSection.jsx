@@ -1,57 +1,64 @@
+import { motion } from "framer-motion";
 import React, { useEffect, useState, useRef, useCallback } from "react";
-import { slides } from "@/data/home_data/homeData";
+import Skeleton from "@/core/components/Skeleton";
 import styles from "../../style/components/home_styles/HeroSection.module.scss";
-import Loader from "@/core/components/Loader";
+import { useNavigate } from "react-router-dom";
 
 const HeroSection = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const sliderInterval = useRef(null);
-  const containerRef = useRef(null);
+  const navigate = useNavigate();
 
-  const goToSlide = useCallback(
-    (index) => {
-      if (index >= 0 && index < slides.length) {
-        setCurrentSlide(index);
-        resetInterval();
-      }
-    },
-    [slides.length]
-  );
-  // reset the slider interval to auto-advance slides
+  const slides = useRef([
+    "/assets/images/smiling.png",
+    "/assets/images/child.png",
+    "/assets/images/smile.png",
+  ]).current;
+
+  const handleBookAppointment = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    navigate("/login");
+  };
+
+  const handleLearnMore = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    navigate("/services");
+  };
+
+  const goToSlide = useCallback((index) => {
+    setCurrentSlide(index);
+    resetInterval();
+  }, []);
+
   const resetInterval = useCallback(() => {
-    if (sliderInterval.current) {
-      clearInterval(sliderInterval.current);
-    }
+    clearInterval(sliderInterval.current);
     sliderInterval.current = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % slides.length);
-    }, 4000);
+    }, 5000);
   }, [slides.length]);
 
-  // preload images to avoid flickering
-  const preloadImages = useCallback(() => {
-    slides.forEach(({ src }) => {
-      const img = new Image();
-      img.src = src;
-    });
-  }, [slides]);
+  useEffect(() => {
+    resetInterval();
+    return () => clearInterval(sliderInterval.current);
+  }, [resetInterval]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const preloadImages = () => {
+      slides.forEach((src) => {
+        const img = new Image();
+        img.src = src;
+      });
+    };
+
+    const loadTimer = setTimeout(() => {
       setIsLoading(false);
       preloadImages();
-      resetInterval();
-    }, 300);
+    }, 600);
 
-    return () => {
-      clearTimeout(timer);
-      if (sliderInterval.current) {
-        clearInterval(sliderInterval.current);
-      }
-    };
-  }, [preloadImages, resetInterval]);
+    return () => clearTimeout(loadTimer);
+  }, [slides]);
 
-  // handle keyboard navigation and visibility changes
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "ArrowLeft") {
@@ -61,85 +68,85 @@ const HeroSection = () => {
       }
     };
 
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        if (sliderInterval.current) {
-          clearInterval(sliderInterval.current);
-        }
-      } else {
-        resetInterval();
-      }
-    };
-    // keyboard navigation and visibility changes
     window.addEventListener("keydown", handleKeyDown);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [currentSlide, goToSlide, resetInterval, slides.length]);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentSlide, goToSlide, slides.length]);
 
   if (isLoading) {
-    return <Loader type="skeleton" message="Loading hero section..." />;
+    return <Skeleton height="clamp(300px, 40vw, 500px)" />;
   }
 
   return (
-    <section
-      id="hero"
-      className={styles.heroSection}
-      aria-label="Welcome to our dental practice"
-      ref={containerRef}
-    >
+    <section id="hero" className={styles.heroSection} aria-label="Hero Section">
       <div className={styles.container}>
         <div className={styles.contentGrid}>
-          <div className={styles.textContent}>
-            <div className={styles.headingSection}>
-              <h1 className={styles.mainHeading}>
-                Your Smile Deserves{" "}
-                <span className={styles.highlight}>Exceptional Care</span>
-              </h1>
-              <p className={styles.description}>
-                Experience professional dental care in a comfortable, modern
-                environment. Our expert team is dedicated to your oral health
-                and beautiful smile.
-              </p>
-            </div>
+          <motion.div
+            className={styles.textContent}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <h1 className={styles.heading}>
+              Your Smile Deserves{" "}
+              <span className={styles.highlight}>the Best Care</span>
+            </h1>
 
-            <div className={styles.ctaButtons}>
+            <p className={styles.paragraph}>
+              Welcome to our dental practice, where your comfort and health are
+              our top priorities. Experience seamless appointment scheduling and
+              exceptional care tailored just for you.
+            </p>
+
+            <div className={styles.buttonGroup}>
               <button
-                className={`${styles.button} ${styles.primary}`}
-                type="button"
-                aria-label="Schedule your dental appointment"
+                className={`${styles.button} ${styles.primaryButton}`}
+                aria-label="Book an appointment"
+                onClick={handleBookAppointment}
               >
                 Book Appointment
               </button>
               <button
-                className={`${styles.button} ${styles.secondary}`}
-                type="button"
-                aria-label="Learn about our dental services"
+                className={`${styles.button} ${styles.secondaryButton}`}
+                aria-label="Learn more about our services"
+                onClick={handleLearnMore}
               >
-                Our Services
+                Learn More
               </button>
             </div>
-          </div>
+          </motion.div>
 
-          <div className={styles.imageSlider}>
+          <motion.div
+            className={styles.sliderContainer}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+          >
             <div
-              className={styles.sliderContainer}
-              role="img"
-              aria-label={slides[currentSlide].alt}
+              className={styles.sliderWrapper}
+              role="region"
+              aria-label="Image carousel"
+              aria-roledescription="carousel"
+              aria-live="polite"
             >
               <div
                 className={styles.sliderTrack}
-                style={{ transform: `translateX(-${currentSlide * 100}%)` }}
+                style={{
+                  transform: `translate3d(-${currentSlide * 100}%, 0, 0)`,
+                }}
               >
                 {slides.map((slide, index) => (
-                  <div key={index} className={styles.slide}>
+                  <div
+                    key={index}
+                    className={styles.slide}
+                    aria-hidden={index !== currentSlide}
+                    role="group"
+                    aria-roledescription="slide"
+                    aria-label={`Slide ${index + 1} of ${slides.length}`}
+                  >
                     <img
-                      src={slide.src}
-                      alt={slide.alt}
-                      className={styles.slideImage}
+                      src={slide}
+                      className={styles.image}
+                      alt={`Dental care ${index + 1}`}
                       loading={index === 0 ? "eager" : "lazy"}
                       decoding="async"
                     />
@@ -147,22 +154,21 @@ const HeroSection = () => {
                 ))}
               </div>
 
-              <div className={styles.indicators}>
+              <div className={styles.slideIndicators}>
                 {slides.map((_, index) => (
                   <button
                     key={index}
-                    type="button"
                     className={`${styles.indicator} ${
                       index === currentSlide ? styles.active : ""
                     }`}
                     onClick={() => goToSlide(index)}
-                    aria-label={`View slide ${index + 1}`}
-                    aria-current={index === currentSlide ? "true" : "false"}
+                    aria-label={`Go to slide ${index + 1}`}
+                    aria-current={index === currentSlide}
                   />
                 ))}
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>
       </div>
     </section>

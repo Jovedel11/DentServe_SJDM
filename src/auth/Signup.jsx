@@ -1,6 +1,5 @@
-// auth/signup/Signup.jsx
 import { useState } from "react";
-import { useAuth } from "../context/AuthProvider";
+import { useAuth } from "./context/AuthProvider";
 import { useRecaptcha } from "@/auth/hooks/useRecaptcha";
 
 const Signup = () => {

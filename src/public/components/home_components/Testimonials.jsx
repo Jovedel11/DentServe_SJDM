@@ -1,5 +1,6 @@
 import { FaQuoteLeft, FaStar } from "react-icons/fa";
 import { testimonials } from "@/data/home_data/homeData";
+import { useNavigate } from "react-router-dom";
 import styles from "../../style/components/home_styles/Testimonials.module.scss";
 
 const StarRating = ({ rating }) => (
@@ -16,6 +17,12 @@ const StarRating = ({ rating }) => (
 );
 
 const Testimonials = () => {
+  const navigate = useNavigate();
+  const handleShareExperience = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    navigate("/signup");
+  };
+
   return (
     <section className={styles.testimonials}>
       <div className={styles.container}>
@@ -58,8 +65,8 @@ const Testimonials = () => {
         </div>
 
         <div className={styles.buttonWrapper}>
-          <button className={styles.button}>
-            Read More Testimonials
+          <button className={styles.button} onClick={handleShareExperience}>
+            Want to share your experience?
             <FaStar className={styles.icon} />
           </button>
         </div>

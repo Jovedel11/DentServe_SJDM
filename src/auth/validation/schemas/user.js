@@ -4,6 +4,7 @@ import {
   validatePhoneField,
   validateStrongPasswordField,
   validateRememberMe,
+  validatePasswordField,
   validateOtp,
   validateFirstName,
   validateLastName
@@ -13,26 +14,31 @@ import { validatePasswordConfirm } from "../rules/typicalRules.js";
 // Base login validation
 const validateBaseLogin = (data) => {
   const errors = {};
-  
+  const values = {};
+
   const identifierResult = validateIdentifier(data.identifier);
   if (!identifierResult.valid) errors.identifier = identifierResult.message;
-  
+  else values.identifier = identifierResult.value;
+
   const rememberResult = validateRememberMe(data.rememberMe);
   if (!rememberResult.valid) errors.rememberMe = rememberResult.message;
-  
-  return errors;
+  else values.rememberMe = rememberResult.value;
+
+  return { errors, values };
 };
 
 // Password login
 export const validatePasswordLogin = (data) => {
-  const errors = validateBaseLogin(data);
-  
-  const passwordResult = validatePasswordField(data.password);
+  const { errors, values } = validateBaseLogin(data);
+
+  const passwordResult = validatePassword(data.password);
   if (!passwordResult.valid) errors.password = passwordResult.message;
-  
+  else values.password = passwordResult.value;
+
   return {
     isValid: Object.keys(errors).length === 0,
-    errors
+    errors,
+    values
   };
 };
 

@@ -8,10 +8,10 @@ import React, {
 import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import Loading from "@/core/common/loading_error/Loading";
-import Error from "@/core/common/loading_error/Error";
-import ClinicPanel from "@/core/components/map/ClinicPanel";
-import MapLegend from "@/core/components/map/MapLegend";
+import Loader from "@/core/components/Loader";
+import Error from "@/core/components/ui/Error";
+import ClinicPanel from "@/public/components/map/ClinicPanel";
+import MapLegend from "@/public/components/map/MapLegend";
 import { map_Clinics } from "@/data/home_data/clinicData";
 import styles from "../../style/components/home_styles/Map.module.scss";
 
@@ -218,11 +218,7 @@ const Map = () => {
             onTouchEnd={handleMapBlur}
           >
             {isLoading ? (
-              <Loading
-                type="skeleton"
-                message="Loading clinic locations..."
-                fullScreen={false}
-              />
+              <Loader message="Loading clinic locations..." />
             ) : (
               <MapContainer
                 center={CSJDM_CENTER}

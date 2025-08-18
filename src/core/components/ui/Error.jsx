@@ -1,5 +1,5 @@
 import React from "react";
-import styles from "./Error.module.scss";
+import { useRouteError } from "react-router-dom";
 
 const Error = ({
   type = "general",
@@ -10,6 +10,17 @@ const Error = ({
   fullScreen = false,
   icon,
 }) => {
+  const getErrorMessage = () => {
+    const error = useRouteError();
+    if (!error) return "Unknown error";
+    if (typeof error === "string") return error;
+    if (error.message) return error.message;
+    if (error.statusText) return error.statusText;
+    if (error.status) return `Error ${error.status}`;
+    return "An error occurred";
+  };
+
+  const errorMessage = getErrorMessage();
   const getIcon = () => {
     if (icon) return icon;
 

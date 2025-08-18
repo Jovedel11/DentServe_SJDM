@@ -6,15 +6,15 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
+} from "@/core/components/ui/breadcrumb";
+import { Separator } from "@/core/components/ui/separator";
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
-} from "@/components/ui/sidebar";
-import { ModeToggle } from "@/components/ui/mode-toggle";
-import { SearchForm } from "../components/search-form";
+} from "@/core/components/ui/sidebar";
+import { ModeToggle } from "@/core/components/ui/mode-toggle";
+import { SearchForm } from "../../shared/search-form";
 
 const Dashboard = () => {
   return (

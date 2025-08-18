@@ -13,11 +13,10 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarFooter,
-} from "@/components/ui/sidebar";
-import { NavUser } from "@/app/staff/components/nav-user";
-import { SearchForm } from "@/app/patient/components/search-form";
-import { Link } from "react-router-dom";
-import Logo from "@/core/components/Logo";
+} from "@/core/components/ui/sidebar";
+import { NavUser } from "@/app/shared/nav-user";
+import { SearchForm } from "@/app/shared/search-form";
+import Logo from "@/core/components/ui/Logo";
 
 // This is sample data.
 const data = {
@@ -172,9 +171,9 @@ export function AppSidebar({ ...props }) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <Link to="admin/dashboard">
-                <Logo />
-              </Link>
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <Logo to="/admin/dashboard" />
+              </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

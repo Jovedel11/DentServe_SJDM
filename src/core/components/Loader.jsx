@@ -1,22 +1,16 @@
-import styles from "./Loader.module.scss";
-
-const Loader = ({
-  type = "spinner",
-  size = "medium",
-  color,
-  message,
-  count = 1,
-  width,
-  height,
-}) => {
-  if (type === "skeleton") {
-    return <SkeletonLoader count={count} width={width} height={height} />;
-  }
-
+const Loader = ({ size = "medium", color, message }) => {
   return (
-    <div className={styles.loaderContainer}>
+    <div
+      className="flex flex-col items-center justify-center gap-4 p-8"
+      role="status"
+      aria-label="Loading"
+    >
       <SpinnerLoader size={size} color={color} />
-      {message && <p className={styles.message}>{message}</p>}
+      {message && (
+        <p className="text-center text-gray-700 dark:text-gray-200 font-medium max-w-[20ch] mt-0 text-base">
+          {message}
+        </p>
+      )}
     </div>
   );
 };
@@ -33,39 +27,36 @@ const SpinnerLoader = ({ size, color }) => {
 
   return (
     <div
-      className={styles.spinner}
-      style={{
-        width: spinnerSize,
-        height: spinnerSize,
-        "--loader-color": color,
-      }}
+      className="relative animate-spin"
+      style={{ width: spinnerSize, height: spinnerSize }}
     >
-      <div className={styles.spinnerInner}>
-        <DentalIcon />
+      <div
+        className="absolute inset-0 rounded-full border-3 border-solid"
+        style={{
+          borderTopColor: color || "#38bdf8", // sky-400
+          borderRightColor: "transparent",
+          borderBottomColor: "transparent",
+          borderLeftColor: "transparent",
+        }}
+      />
+      <div className="absolute inset-0 flex items-center justify-center transform scale-70">
+        <DentalIcon color={color} />
       </div>
     </div>
   );
 };
 
-const DentalIcon = () => (
-  <svg className={styles.dentalIcon} viewBox="0 0 64 64">
-    {/* dental drill icon */}
-    <path d="M32 12 L42 8 L48 18 L38 22 Z" className={styles.drillBody} />
-    <circle cx="42" cy="15" r="3" className={styles.drillBit} />
-    {/* tooth icon */}
+const DentalIcon = ({ color = "#38bdf8" }) => (
+  <svg className="w-full h-full" viewBox="0 0 64 64">
+    <path d="M32 12 L42 8 L48 18 L38 22 Z" fill={color} opacity="0.8" />
+    <circle cx="42" cy="15" r="3" fill="#94a3b8" />
     <path
       d="M26 30 Q30 22 34 30 Q38 40 30 44 Q22 40 26 30 Z"
-      className={styles.tooth}
+      fill="#f0f9ff"
+      stroke={color}
+      strokeWidth="1.5"
     />
   </svg>
 );
-
-const SkeletonLoader = ({ count, width, height }) => {
-  const skeletons = Array.from({ length: count }, (_, i) => (
-    <div key={i} className={styles.skeleton} style={{ width, height }} />
-  ));
-
-  return <div className={styles.skeletonContainer}>{skeletons}</div>;
-};
 
 export default Loader;

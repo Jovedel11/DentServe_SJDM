@@ -1,5 +1,6 @@
-import React, { forwardRef } from "react";
+import React, { forwardRef, useCallback, useEffect, useRef } from "react";
 import { ClipboardList } from "lucide-react";
+import { useLocation } from "react-router-dom";
 import styles from "../../style/components/contact_styles/PartnershipForm.module.scss";
 
 const SERVICES = [
@@ -107,148 +108,181 @@ const formConfig = {
 };
 
 const PartnershipForm = forwardRef(
-  (
-    { register, errors, handleSubmit, onSubmit, isSubmitting, setValue },
-    ref
-  ) => (
-    <section id="agreement" className={styles.partnershipSection} ref={ref}>
-      <div className={styles.formContainer}>
-        <div className={styles.formHeader}>
-          <ClipboardList className={styles.formIcon} />
-          <h2>Clinic Partnership Application</h2>
-          <p>Join our network of trusted dental providers</p>
-        </div>
+  ({ register, errors, handleSubmit, onSubmit, isSubmitting }, ref) => {
+    const didScrollRef = useRef(null);
+    const location = useLocation();
+    useEffect(() => {
+      const targetId =
+        location.state?.scrollToId ||
+        (location.hash ? location.hash.slice(1) : null);
 
-        <form
-          onSubmit={handleSubmit(onSubmit)}
-          className={styles.partnerForm}
-          noValidate
-        >
-          {/* Clinic Info */}
-          <div>
-            <h4 className={styles.sectionTitle}>Clinic Information</h4>
-            <div className={`${styles.formGroup} ${styles.gridCol2}`}>
-              {formConfig.clinicInfo.map((field, index) => (
-                <div key={index} className={styles.formField}>
-                  <label htmlFor={field.name}>{field.label}</label>
-                  <input
-                    id={field.name}
-                    type={field.type}
-                    placeholder={field.placeholder}
-                    {...register(field.name, field.options)}
-                    aria-invalid={errors[field.name] ? "true" : "false"}
-                  />
-                  {errors[field.name] && (
-                    <span className={styles.errorMessage}>
-                      {errors[field.name].message}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
+      if (!targetId) return;
+
+      const sig = `${location.key}:${targetId}`;
+      if (didScrollRef.current === sig) return;
+
+      let attempts = 0;
+      const maxAttempts = 20;
+      const yOffset = -100;
+
+      const tryScroll = () => {
+        const el = document.getElementById(targetId);
+        if (el) {
+          const y =
+            el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+          window.scrollTo({ top: y, behavior: "smooth" });
+          didScrollRef.current = sig;
+          return;
+        }
+        attempts += 1;
+        if (attempts < maxAttempts) {
+          requestAnimationFrame(tryScroll);
+        }
+      };
+
+      requestAnimationFrame(tryScroll);
+    }, [location]);
+
+    return (
+      <section id="agreement" className={styles.partnershipSection} ref={ref}>
+        <div className={styles.formContainer}>
+          <div className={styles.formHeader}>
+            <ClipboardList className={styles.formIcon} />
+            <h2>Clinic Partnership Application</h2>
+            <p>Join our network of trusted dental providers</p>
           </div>
 
-          {/* Doctor Info */}
-          <div>
-            <h4 className={styles.sectionTitle}>Doctor Information</h4>
-            <div className={`${styles.formGroup} ${styles.gridCol2}`}>
-              {formConfig.doctorInfo.map((field, index) => (
-                <div key={index} className={styles.formField}>
-                  <label htmlFor={field.name}>{field.label}</label>
-                  <input
-                    id={field.name}
-                    type={field.type}
-                    placeholder={field.placeholder}
-                    {...register(field.name, field.options)}
-                    aria-invalid={errors[field.name] ? "true" : "false"}
-                  />
-                  {errors[field.name] && (
-                    <span className={styles.errorMessage}>
-                      {errors[field.name].message}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Services */}
-          <div>
-            <h4 className={styles.sectionTitle}>Services Offered</h4>
-            <div className={styles.servicesGrid}>
-              {SERVICES.map((service) => (
-                <label key={service} className={styles.serviceOption}>
-                  <input
-                    type="checkbox"
-                    value={service}
-                    {...register("services")}
-                  />
-                  <span>{service}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Location & Docs */}
-          <div>
-            <h4 className={styles.sectionTitle}>Location & Credentials</h4>
-            <div className={styles.formGroup}>
-              {formConfig.locationDocs.map((field, index) => (
-                <div key={index} className={styles.formField}>
-                  <label htmlFor={field.name}>{field.label}</label>
-                  <input
-                    id={field.name}
-                    type={field.type}
-                    multiple={field.type === "file"}
-                    placeholder={field.placeholder}
-                    {...register(field.name, field.options)}
-                    aria-invalid={errors[field.name] ? "true" : "false"}
-                  />
-                  {errors[field.name] && (
-                    <span className={styles.errorMessage}>
-                      {errors[field.name].message}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Agreement */}
-          <div className={`${styles.formField} ${styles.checkboxField}`}>
-            <label>
-              <input
-                type="checkbox"
-                {...register("agreement", {
-                  required: "You must agree to proceed",
-                })}
-                aria-invalid={errors.agreement ? "true" : "false"}
-              />
-              I agree to the terms and conditions of partnership.
-            </label>
-            {errors.agreement && (
-              <span className={styles.errorMessage}>
-                {errors.agreement.message}
-              </span>
-            )}
-          </div>
-
-          <button
-            type="submit"
-            className={styles.submitButton}
-            disabled={isSubmitting}
-            aria-busy={isSubmitting}
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className={styles.partnerForm}
+            noValidate
           >
-            {isSubmitting ? (
-              <span className={styles.spinner} aria-hidden="true"></span>
-            ) : (
-              "Apply for Partnership"
-            )}
-          </button>
-        </form>
-      </div>
-    </section>
-  )
+            {/* Clinic Info */}
+            <div>
+              <h4 className={styles.sectionTitle}>Clinic Information</h4>
+              <div className={`${styles.formGroup} ${styles.gridCol2}`}>
+                {formConfig.clinicInfo.map((field, index) => (
+                  <div key={index} className={styles.formField}>
+                    <label htmlFor={field.name}>{field.label}</label>
+                    <input
+                      id={field.name}
+                      type={field.type}
+                      placeholder={field.placeholder}
+                      {...register(field.name, field.options)}
+                      aria-invalid={errors[field.name] ? "true" : "false"}
+                    />
+                    {errors[field.name] && (
+                      <span className={styles.errorMessage}>
+                        {errors[field.name].message}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Doctor Info */}
+            <div>
+              <h4 className={styles.sectionTitle}>Doctor Information</h4>
+              <div className={`${styles.formGroup} ${styles.gridCol2}`}>
+                {formConfig.doctorInfo.map((field, index) => (
+                  <div key={index} className={styles.formField}>
+                    <label htmlFor={field.name}>{field.label}</label>
+                    <input
+                      id={field.name}
+                      type={field.type}
+                      placeholder={field.placeholder}
+                      {...register(field.name, field.options)}
+                      aria-invalid={errors[field.name] ? "true" : "false"}
+                    />
+                    {errors[field.name] && (
+                      <span className={styles.errorMessage}>
+                        {errors[field.name].message}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Services */}
+            <div>
+              <h4 className={styles.sectionTitle}>Services Offered</h4>
+              <div className={styles.servicesGrid}>
+                {SERVICES.map((service) => (
+                  <label key={service} className={styles.serviceOption}>
+                    <input
+                      type="checkbox"
+                      value={service}
+                      {...register("services")}
+                    />
+                    <span>{service}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Location & Docs */}
+            <div>
+              <h4 className={styles.sectionTitle}>Location & Credentials</h4>
+              <div className={styles.formGroup}>
+                {formConfig.locationDocs.map((field, index) => (
+                  <div key={index} className={styles.formField}>
+                    <label htmlFor={field.name}>{field.label}</label>
+                    <input
+                      id={field.name}
+                      type={field.type}
+                      multiple={field.type === "file"}
+                      placeholder={field.placeholder}
+                      {...register(field.name, field.options)}
+                      aria-invalid={errors[field.name] ? "true" : "false"}
+                    />
+                    {errors[field.name] && (
+                      <span className={styles.errorMessage}>
+                        {errors[field.name].message}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Agreement */}
+            <div className={`${styles.formField} ${styles.checkboxField}`}>
+              <label>
+                <input
+                  type="checkbox"
+                  {...register("agreement", {
+                    required: "You must agree to proceed",
+                  })}
+                  aria-invalid={errors.agreement ? "true" : "false"}
+                />
+                I agree to the terms and conditions of partnership.
+              </label>
+              {errors.agreement && (
+                <span className={styles.errorMessage}>
+                  {errors.agreement.message}
+                </span>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className={styles.submitButton}
+              disabled={isSubmitting}
+              aria-busy={isSubmitting}
+            >
+              {isSubmitting ? (
+                <span className={styles.spinner} aria-hidden="true"></span>
+              ) : (
+                "Apply for Partnership"
+              )}
+            </button>
+          </form>
+        </div>
+      </section>
+    );
+  }
 );
 
 export default PartnershipForm;

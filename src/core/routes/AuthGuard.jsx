@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useRedirectPath } from "@/auth/hooks/useRedirectPath";
-import Loading from "../common/loading_error/Loading";
+import Loader from "@/core/components/Loader";
 
 const AuthGuard = ({
   children,
@@ -45,7 +45,7 @@ const AuthGuard = ({
   }, [user, authStatus, loading, location, useRedirectPath]);
 
   // Loading state
-  if (loading) return <Loading />;
+  if (loading) return <Loader message="Loading components..." />;
 
   // Not authenticated or wrong role
   if (!user || !authStatus) {

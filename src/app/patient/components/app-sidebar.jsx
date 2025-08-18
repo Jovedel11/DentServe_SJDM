@@ -12,7 +12,7 @@ import {
 import { NavMain } from "../components/nav-main";
 import { NavProjects } from "../components/nav-projects";
 import { NavSecondary } from "../components/nav-secondary";
-import { NavUser } from "../components/nav-user";
+import { NavUser } from "@/app/shared/nav-user";
 import {
   Sidebar,
   SidebarContent,
@@ -21,8 +21,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar";
-import Logo from "@/core/components/Logo";
+} from "@/core/components/ui/sidebar";
+import Logo from "@/core/components/ui/Logo";
+import { useAuth } from "@/auth/context/AuthProvider";
 
 const data = {
   user: {
@@ -122,6 +123,7 @@ const data = {
 };
 
 export function AppSidebar({ ...props }) {
+  const { profile } = useAuth();
   return (
     <Sidebar
       className="top-(--header-height) h-[calc(100svh-var(--header-height))]!"
@@ -131,11 +133,11 @@ export function AppSidebar({ ...props }) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <a href="#">
+              <div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <Logo />
+                  <Logo to="/patient/dashboard" />
                 </div>
-              </a>
+              </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -146,7 +148,7 @@ export function AppSidebar({ ...props }) {
         <NavSecondary items={data.navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={profile} />
       </SidebarFooter>
     </Sidebar>
   );

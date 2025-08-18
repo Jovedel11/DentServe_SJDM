@@ -1,5 +1,4 @@
 import { ThemeProvider } from "@/core/contexts/ThemeProvider";
-import "../../../core/styles/privateUi.css";
 import Dashboard from "../pages/Dashboard";
 
 const PatientLayout = () => {
