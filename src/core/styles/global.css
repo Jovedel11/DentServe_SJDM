@@ -45,99 +45,159 @@
 
 :root {
   --radius: 0.65rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.623 0.214 259.815);
-  --primary-foreground: oklch(0.97 0.014 254.604);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.623 0.214 259.815);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
-  --sidebar-primary: oklch(0.623 0.214 259.815);
-  --sidebar-primary-foreground: oklch(0.97 0.014 254.604);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
-  --sidebar-ring: oklch(0.623 0.214 259.815);
+  
+  /* Light Theme - Dental Care Optimized */
+  --background: #F1FAEE;
+  --foreground: #1A202C;
+  --card: #FFFFFF;
+  --card-foreground: #1A202C;
+  --popover: #FFFFFF;
+  --popover-foreground: #1A202C;
+  --primary: #457B9D;
+  --primary-foreground: #F1FAEE;
+  --secondary: #A8DADC;
+  --secondary-foreground: #1A202C;
+  --muted: #E2E8F0;
+  --muted-foreground: #64748B;
+  --accent: #F1C0A8;
+  --accent-foreground: #1A202C;
+  --destructive: #EF4444;
+  --border: #CBD5E0;
+  --input: #F8FAFC;
+  --ring: #457B9D;
+  --chart-1: #457B9D;
+  --chart-2: #A8DADC;
+  --chart-3: #F1C0A8;
+  --chart-4: #1D3557;
+  --chart-5: #E63946;
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #1A202C;
+  --sidebar-primary: #457B9D;
+  --sidebar-primary-foreground: #F1FAEE;
+  --sidebar-accent: #F8FAFC;
+  --sidebar-accent-foreground: #1A202C;
+  --sidebar-border: #E2E8F0;
+  --sidebar-ring: #457B9D;
 }
 
 .dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.546 0.245 262.881);
-  --primary-foreground: oklch(0.379 0.146 265.522);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.488 0.243 264.376);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.546 0.245 262.881);
-  --sidebar-primary-foreground: oklch(0.379 0.146 265.522);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.488 0.243 264.376);
+  /* Dark Theme - Dental Care Professional */
+  --background: #1D3557;
+  --foreground: #F1FAEE;
+  --card: #2D4A6B;
+  --card-foreground: #F1FAEE;
+  --popover: #2D4A6B;
+  --popover-foreground: #F1FAEE;
+  --primary: #A8DADC;
+  --primary-foreground: #1A202C;
+  --secondary: #457B9D;
+  --secondary-foreground: #F1FAEE;
+  --muted: #334155;
+  --muted-foreground: #94A3B8;
+  --accent: #F1C0A8;
+  --accent-foreground: #1A202C;
+  --destructive: #EF4444;
+  --border: #475569;
+  --input: #334155;
+  --ring: #A8DADC;
+  --chart-1: #A8DADC;
+  --chart-2: #F1C0A8;
+  --chart-3: #457B9D;
+  --chart-4: #F1FAEE;
+  --chart-5: #E63946;
+  --sidebar: #2D4A6B;
+  --sidebar-foreground: #F1FAEE;
+  --sidebar-primary: #A8DADC;
+  --sidebar-primary-foreground: #1A202C;
+  --sidebar-accent: #334155;
+  --sidebar-accent-foreground: #F1FAEE;
+  --sidebar-border: #475569;
+  --sidebar-ring: #A8DADC;
 }
 
-
 @layer base {
+  /* Global CSS Variables */
+  :root {
+    --header-height: 3.5rem;
+    --sidebar-width: 16rem;
+    --content-max-width: 80rem;
+    
+    /* Dental Care Brand Colors */
+    --dental-mint: #F1FAEE;
+    --dental-teal: #457B9D;
+    --dental-navy: #1D3557;
+    --dental-coral: #F1C0A8;
+    --dental-accent: #A8DADC;
+    --dental-dark: #1A202C;
+    
+    /* Status Colors */
+    --success: #10B981;
+    --warning: #F59E0B;
+    --error: #EF4444;
+    --info: #3B82F6;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-muted/30;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
   }
 }
 
+/* Enhanced Animations */
 @keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
 }
 
 .animate-shimmer {
   animation: shimmer 1.5s infinite;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
 }
-.animate-spin {
-  animation: spin 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+
+.animate-slideIn {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Glass Effect Utility */
+.glass-effect {
+  @apply bg-white/80 backdrop-blur-sm border border-white/20;
+}
+
+.dark .glass-effect {
+  @apply bg-gray-900/80 backdrop-blur-sm border border-gray-700/20;
 }

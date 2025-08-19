@@ -1,4 +1,11 @@
-import { useState, useEffect, createContext, useContext, use } from "react";
+import {
+  useState,
+  useEffect,
+  createContext,
+  useContext,
+  use,
+  useMemo,
+} from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { authService } from "../hooks/authService";
 import { useVerification } from "../hooks/useVerification";
@@ -125,6 +132,9 @@ export const AuthProvider = ({ children }) => {
   const canAccessApp = authStatus?.can_access_app || false;
   const nextStep = authStatus?.next_step;
 
+  console.log("AuthGuard -> user:", user);
+  console.log("AuthGuard -> authStatus:", authStatus);
+  console.log("AuthGuard -> userRole:", userRole);
   // Role checks
   const isPatient = () => userRole === "patient";
   const isStaff = () => userRole === "staff";
@@ -253,42 +263,70 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const value = {
-    // Core state
-    user,
-    authStatus,
-    loading,
-    error,
+  const value = useMemo(
+    () => ({
+      // Core state
+      user,
+      authStatus,
+      loading,
+      error,
 
-    // Derived state
-    userRole,
-    isEmailVerified,
-    isPhoneVerified,
-    phoneRequired,
-    canAccessApp,
-    nextStep,
+      // Derived state
+      userRole,
+      isEmailVerified,
+      isPhoneVerified,
+      phoneRequired,
+      canAccessApp,
+      nextStep,
 
-    // Role checks
-    isPatient,
-    isStaff,
-    isAdmin,
+      // Role checks
+      isPatient,
+      isStaff,
+      isAdmin,
 
-    //users profile
-    profile,
-    // Navigation
-    useRedirectPath,
+      //users profile
+      profile,
+      // Navigation
+      useRedirectPath,
 
-    // Actions
-    signUpUser,
-    inviteStaff,
-    inviteAdmin,
-    sendPhoneOTP,
-    verifyPhoneOTP,
-    signOut,
-    refreshAuthStatus,
-    updatePassword,
-    resetPassword,
-  };
+      // Actions
+      signUpUser,
+      inviteStaff,
+      inviteAdmin,
+      sendPhoneOTP,
+      verifyPhoneOTP,
+      signOut,
+      refreshAuthStatus,
+      updatePassword,
+      resetPassword,
+    }),
+    [
+      user,
+      authStatus,
+      loading,
+      error,
+      userRole,
+      isEmailVerified,
+      isPhoneVerified,
+      phoneRequired,
+      canAccessApp,
+      nextStep,
+      isPatient,
+      isStaff,
+      isAdmin,
+      profile,
+      useRedirectPath,
+      signUpUser,
+      inviteStaff,
+      inviteAdmin,
+      sendPhoneOTP,
+      verifyPhoneOTP,
+      signOut,
+      refreshAuthStatus,
+      updatePassword,
+      resetPassword,
+    ]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

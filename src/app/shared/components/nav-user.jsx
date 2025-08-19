@@ -28,8 +28,9 @@ import {
   useSidebar,
 } from "@/core/components/ui/sidebar";
 import { useAuth } from "@/auth/context/AuthProvider";
+import { cn } from "@/lib/utils";
 
-export function NavUser({ user }) {
+export function NavUser({ user, className }) {
   const { isMobile } = useSidebar();
   const { signOut } = useAuth();
 
@@ -50,7 +51,12 @@ export function NavUser({ user }) {
                 <AvatarImage src={user.avatar} alt={user?.first_name} />
                 <AvatarFallback className="rounded-lg">CN</AvatarFallback>
               </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
+              <div
+                className={cn(
+                  "grid flex-1 text-left text-sm leading-tight",
+                  className
+                )}
+              >
                 <span className="truncate font-medium">
                   {user?.first_name} {user?.last_name}
                 </span>
@@ -68,11 +74,13 @@ export function NavUser({ user }) {
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={user.avatar} alt={user.name} />
+                  <AvatarImage src={user.avatar} alt={user.first_name} />
                   <AvatarFallback className="rounded-lg">CN</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{user.name}</span>
+                  <span className="truncate font-medium">
+                    {user.first_name} {user.last_name}
+                  </span>
                   <span className="truncate text-xs">{user.email}</span>
                 </div>
               </div>
@@ -81,7 +89,7 @@ export function NavUser({ user }) {
             <DropdownMenuGroup>
               <DropdownMenuItem>
                 <Bell />
-                Notifications
+                <button className="cursor-pointer">Notifications</button>
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useRedirectPath } from "@/auth/hooks/useRedirectPath";
 import Loader from "@/core/components/Loader";
 
 const AuthGuard = ({
@@ -13,53 +12,55 @@ const AuthGuard = ({
   const navigate = useNavigate();
   const location = useLocation();
 
-  const redirectPath = useRedirectPath();
-
   useEffect(() => {
     if (loading) return;
 
-    // Not authenticated
     if (!user) {
       navigate("/login");
       return;
     }
 
-    // No auth status yet
     if (!authStatus) {
       return;
     }
 
-    // Wrong role
-    if (requiredRole && authStatus.user_role !== requiredRole) {
+    // wrong role (supports string or array)
+    const roleIsValid = requiredRole
+      ? requiredRole === authStatus.user_role
+      : true;
+
+    if (!roleIsValid) {
       navigate("/unauthorized");
       return;
     }
 
-    // Handle verification/completion requirements
+    // needs verification/completion
     if (requireVerification && !authStatus.can_access_app) {
-      if (location.pathname !== redirectPath) {
-        navigate(redirectPath);
-      }
+      navigate("/complete-profile");
       return;
     }
-  }, [user, authStatus, loading, location, useRedirectPath]);
+  }, [
+    user,
+    authStatus,
+    loading,
+    location,
+    navigate,
+    requiredRole,
+    requireVerification,
+  ]);
 
-  // Loading state
-  if (loading) return <Loader message="Loading components..." />;
-
-  // Not authenticated or wrong role
-  if (!user || !authStatus) {
-    return null;
+  // always show loader until everything is ready
+  if (loading || !user || !authStatus) {
+    return <Loader message="Loading components..." />;
   }
 
-  if (requiredRole && authStatus.user_role !== requiredRole) {
-    return null;
-  }
+  // Block rendering if not allowed
+  const roleIsValid = requiredRole
+    ? requiredRole === authStatus.user_role
+    : true;
 
-  // Needs verification/completion
-  if (requireVerification && !authStatus.can_access_app) {
-    return null;
-  }
+  if (!roleIsValid) return null;
+  if (requireVerification && !authStatus.can_access_app) return null;
 
   return <>{children}</>;
 };

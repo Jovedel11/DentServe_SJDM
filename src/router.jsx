@@ -35,6 +35,13 @@ const ResetPassword = lazy(() => import("./auth/components/ResetPassword"));
 const CompleteProfile = lazy(() => import("./auth/components/CompleteProfile"));
 const StaffLayout = lazy(() => import("./app/staff/layout/StaffLayout"));
 const AdminLayout = lazy(() => import("./app/admin/layout/AdminLayout"));
+const Dashboard = lazy(() => import("./app/patient/pages/Dashboard"));
+const BookAppointment = lazy(() =>
+  import("./app/patient/pages/BookAppointment")
+);
+const UpcomingAppointments = lazy(() =>
+  import("./app/patient/pages/UpcomingAppointments")
+);
 
 export const router = createBrowserRouter([
   {
@@ -71,15 +78,37 @@ export const router = createBrowserRouter([
       {
         path: "/patient/dashboard",
         element: (
-          <AuthGuard allowedRoles={["patient"]}>
+          <AuthGuard requiredRole="patient">
             {withSuspense(PatientLayout)}
           </AuthGuard>
         ),
+        children: [{ index: true, element: withSuspense(Dashboard) }],
+      },
+      {
+        path: "/patient/appointments",
+        element: (
+          <AuthGuard requiredRole="patient">
+            {withSuspense(PatientLayout)}
+          </AuthGuard>
+        ),
+        children: [
+          { path: "book", element: withSuspense(BookAppointment) },
+          { path: "upcoming", element: withSuspense(UpcomingAppointments) },
+        ],
+      },
+      {
+        path: "/patient/dentists",
+        element: (
+          <AuthGuard requiredRole="patient">
+            {withSuspense(PatientLayout)}
+          </AuthGuard>
+        ),
+        children: [],
       },
       {
         path: "/staff/dashboard",
         element: (
-          <AuthGuard allowedRoles={["staff"]}>
+          <AuthGuard requiredRole="staff">
             {withSuspense(StaffLayout)}
           </AuthGuard>
         ),
@@ -87,7 +116,7 @@ export const router = createBrowserRouter([
       {
         path: "/admin/dashboard",
         element: (
-          <AuthGuard allowedRoles={["admin"]}>
+          <AuthGuard requiredRole="admin">
             {withSuspense(AdminLayout)}
           </AuthGuard>
         ),
