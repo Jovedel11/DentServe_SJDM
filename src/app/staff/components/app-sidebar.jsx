@@ -1,7 +1,7 @@
 import React from "react";
 import { ArchiveX, File, Inbox, Send, Trash2 } from "lucide-react";
 
-import { NavUser } from "../../shared/nav-user";
+import { NavUser } from "../../shared/components/nav-user";
 import { Label } from "@/core/components/ui/label";
 import {
   Sidebar,
@@ -17,7 +17,7 @@ import {
   useSidebar,
 } from "@/core/components/ui/sidebar";
 import { Switch } from "@/core/components/ui/switch";
-import { SearchForm } from "../../shared/search-form";
+import { SearchForm } from "../../shared/components/search-form";
 import { Link } from "react-router-dom";
 
 // This is sample data
@@ -219,7 +219,7 @@ export function AppSidebar(props) {
           </SidebarGroup>
         </SidebarContent>
         <SidebarFooter>
-          <NavUser user={data.user} />
+          <NavUser user={data.user} className="cursor-pointer" />
         </SidebarFooter>
       </Sidebar>
 

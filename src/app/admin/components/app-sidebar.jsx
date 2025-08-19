@@ -1,5 +1,4 @@
 import * as React from "react";
-import { GalleryVerticalEnd } from "lucide-react";
 
 import {
   Sidebar,
@@ -14,150 +13,123 @@ import {
   SidebarMenuSubItem,
   SidebarFooter,
 } from "@/core/components/ui/sidebar";
-import { NavUser } from "@/app/shared/nav-user";
-import { SearchForm } from "@/app/shared/search-form";
+import { NavUser } from "@/app/shared/components/nav-user";
+import { SearchForm } from "@/app/shared/components/search-form";
 import Logo from "@/core/components/ui/Logo";
+import { ModeToggle } from "@/core/components/ui/mode-toggle";
+import {
+  Shield,
+  Settings,
+  Users,
+  BarChart3,
+  FileText,
+  Calendar,
+} from "lucide-react";
 
-// This is sample data.
+// Admin Dashboard Navigation Data
 const data = {
   user: {
     name: "Admin",
-    email: "Manoyd7@gmail.com",
-    avatar: "/avatars/shadcn.jpg",
+    email: "admin@dentalcare.com",
+    avatar: "/avatars/admin.jpg",
   },
   navMain: [
     {
-      title: "Getting Started",
-      url: "#",
+      title: "Dashboard",
+      url: "/admin/dashboard",
+      icon: BarChart3,
       items: [
         {
-          title: "Installation",
-          url: "#",
+          title: "Overview",
+          url: "/admin/dashboard/overview",
         },
         {
-          title: "Project Structure",
-          url: "#",
+          title: "Analytics",
+          url: "/admin/dashboard/analytics",
         },
       ],
     },
     {
-      title: "Building Your Application",
-      url: "#",
+      title: "Patient Management",
+      url: "/admin/patients",
+      icon: Users,
       items: [
         {
-          title: "Routing",
-          url: "#",
+          title: "All Patients",
+          url: "/admin/patients",
         },
         {
-          title: "Data Fetching",
-          url: "#",
-          isActive: true,
+          title: "Add Patient",
+          url: "/admin/patients/add",
         },
         {
-          title: "Rendering",
-          url: "#",
+          title: "Patient Records",
+          url: "/admin/patients/records",
         },
         {
-          title: "Caching",
-          url: "#",
-        },
-        {
-          title: "Styling",
-          url: "#",
-        },
-        {
-          title: "Optimizing",
-          url: "#",
-        },
-        {
-          title: "Configuring",
-          url: "#",
-        },
-        {
-          title: "Testing",
-          url: "#",
-        },
-        {
-          title: "Authentication",
-          url: "#",
-        },
-        {
-          title: "Deploying",
-          url: "#",
-        },
-        {
-          title: "Upgrading",
-          url: "#",
-        },
-        {
-          title: "Examples",
-          url: "#",
+          title: "Treatment Plans",
+          url: "/admin/patients/treatments",
         },
       ],
     },
     {
-      title: "API Reference",
-      url: "#",
+      title: "Appointments",
+      url: "/admin/appointments",
+      icon: Calendar,
       items: [
         {
-          title: "Components",
-          url: "#",
+          title: "Schedule",
+          url: "/admin/appointments/schedule",
         },
         {
-          title: "File Conventions",
-          url: "#",
+          title: "Calendar View",
+          url: "/admin/appointments/calendar",
         },
         {
-          title: "Functions",
-          url: "#",
-        },
-        {
-          title: "next.config.js Options",
-          url: "#",
-        },
-        {
-          title: "CLI",
-          url: "#",
-        },
-        {
-          title: "Edge Runtime",
-          url: "#",
+          title: "Booking Management",
+          url: "/admin/appointments/booking",
         },
       ],
     },
     {
-      title: "Architecture",
-      url: "#",
+      title: "Reports & Analytics",
+      url: "/admin/reports",
+      icon: FileText,
       items: [
         {
-          title: "Accessibility",
-          url: "#",
+          title: "Financial Reports",
+          url: "/admin/reports/financial",
         },
         {
-          title: "Fast Refresh",
-          url: "#",
+          title: "Patient Analytics",
+          url: "/admin/reports/patients",
         },
         {
-          title: "Next.js Compiler",
-          url: "#",
-        },
-        {
-          title: "Supported Browsers",
-          url: "#",
-        },
-        {
-          title: "Turbopack",
-          url: "#",
+          title: "Treatment Statistics",
+          url: "/admin/reports/treatments",
         },
       ],
     },
     {
-      title: "Community",
-      url: "#",
+      title: "System Settings",
+      url: "/admin/settings",
+      icon: Settings,
       items: [
         {
-          title: "Contribution Guide",
-          url: "#",
+          title: "General Settings",
+          url: "/admin/settings/general",
+        },
+        {
+          title: "User Management",
+          url: "/admin/settings/users",
+        },
+        {
+          title: "Clinic Configuration",
+          url: "/admin/settings/clinic",
+        },
+        {
+          title: "Security Settings",
+          url: "/admin/settings/security",
         },
       ],
     },
@@ -166,46 +138,85 @@ const data = {
 
 export function AppSidebar({ ...props }) {
   return (
-    <Sidebar variant="floating" {...props}>
-      <SidebarHeader>
+    <Sidebar
+      variant="floating"
+      className="border-sidebar-border bg-sidebar"
+      {...props}
+    >
+      <SidebarHeader className="border-b border-sidebar-border bg-sidebar">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <Logo to="/admin/dashboard" />
+            <SidebarMenuButton
+              size="lg"
+              asChild
+              className="hover:bg-sidebar-accent"
+            >
+              <div className="flex items-center gap-3 px-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                  <Shield className="h-4 w-4" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-sm font-semibold text-sidebar-foreground">
+                    Admin Portal
+                  </span>
+                  <span className="text-xs text-sidebar-foreground/60">
+                    Dental Care Management
+                  </span>
+                </div>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <div className="flex items-center justify-between px-2 py-2">
+          <Logo to="/admin/dashboard" className="text-sidebar-foreground" />
+          <ModeToggle />
+        </div>
       </SidebarHeader>
-      <SidebarContent>
-        <SearchForm className="mb-4" />
+
+      <SidebarContent className="bg-sidebar">
+        <SearchForm className="mb-4 mx-2" />
         <SidebarGroup>
-          <SidebarMenu className="gap-2">
-            {data.navMain.map((item) => (
-              <SidebarMenuItem key={item.title}>
-                <SidebarMenuButton asChild>
-                  <a href={item.url} className="font-medium">
-                    {item.title}
-                  </a>
-                </SidebarMenuButton>
-                {item.items?.length ? (
-                  <SidebarMenuSub className="ml-0 border-l-0 px-1.5">
-                    {item.items.map((item) => (
-                      <SidebarMenuSubItem key={item.title}>
-                        <SidebarMenuSubButton asChild isActive={item.isActive}>
-                          <a href={item.url}>{item.title}</a>
-                        </SidebarMenuSubButton>
-                      </SidebarMenuSubItem>
-                    ))}
-                  </SidebarMenuSub>
-                ) : null}
-              </SidebarMenuItem>
-            ))}
+          <SidebarMenu className="gap-1 px-2">
+            {data.navMain.map((item) => {
+              const Icon = item.icon;
+              return (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    className="hover:bg-sidebar-accent text-sidebar-foreground hover:text-sidebar-accent-foreground"
+                  >
+                    <a
+                      href={item.url}
+                      className="flex items-center gap-3 font-medium"
+                    >
+                      <Icon className="h-4 w-4" />
+                      {item.title}
+                    </a>
+                  </SidebarMenuButton>
+                  {item.items?.length ? (
+                    <SidebarMenuSub className="ml-6 border-l border-sidebar-border px-3">
+                      {item.items.map((subItem) => (
+                        <SidebarMenuSubItem key={subItem.title}>
+                          <SidebarMenuSubButton
+                            asChild
+                            className="hover:bg-sidebar-accent text-sidebar-foreground/80 hover:text-sidebar-accent-foreground"
+                          >
+                            <a href={subItem.url} className="text-sm">
+                              {subItem.title}
+                            </a>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))}
+                    </SidebarMenuSub>
+                  ) : null}
+                </SidebarMenuItem>
+              );
+            })}
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
+
+      <SidebarFooter className="border-t border-sidebar-border bg-sidebar">
         <NavUser user={data.user} />
       </SidebarFooter>
     </Sidebar>
