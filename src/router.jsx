@@ -42,6 +42,18 @@ const BookAppointment = lazy(() =>
 const UpcomingAppointments = lazy(() =>
   import("./app/patient/pages/UpcomingAppointments")
 );
+const PatientProfile = lazy(() => import("@/app/patient/pages/PatientProfile"));
+const PatientSettings = lazy(() =>
+  import("@/app/patient/pages/PatientSettings")
+);
+const PatientHelp = lazy(() => import("@/app/patient/pages/PatientHelp"));
+const AppointmentHistory = lazy(() =>
+  import("@/app/patient/pages/AppointmentHistory")
+);
+const PatientFeedback = lazy(() =>
+  import("@/app/patient/pages/PatientFeedback")
+);
+const MapView = lazy(() => import("@/app/patient/pages/MapView"));
 
 export const router = createBrowserRouter([
   {
@@ -92,8 +104,10 @@ export const router = createBrowserRouter([
           </AuthGuard>
         ),
         children: [
+          { index: true, element: withSuspense(BookAppointment) },
           { path: "book", element: withSuspense(BookAppointment) },
           { path: "upcoming", element: withSuspense(UpcomingAppointments) },
+          { path: "history", element: withSuspense(AppointmentHistory) },
         ],
       },
       {
@@ -104,6 +118,54 @@ export const router = createBrowserRouter([
           </AuthGuard>
         ),
         children: [],
+      },
+      {
+        path: "/patient/clinics",
+        element: (
+          <AuthGuard requiredRole="patient">
+            {withSuspense(PatientLayout)}
+          </AuthGuard>
+        ),
+        children: [
+          { index: true, element: withSuspense(MapView) },
+          { path: "map", element: withSuspense(MapView) },
+        ],
+      },
+      {
+        path: "/patient/feedbacks",
+        element: (
+          <AuthGuard requiredRole="patient">
+            {withSuspense(PatientLayout)}
+          </AuthGuard>
+        ),
+        children: [{ index: true, element: withSuspense(PatientFeedback) }],
+      },
+      {
+        path: "/patient/profile",
+        element: (
+          <AuthGuard requiredRole="patient">
+            {withSuspense(PatientLayout)}
+          </AuthGuard>
+        ),
+        children: [{ index: true, element: withSuspense(PatientProfile) }],
+      },
+      {
+        path: "/patient/settings",
+        element: (
+          <AuthGuard requiredRole="patient">
+            {withSuspense(PatientLayout)}
+          </AuthGuard>
+        ),
+        children: [{ index: true, element: withSuspense(PatientSettings) }],
+      },
+      {
+        path: "/patient/help",
+        element: (
+          <AuthGuard requiredRole="patient">
+            {withSuspense(PatientLayout)}
+          </AuthGuard>
+        ),
+        children: [{ index: true, element: withSuspense(PatientHelp) }],
       },
       {
         path: "/staff/dashboard",

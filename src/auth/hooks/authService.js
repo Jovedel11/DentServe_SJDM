@@ -1,6 +1,6 @@
 import { supabase } from "../../lib/supabaseClient";
-import { validateStrongPassword } from "@/auth/validation/rules/typicalRules";
 import { phoneUtils } from "@/utils/phoneUtils";
+import { validatePassword } from "@/utils/validation/auth-validation";
 
 const generateTempPassword = () => {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$'
@@ -15,7 +15,7 @@ export const authService = {
   // sign up new user
   async signUpUser(userData) {
     try {
-      validateStrongPassword(userData.password);
+      validatePassword(userData.password);
 
       let normalizedPhone = null;
       if (userData.phone) {
