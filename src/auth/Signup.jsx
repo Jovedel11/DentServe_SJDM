@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useState, useActionState } from "react";
 import { useAuth } from "./context/AuthProvider";
 import { useRecaptcha } from "@/auth/hooks/useRecaptcha";
+import { validateSignupForm } from "@/utils/validation/auth-validation";
+import SvgDental from "@/core/components/svgDental";
 
 const Signup = () => {
   const [formData, setFormData] = useState({
@@ -10,19 +12,59 @@ const Signup = () => {
     first_name: "",
     last_name: "",
     phone: "",
-    date_of_birth: "",
-    gender: "",
-    emergency_contact_name: "",
-    emergency_contact_phone: "",
-    insurance_provider: "",
-    medical_conditions: [],
-    allergies: [],
   });
-  const [success, setSuccess] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
   const [showEmailModal, setShowEmailModal] = useState(false);
 
   const { signUpUser, loading, error } = useAuth();
   const { executeRecaptcha, isLoaded } = useRecaptcha();
+
+  // useActionState for form handling
+  const [state, formAction] = useActionState(
+    async (prevState, formDataAction) => {
+      // Client-side validation
+      const validation = validateSignupForm(formData);
+      if (!validation.isValid) {
+        setValidationErrors(validation.errors);
+        return { success: false, errors: validation.errors };
+      }
+
+      setValidationErrors({});
+
+      if (!isLoaded) {
+        return {
+          success: false,
+          error: "Please wait for security verification to load",
+        };
+      }
+
+      try {
+        const recaptchaToken = await executeRecaptcha("patient_signup");
+        if (!recaptchaToken) {
+          return {
+            success: false,
+            error: "Security verification failed. Please try again.",
+          };
+        }
+
+        const result = await signUpUser({ ...formData, recaptchaToken });
+
+        if (result && result.success) {
+          setShowEmailModal(true);
+          return { success: true };
+        } else {
+          return { success: false, error: "Signup failed. Please try again." };
+        }
+      } catch (error) {
+        console.error("Signup error:", error);
+        return {
+          success: false,
+          error: "An error occurred during signup. Please try again.",
+        };
+      }
+    },
+    null
+  );
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -30,242 +72,279 @@ const Signup = () => {
       ...prev,
       [name]: value,
     }));
-  };
 
-  const handleArrayInput = (name, value) => {
-    const array = value
-      .split(",")
-      .map((item) => item.trim())
-      .filter((item) => item);
-    setFormData((prev) => ({
-      ...prev,
-      [name]: array,
-    }));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    if (!isLoaded) {
-      alert("Please wait for security verification to load");
-      return;
-    }
-
-    try {
-      const recaptchaToken = await executeRecaptcha("patient_signup");
-      if (!recaptchaToken) {
-        alert("Security verification failed. Please try again.");
-        return;
-      }
-
-      // Validate passwords match
-      if (formData.password !== formData.confirmPassword) {
-        alert("Passwords do not match");
-        return;
-      }
-
-      const result = await signUpUser({ ...formData, recaptchaToken });
-
-      if (result && result.success) {
-        setSuccess(true);
-        setShowEmailModal(true);
-      } else {
-        console.error("Signup failed:", result);
-      }
-    } catch (error) {
-      console.error("Signup error:", error);
-      alert("An error occurred during signup. Please try again.");
+    // Clear validation error when user starts typing
+    if (validationErrors[name]) {
+      setValidationErrors((prev) => ({ ...prev, [name]: null }));
     }
   };
 
   if (showEmailModal) {
     return (
-      <div className="signup-success-modal">
-        <div className="modal-content">
-          <div className="success-icon">📧</div>
-          <h2>Check Your Email!</h2>
-          <p>We've sent a verification link to:</p>
-          <strong>{formData.email}</strong>
-
-          <div className="instructions">
-            <h3>Next Steps:</h3>
-            <ol>
-              <li>Check your email inbox (and spam folder)</li>
-              <li>Click the verification link</li>
-              <li>You'll be automatically taken to your dashboard</li>
-            </ol>
-          </div>
-
-          <div className="email-note">
-            <p>
-              💡 <strong>Note:</strong> Keep this tab open and check your email
-              in another tab. After clicking the verification link, you'll be
-              redirected here automatically.
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
+        <div className="max-w-md mx-auto">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 text-center">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-3xl">📧</span>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">
+              Check Your Email!
+            </h2>
+            <p className="text-gray-600 mb-4">
+              We've sent a verification link to:
             </p>
-          </div>
+            <p className="font-semibold text-blue-600 mb-6">{formData.email}</p>
 
-          <button
-            onClick={() => (window.location.href = "/login")}
-            className="secondary-button"
-          >
-            Go to Login Instead
-          </button>
+            <div className="text-left mb-6">
+              <h3 className="font-semibold text-gray-800 mb-2">Next Steps:</h3>
+              <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+                <li>Check your email inbox (and spam folder)</li>
+                <li>Click the verification link</li>
+                <li>You'll be automatically taken to your dashboard</li>
+              </ol>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+              <p className="text-sm text-blue-800">
+                <span className="font-semibold">💡 Note:</span> Keep this tab
+                open and check your email in another tab. After clicking the
+                verification link, you'll be redirected here automatically.
+              </p>
+            </div>
+
+            <button
+              onClick={() => (window.location.href = "/login")}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-3 px-4 rounded-xl transition-all duration-200 transform hover:scale-[1.02]"
+            >
+              Go to Login Instead
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="patient-signup-form">
-      <h2>Create Patient Account</h2>
-
-      <form onSubmit={handleSubmit}>
-        {/* Required Fields */}
-        <div className="form-section">
-          <h3>Required Information</h3>
-
-          <input
-            type="email"
-            name="email"
-            placeholder="Email Address *"
-            value={formData.email}
-            onChange={handleInputChange}
-            required
-          />
-
-          <input
-            type="password"
-            name="password"
-            placeholder="Password (min 8 characters) *"
-            value={formData.password}
-            onChange={handleInputChange}
-            required
-            minLength="8"
-          />
-
-          <input
-            type="password"
-            name="confirmPassword"
-            placeholder="Confirm Password *"
-            value={formData.confirmPassword}
-            onChange={handleInputChange}
-            required
-          />
-
-          <input
-            type="text"
-            name="first_name"
-            placeholder="First Name *"
-            value={formData.first_name}
-            onChange={handleInputChange}
-            required
-          />
-
-          <input
-            type="text"
-            name="last_name"
-            placeholder="Last Name *"
-            value={formData.last_name}
-            onChange={handleInputChange}
-            required
-          />
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
+      <div className="max-w-6xl w-full grid lg:grid-cols-2 gap-8 items-center">
+        {/* Left Column - SVG Illustration */}
+        <div className="hidden lg:flex flex-col items-center justify-center p-8">
+          <div className="mb-6">
+            <SvgDental className="drop-shadow-lg" />
+          </div>
+          <div className="text-center">
+            <h1 className="text-3xl font-bold text-gray-800 mb-2">
+              Join DentalCare Today
+            </h1>
+            <p className="text-gray-600 text-lg">
+              Start your journey to better dental health
+            </p>
+          </div>
         </div>
 
-        {/* Optional Personal Information */}
-        <div className="form-section">
-          <h3>Personal Information (Optional)</h3>
+        {/* Right Column - Signup Form */}
+        <div className="w-full max-w-md mx-auto lg:mx-0">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+            {/* Mobile Logo */}
+            <div className="lg:hidden text-center mb-6">
+              <div className="w-20 h-20 mx-auto mb-3">
+                <SvgDental />
+              </div>
+              <h1 className="text-2xl font-bold text-gray-800">DentalCare</h1>
+            </div>
 
-          <input
-            type="tel"
-            name="phone"
-            placeholder="Phone Number (for SMS notifications)"
-            value={formData.phone}
-            onChange={handleInputChange}
-          />
+            <div className="mb-8">
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                Create your account
+              </h2>
+              <p className="text-gray-600">
+                Join thousands of satisfied patients
+              </p>
+            </div>
 
-          <input
-            type="date"
-            name="date_of_birth"
-            value={formData.date_of_birth}
-            onChange={handleInputChange}
-          />
+            <form action={formAction} className="space-y-4">
+              {/* First Name & Last Name */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <input
+                    type="text"
+                    name="first_name"
+                    placeholder="First name"
+                    value={formData.first_name}
+                    onChange={handleInputChange}
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
+                      validationErrors.first_name
+                        ? "border-red-500 bg-red-50"
+                        : "border-gray-300"
+                    }`}
+                    required
+                  />
+                  {validationErrors.first_name && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {validationErrors.first_name}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <input
+                    type="text"
+                    name="last_name"
+                    placeholder="Last name"
+                    value={formData.last_name}
+                    onChange={handleInputChange}
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
+                      validationErrors.last_name
+                        ? "border-red-500 bg-red-50"
+                        : "border-gray-300"
+                    }`}
+                    required
+                  />
+                  {validationErrors.last_name && (
+                    <p className="text-red-500 text-xs mt-1">
+                      {validationErrors.last_name}
+                    </p>
+                  )}
+                </div>
+              </div>
 
-          <select
-            name="gender"
-            value={formData.gender}
-            onChange={handleInputChange}
-          >
-            <option value="">Select Gender</option>
-            <option value="male">Male</option>
-            <option value="female">Female</option>
-            <option value="other">Other</option>
-            <option value="prefer_not_to_say">Prefer not to say</option>
-          </select>
+              {/* Email */}
+              <div className="space-y-1">
+                <input
+                  type="email"
+                  name="email"
+                  placeholder="Email address"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
+                    validationErrors.email
+                      ? "border-red-500 bg-red-50"
+                      : "border-gray-300"
+                  }`}
+                  required
+                />
+                {validationErrors.email && (
+                  <p className="text-red-500 text-sm mt-1">
+                    {validationErrors.email}
+                  </p>
+                )}
+              </div>
+
+              {/* Phone */}
+              <div className="space-y-1">
+                <input
+                  type="tel"
+                  name="phone"
+                  placeholder="Phone number"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
+                    validationErrors.phone
+                      ? "border-red-500 bg-red-50"
+                      : "border-gray-300"
+                  }`}
+                  required
+                />
+                {validationErrors.phone && (
+                  <p className="text-red-500 text-sm mt-1">
+                    {validationErrors.phone}
+                  </p>
+                )}
+              </div>
+
+              {/* Password */}
+              <div className="space-y-1">
+                <input
+                  type="password"
+                  name="password"
+                  placeholder="Password (min 8 characters)"
+                  value={formData.password}
+                  onChange={handleInputChange}
+                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
+                    validationErrors.password
+                      ? "border-red-500 bg-red-50"
+                      : "border-gray-300"
+                  }`}
+                  required
+                />
+                {validationErrors.password && (
+                  <p className="text-red-500 text-sm mt-1">
+                    {validationErrors.password}
+                  </p>
+                )}
+              </div>
+
+              {/* Confirm Password */}
+              <div className="space-y-1">
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  placeholder="Confirm password"
+                  value={formData.confirmPassword}
+                  onChange={handleInputChange}
+                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
+                    validationErrors.confirmPassword
+                      ? "border-red-500 bg-red-50"
+                      : "border-gray-300"
+                  }`}
+                  required
+                />
+                {validationErrors.confirmPassword && (
+                  <p className="text-red-500 text-sm mt-1">
+                    {validationErrors.confirmPassword}
+                  </p>
+                )}
+              </div>
+
+              {/* Error Message */}
+              {(error || state?.error) && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                  <p className="text-red-600 text-sm text-center">
+                    {error || state?.error}
+                  </p>
+                </div>
+              )}
+
+              {/* Submit Button */}
+              <button
+                type="submit"
+                disabled={loading || !isLoaded}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transform hover:scale-[1.02] disabled:transform-none"
+              >
+                {loading ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
+                    Creating Account...
+                  </div>
+                ) : (
+                  "Create Account"
+                )}
+              </button>
+            </form>
+
+            {/* Footer Links */}
+            <div className="mt-6">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">
+                    Already have an account?
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-center mt-4">
+                <a
+                  href="/login"
+                  className="w-full inline-block bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-3 px-4 rounded-xl transition-all duration-200 transform hover:scale-[1.02]"
+                >
+                  Sign in instead
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
-
-        {/* Emergency Contact */}
-        <div className="form-section">
-          <h3>Emergency Contact (Optional)</h3>
-
-          <input
-            type="text"
-            name="emergency_contact_name"
-            placeholder="Emergency Contact Name"
-            value={formData.emergency_contact_name}
-            onChange={handleInputChange}
-          />
-
-          <input
-            type="tel"
-            name="emergency_contact_phone"
-            placeholder="Emergency Contact Phone"
-            value={formData.emergency_contact_phone}
-            onChange={handleInputChange}
-          />
-        </div>
-
-        {/* Medical Information */}
-        <div className="form-section">
-          <h3>Medical Information (Optional)</h3>
-
-          <input
-            type="text"
-            name="insurance_provider"
-            placeholder="Insurance Provider"
-            value={formData.insurance_provider}
-            onChange={handleInputChange}
-          />
-
-          <textarea
-            name="medical_conditions"
-            placeholder="Medical Conditions (comma-separated)"
-            value={formData.medical_conditions.join(", ")}
-            onChange={(e) =>
-              handleArrayInput("medical_conditions", e.target.value)
-            }
-            rows="3"
-          />
-
-          <textarea
-            name="allergies"
-            placeholder="Allergies (comma-separated)"
-            value={formData.allergies.join(", ")}
-            onChange={(e) => handleArrayInput("allergies", e.target.value)}
-            rows="3"
-          />
-        </div>
-
-        {error && <div className="error-message">{error}</div>}
-
-        <button type="submit" disabled={loading || !isLoaded}>
-          {loading ? "Creating Account..." : "Create Patient Account"}
-        </button>
-      </form>
-
-      <div className="signup-footer">
-        <p>
-          Already have an account? <a href="/login">Login here</a>
-        </p>
       </div>
     </div>
   );

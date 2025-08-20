@@ -2,13 +2,11 @@ import {
   CalendarRange,
   UserSearch,
   MapPinned,
-  HeartPlus,
   MessageSquareHeart,
-  BellRing,
-  Stethoscope,
   Settings2,
   Home,
-  FileText,
+  UserPen,
+  MessageCircleQuestionMark,
 } from "lucide-react";
 
 import { NavMain } from "../navigation/nav-main";
@@ -52,7 +50,6 @@ const navigationData = {
       icon: UserSearch,
       items: [
         { title: "Search Dentists", url: "/patient/dentists/search" },
-        { title: "My Favorites", url: "/patient/dentists/favorites" },
         { title: "Reviews", url: "/patient/dentists/reviews" },
       ],
     },
@@ -65,39 +62,28 @@ const navigationData = {
         { title: "List View", url: "/patient/clinics/list" },
       ],
     },
-    {
-      title: "Health Records",
-      url: "/patient/health",
-      icon: FileText,
-      items: [
-        { title: "Medical History", url: "/patient/health/history" },
-        { title: "Treatment Plans", url: "/patient/health/treatments" },
-        { title: "Prescriptions", url: "/patient/health/prescriptions" },
-      ],
-    },
   ],
   projects: [
     {
-      name: "Messages",
-      url: "/patient/messages",
+      name: "Feedbacks",
+      url: "/patient/feedbacks",
       icon: MessageSquareHeart,
       badge: "3",
     },
     {
-      name: "Reminders",
-      url: "/patient/reminders",
-      icon: BellRing,
-      badge: "2",
-    },
-    {
-      name: "Checkup",
-      url: "/patient/checkup",
-      icon: Stethoscope,
+      name: "Profile",
+      url: "/patient/profile",
+      icon: UserPen,
     },
     {
       name: "Settings",
       url: "/patient/settings",
       icon: Settings2,
+    },
+    {
+      name: "Help & Support",
+      url: "/patient/help",
+      icon: MessageCircleQuestionMark,
     },
   ],
 };

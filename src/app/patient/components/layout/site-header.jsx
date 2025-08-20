@@ -1,5 +1,5 @@
 import { SidebarIcon, Bell, Settings, User } from "lucide-react";
-import { SearchForm } from "@/app/shared/search-form";
+import { SearchForm } from "@/app/shared/components/search-form";
 import {
   Breadcrumb,
   BreadcrumbItem,
