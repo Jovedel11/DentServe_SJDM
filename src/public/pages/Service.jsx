@@ -6,12 +6,19 @@ import {
   dentalServices,
 } from "@/core/common/icons/serviceIcon";
 import { FaSearch } from "react-icons/fa";
+import { useNavigate } from "react-router-dom";
 import styles from "../style/pages/Service.module.scss";
 
 const Services = () => {
   const [activeCategory, setActiveCategory] = useState("all");
   const [expandedService, setExpandedService] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const navigate = useNavigate();
+
+  const handleSignup = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    navigate("/signup");
+  };
 
   // filtering logic
   const getFilteredServices = () => {
@@ -48,6 +55,7 @@ const Services = () => {
         <FaSearch className={styles.searchIcon} />
         <input
           type="text"
+          id="search"
           placeholder="Search services..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -89,7 +97,9 @@ const Services = () => {
         <p>
           Create an account to book appointments and track your dental history
         </p>
-        <button className={styles.ctaButton}>Sign Up Now</button>
+        <button className={styles.ctaButton} onClick={handleSignup}>
+          Sign Up Now
+        </button>
       </div>
     </section>
   );

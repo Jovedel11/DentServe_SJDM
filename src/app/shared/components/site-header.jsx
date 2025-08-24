@@ -1,4 +1,4 @@
-import { SidebarIcon, Bell, Settings, User } from "lucide-react";
+import { SidebarIcon } from "lucide-react";
 import { SearchForm } from "@/app/shared/components/search-form";
 import {
   Breadcrumb,
@@ -12,13 +12,12 @@ import { Button } from "@/core/components/ui/button";
 import { Separator } from "@/core/components/ui/separator";
 import { useSidebar } from "@/core/components/ui/sidebar";
 import { ModeToggle } from "@/core/components/ui/mode-toggle";
-import NotificationBell from "@/app/shared/components/notification-bell";
 
 export function SiteHeader() {
   const { toggleSidebar } = useSidebar();
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+    <header className="sticky top-0 w-full border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
       <div className="flex h-14 w-full items-center gap-4 px-6">
         {/* Sidebar Toggle */}
         <Button
@@ -55,13 +54,6 @@ export function SiteHeader() {
         {/* Right Side Actions */}
         <div className="ml-auto flex items-center gap-2">
           <SearchForm className="hidden sm:flex" />
-
-          {/* Notifications */}
-          <NotificationBell
-            variant="ghost"
-            size="icon"
-            className="cursor-pointer"
-          />
 
           <ModeToggle />
         </div>

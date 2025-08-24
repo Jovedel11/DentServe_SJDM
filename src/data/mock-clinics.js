@@ -261,3 +261,152 @@
       ],
     },
   ];
+
+
+    export const clinics = [
+    {
+      id: 1,
+      name: "Downtown Dental Center",
+      address: "123 Main St, Downtown",
+      location: "Downtown District",
+      phone: "+1 (555) 123-4567",
+      rating: 4.9,
+      reviewCount: 245,
+      image:
+        "https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=400&h=300&fit=crop",
+      gallery: [
+        "https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1551190822-a9333d879b1f?w=400&h=300&fit=crop",
+      ],
+      specialties: [
+        "General Dentistry",
+        "Cosmetic",
+        "Orthodontics",
+        "Emergency Care",
+      ],
+      description:
+        "Premier dental care facility with state-of-the-art equipment and experienced professionals.",
+      features: [
+        "Modern Equipment",
+        "Emergency Care",
+        "Insurance Accepted",
+        "Parking Available",
+      ],
+      hours: {
+        weekday: "8:00 AM - 6:00 PM",
+        saturday: "9:00 AM - 4:00 PM",
+        sunday: "Closed",
+      },
+      recentReviews: [
+        {
+          patient: "Sarah M.",
+          rating: 5,
+          comment: "Excellent service and very professional staff!",
+          date: "2025-08-15",
+        },
+        {
+          patient: "Mike R.",
+          rating: 5,
+          comment: "Dr. Martinez was fantastic, highly recommend!",
+          date: "2025-08-12",
+        },
+      ],
+    },
+    {
+      id: 2,
+      name: "Smile Care Clinic",
+      address: "456 Oak Ave, Midtown",
+      location: "Midtown Area",
+      phone: "+1 (555) 234-5678",
+      rating: 4.8,
+      reviewCount: 189,
+      image:
+        "https://images.unsplash.com/photo-1551190822-a9333d879b1f?w=400&h=300&fit=crop",
+      gallery: [
+        "https://images.unsplash.com/photo-1551190822-a9333d879b1f?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=400&h=300&fit=crop",
+      ],
+      specialties: [
+        "General Dentistry",
+        "Pediatric",
+        "Emergency Care",
+        "Oral Surgery",
+      ],
+      description:
+        "Family-friendly clinic specializing in comprehensive dental care for all ages.",
+      features: [
+        "Pediatric Care",
+        "Family Discounts",
+        "Flexible Hours",
+        "Online Booking",
+      ],
+      hours: {
+        weekday: "7:30 AM - 7:00 PM",
+        saturday: "8:00 AM - 5:00 PM",
+        sunday: "Emergency Only",
+      },
+      recentReviews: [
+        {
+          patient: "Jennifer L.",
+          rating: 5,
+          comment: "Great with kids and very gentle approach.",
+          date: "2025-08-14",
+        },
+        {
+          patient: "David K.",
+          rating: 4,
+          comment: "Professional service, clean facility.",
+          date: "2025-08-10",
+        },
+      ],
+    },
+    {
+      id: 3,
+      name: "Advanced Dental Solutions",
+      address: "789 Pine St, Uptown",
+      location: "Uptown District",
+      phone: "+1 (555) 345-6789",
+      rating: 4.7,
+      reviewCount: 156,
+      image:
+        "https://images.unsplash.com/photo-1606811841689-23dfddce3e95?w=400&h=300&fit=crop",
+      gallery: [
+        "https://images.unsplash.com/photo-1606811841689-23dfddce3e95?w=400&h=300&fit=crop",
+        "https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=400&h=300&fit=crop",
+      ],
+      specialties: [
+        "Cosmetic Dentistry",
+        "Implants",
+        "Oral Surgery",
+        "Periodontics",
+      ],
+      description:
+        "Advanced dental procedures with cutting-edge technology and specialized treatments.",
+      features: [
+        "Advanced Technology",
+        "Sedation Options",
+        "Implant Specialist",
+        "Cosmetic Expert",
+      ],
+      hours: {
+        weekday: "9:00 AM - 5:00 PM",
+        saturday: "10:00 AM - 3:00 PM",
+        sunday: "Closed",
+      },
+      recentReviews: [
+        {
+          patient: "Emily S.",
+          rating: 5,
+          comment: "Amazing cosmetic work, transformed my smile!",
+          date: "2025-08-13",
+        },
+        {
+          patient: "Robert T.",
+          rating: 4,
+          comment: "Excellent implant procedure, very satisfied.",
+          date: "2025-08-08",
+        },
+      ],
+    },
+  ];

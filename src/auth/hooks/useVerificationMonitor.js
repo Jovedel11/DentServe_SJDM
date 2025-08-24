@@ -8,7 +8,6 @@ export const useVerificationMonitor = () => {
   useEffect(() => {
     if (!user) return
 
-    // Monitor verification status changes in real-time
     const channel = supabase
       .channel('user-verification-monitor')
       .on('postgres_changes',
@@ -19,7 +18,6 @@ export const useVerificationMonitor = () => {
           filter: `auth_user_id=eq.${user.id}`
         },
         async (payload) => {
-          // Re-check profile when verification status changes
           console.log('Verification status updated:', payload)
           await checkUserProfile(user)
         }

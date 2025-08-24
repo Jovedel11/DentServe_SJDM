@@ -9,7 +9,7 @@ import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import Loader from "@/core/components/Loader";
-import Error from "@/core/components/ui/Error";
+import Error from "@/core/components/Error";
 import ClinicPanel from "@/public/components/map/ClinicPanel";
 import MapLegend from "@/public/components/map/MapLegend";
 import { map_Clinics } from "@/data/home_data/clinicData";

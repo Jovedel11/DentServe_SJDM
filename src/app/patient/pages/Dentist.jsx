@@ -1,0 +1,1235 @@
+import React, { useState, useEffect, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useTheme } from "@/core/contexts/ThemeProvider";
+import {
+  Search,
+  MapPin,
+  Phone,
+  Clock,
+  Star,
+  Calendar,
+  X,
+  Users,
+  Stethoscope,
+  Building2,
+  Award,
+  List,
+  Grid3X3,
+  ChevronDown,
+  Filter,
+  ArrowUpDown,
+  Bookmark,
+  BookmarkCheck,
+  GraduationCap,
+  Badge,
+  CheckCircle2,
+  DollarSign,
+  Mail,
+  User,
+  Trophy,
+  UserCheck,
+} from "lucide-react";
+import { mockDentists } from "@/data/mock-dentist";
+import { availableSpecializations } from "@/data/mock-specialization";
+import { availableLocations } from "@/data/mock-location";
+
+const Dentist = () => {
+  // State management
+  const [dentists, setDentists] = useState([]);
+  const [filteredDentists, setFilteredDentists] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedDentist, setSelectedDentist] = useState(null);
+  const [showDentistModal, setShowDentistModal] = useState(false);
+  const [sortBy, setSortBy] = useState("recommended");
+  const [viewMode, setViewMode] = useState("grid");
+  const [showFilters, setShowFilters] = useState(false);
+  const [savedDentists, setSavedDentists] = useState(new Set());
+  const [preferredLocation, setPreferredLocation] = useState("");
+  const [userInteractions, setUserInteractions] = useState(new Set(["1", "4"])); // Mock visited dentists
+  const [filters, setFilters] = useState({
+    specializations: [],
+    experience: 0,
+    rating: 0,
+    consultationFee: "all",
+    availability: false,
+    hasReviewed: false,
+    certifications: false,
+    awards: false,
+  });
+
+  // Smart recommendations algorithm
+  const getRecommendedDentists = useMemo(() => {
+    return dentists
+      .map((dentist) => {
+        let score = 0;
+
+        // Rating weight (30%)
+        score += (dentist.rating / 5) * 30;
+
+        // Experience weight (25%)
+        const experienceScore = Math.min(dentist.experience_years / 20, 1);
+        score += experienceScore * 25;
+
+        // Patient satisfaction weight (20%)
+        score += (dentist.patient_satisfaction / 100) * 20;
+
+        // Total reviews weight (15%)
+        const reviewScore = Math.min(dentist.total_reviews / 500, 1);
+        score += reviewScore * 15;
+
+        // Bonus factors (10%)
+        if (dentist.is_available) score += 3;
+        if (dentist.awards?.length > 0) score += 2;
+        if (Object.keys(dentist.certifications || {}).length > 2) score += 2;
+        if (dentist.clinic_locations?.length > 1) score += 2;
+        if (userInteractions.has(dentist.id)) score += 1;
+
+        return { ...dentist, recommendationScore: score };
+      })
+      .sort((a, b) => b.recommendationScore - a.recommendationScore);
+  }, [dentists, userInteractions]);
+
+  // Load dentists data
+  useEffect(() => {
+    const loadDentists = async () => {
+      setIsLoading(true);
+      // Simulate API call - Replace with actual Supabase call
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      setDentists(mockDentists);
+      setFilteredDentists(mockDentists);
+      setIsLoading(false);
+    };
+    loadDentists();
+  }, []);
+
+  // Filter and sort logic
+  useEffect(() => {
+    let filtered = [...dentists];
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (dentist) =>
+          dentist.name.toLowerCase().includes(query) ||
+          dentist.specialization.toLowerCase().includes(query) ||
+          dentist.bio?.toLowerCase().includes(query) ||
+          dentist.clinic_locations?.some(
+            (clinic) =>
+              clinic.clinic_name.toLowerCase().includes(query) ||
+              clinic.address.toLowerCase().includes(query)
+          )
+      );
+    }
+
+    // Preferred location filter
+    if (preferredLocation && preferredLocation !== "Any Location") {
+      filtered = filtered.filter((dentist) =>
+        dentist.clinic_locations?.some((clinic) =>
+          clinic.address.toLowerCase().includes(preferredLocation.toLowerCase())
+        )
+      );
+    }
+
+    // Apply advanced filters
+    if (filters.specializations.length > 0) {
+      filtered = filtered.filter((dentist) =>
+        filters.specializations.some((spec) =>
+          dentist.specialization.toLowerCase().includes(spec.toLowerCase())
+        )
+      );
+    }
+
+    if (filters.experience > 0) {
+      filtered = filtered.filter(
+        (dentist) => dentist.experience_years >= filters.experience
+      );
+    }
+
+    if (filters.rating > 0) {
+      filtered = filtered.filter((dentist) => dentist.rating >= filters.rating);
+    }
+
+    if (filters.consultationFee !== "all") {
+      const feeFilters = {
+        budget: (dentist) => dentist.consultation_fee <= 2500,
+        moderate: (dentist) =>
+          dentist.consultation_fee > 2500 && dentist.consultation_fee <= 3500,
+        premium: (dentist) => dentist.consultation_fee > 3500,
+      };
+      filtered = filtered.filter(
+        feeFilters[filters.consultationFee] || (() => true)
+      );
+    }
+
+    if (filters.availability) {
+      filtered = filtered.filter((dentist) => dentist.is_available);
+    }
+
+    if (filters.hasReviewed) {
+      filtered = filtered.filter((dentist) => userInteractions.has(dentist.id));
+    }
+
+    if (filters.certifications) {
+      filtered = filtered.filter(
+        (dentist) =>
+          dentist.certifications &&
+          Object.keys(dentist.certifications).length > 0
+      );
+    }
+
+    if (filters.awards) {
+      filtered = filtered.filter(
+        (dentist) => dentist.awards && dentist.awards.length > 0
+      );
+    }
+
+    // Sort results
+    switch (sortBy) {
+      case "experience":
+        filtered.sort((a, b) => b.experience_years - a.experience_years);
+        break;
+      case "rating":
+        filtered.sort((a, b) => b.rating - a.rating);
+        break;
+      case "fee-low":
+        filtered.sort((a, b) => a.consultation_fee - b.consultation_fee);
+        break;
+      case "fee-high":
+        filtered.sort((a, b) => b.consultation_fee - a.consultation_fee);
+        break;
+      case "alphabetical":
+        filtered.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case "reviews":
+        filtered.sort((a, b) => b.total_reviews - a.total_reviews);
+        break;
+      case "recommended":
+      default:
+        const recommended = getRecommendedDentists.filter((dentist) =>
+          filtered.some((f) => f.id === dentist.id)
+        );
+        filtered = recommended;
+        break;
+    }
+
+    setFilteredDentists(filtered);
+  }, [
+    searchQuery,
+    preferredLocation,
+    filters,
+    sortBy,
+    dentists,
+    getRecommendedDentists,
+    userInteractions,
+  ]);
+
+  // Utility functions
+  const toggleSavedDentist = (dentistId) => {
+    const newSaved = new Set(savedDentists);
+    if (newSaved.has(dentistId)) {
+      newSaved.delete(dentistId);
+    } else {
+      newSaved.add(dentistId);
+    }
+    setSavedDentists(newSaved);
+  };
+
+  const bookAppointment = (dentist) => {
+    window.location.href = `/patient/book-appointment?dentist=${dentist.id}`;
+  };
+
+  const openDentistModal = (dentist) => {
+    setSelectedDentist(dentist);
+    setShowDentistModal(true);
+  };
+
+  const renderStars = (rating) => {
+    return [...Array(5)].map((_, index) => (
+      <Star
+        key={index}
+        className={`w-4 h-4 ${
+          index < Math.floor(rating)
+            ? "text-yellow-400 fill-yellow-400"
+            : "text-gray-300"
+        }`}
+      />
+    ));
+  };
+
+  const getExperienceLevel = (years) => {
+    if (years >= 15) return { label: "Senior Expert", color: "text-primary" };
+    if (years >= 10) return { label: "Expert", color: "text-success" };
+    if (years >= 5) return { label: "Experienced", color: "text-info" };
+    return { label: "Practitioner", color: "text-warning" };
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <div className="max-w-7xl mx-auto p-6">
+        {/* Header */}
+        <motion.div
+          className="text-center mb-8"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-2xl mb-4">
+            <Stethoscope className="w-8 h-8 text-primary" />
+          </div>
+          <h1 className="text-4xl md:text-5xl font-bold text-foreground mb-3">
+            Find Your Perfect Dentist
+          </h1>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Browse our directory of qualified dental professionals across
+            multiple clinic locations. Find specialists who match your needs and
+            book appointments directly.
+          </p>
+        </motion.div>
+
+        {/* Search and Controls */}
+        <motion.div
+          className="mb-8 space-y-6"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          {/* Search Bar and Preferred Location */}
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search dentists, specializations, or clinics..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-12 pr-4 py-4 border-2 border-border bg-background text-foreground rounded-xl focus:border-primary focus:outline-none transition-colors text-lg"
+              />
+            </div>
+            <div className="relative min-w-[200px]">
+              <MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <select
+                value={preferredLocation}
+                onChange={(e) => setPreferredLocation(e.target.value)}
+                className="w-full pl-12 pr-10 py-4 border-2 border-border bg-background text-foreground rounded-xl focus:border-primary focus:outline-none transition-colors appearance-none text-lg"
+              >
+                {availableLocations.map((location) => (
+                  <option
+                    key={location}
+                    value={location === "Any Location" ? "" : location}
+                  >
+                    {location}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Controls Row */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* Sort Dropdown */}
+              <div className="relative">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="pl-4 pr-10 py-3 border-2 border-border bg-background text-foreground rounded-xl focus:border-primary focus:outline-none appearance-none min-w-[200px]"
+                >
+                  <option value="recommended">🏆 Recommended</option>
+                  <option value="experience">👨‍⚕️ Most Experienced</option>
+                  <option value="rating">⭐ Highest Rated</option>
+                  <option value="reviews">💬 Most Reviewed</option>
+                  <option value="fee-low">💰 Fee: Low to High</option>
+                  <option value="fee-high">💰 Fee: High to Low</option>
+                  <option value="alphabetical">🔤 A-Z</option>
+                </select>
+                <ArrowUpDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              </div>
+
+              {/* Filters Button */}
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-2 px-4 py-3 rounded-xl font-medium transition-all duration-200 border-2 ${
+                  showFilters ||
+                  Object.values(filters).some((v) =>
+                    Array.isArray(v)
+                      ? v.length > 0
+                      : v !== false && v !== 0 && v !== "all"
+                  )
+                    ? "bg-primary/10 text-primary border-primary/20"
+                    : "bg-card text-foreground border-border hover:border-primary/50"
+                }`}
+              >
+                <Filter className="w-4 h-4" />
+                <span>Filters</span>
+                {Object.values(filters).some((v) =>
+                  Array.isArray(v)
+                    ? v.length > 0
+                    : v !== false && v !== 0 && v !== "all"
+                ) && (
+                  <span className="bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full">
+                    {Object.values(filters).reduce((acc, v) => {
+                      if (Array.isArray(v)) return acc + v.length;
+                      if (v !== false && v !== 0 && v !== "all") return acc + 1;
+                      return acc;
+                    }, 0)}
+                  </span>
+                )}
+              </button>
+
+              {/* View Mode Toggle */}
+              <div className="flex items-center border-2 border-border rounded-xl overflow-hidden">
+                <button
+                  onClick={() => setViewMode("grid")}
+                  className={`px-3 py-3 transition-colors ${
+                    viewMode === "grid"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Grid3X3 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={`px-3 py-3 transition-colors ${
+                    viewMode === "list"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <List className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Results Count */}
+            <div className="flex items-center gap-6 text-sm">
+              <span className="text-muted-foreground">
+                {filteredDentists.length} dentist
+                {filteredDentists.length !== 1 ? "s" : ""} found
+              </span>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 bg-success rounded-full"></div>
+                  <span className="text-muted-foreground">Available</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-info" />
+                  <span className="text-muted-foreground">
+                    Previously Visited
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Advanced Filters Panel */}
+          <AnimatePresence>
+            {showFilters && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="bg-card border-2 border-border rounded-2xl p-6 space-y-6"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {/* Specializations Filter */}
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-3">
+                      Specializations
+                    </label>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {availableSpecializations.map((spec) => (
+                        <label
+                          key={spec}
+                          className="flex items-center space-x-2 cursor-pointer hover:bg-muted/30 p-2 rounded"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={filters.specializations.includes(spec)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setFilters((prev) => ({
+                                  ...prev,
+                                  specializations: [
+                                    ...prev.specializations,
+                                    spec,
+                                  ],
+                                }));
+                              } else {
+                                setFilters((prev) => ({
+                                  ...prev,
+                                  specializations: prev.specializations.filter(
+                                    (s) => s !== spec
+                                  ),
+                                }));
+                              }
+                            }}
+                            className="w-4 h-4 text-primary rounded border-border focus:ring-2 focus:ring-primary/20"
+                          />
+                          <span className="text-sm text-foreground">
+                            {spec}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Experience & Rating */}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-foreground mb-3">
+                        Minimum Experience
+                      </label>
+                      <select
+                        value={filters.experience}
+                        onChange={(e) =>
+                          setFilters((prev) => ({
+                            ...prev,
+                            experience: parseInt(e.target.value),
+                          }))
+                        }
+                        className="w-full px-3 py-2 border border-border bg-background text-foreground rounded-lg focus:border-primary focus:outline-none"
+                      >
+                        <option value={0}>Any Experience</option>
+                        <option value={5}>5+ Years</option>
+                        <option value={10}>10+ Years</option>
+                        <option value={15}>15+ Years</option>
+                        <option value={20}>20+ Years</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-foreground mb-3">
+                        Minimum Rating
+                      </label>
+                      <select
+                        value={filters.rating}
+                        onChange={(e) =>
+                          setFilters((prev) => ({
+                            ...prev,
+                            rating: parseFloat(e.target.value),
+                          }))
+                        }
+                        className="w-full px-3 py-2 border border-border bg-background text-foreground rounded-lg focus:border-primary focus:outline-none"
+                      >
+                        <option value={0}>Any Rating</option>
+                        <option value={4.0}>4.0+ Stars</option>
+                        <option value={4.5}>4.5+ Stars</option>
+                        <option value={4.8}>4.8+ Stars</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Consultation Fee */}
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-3">
+                      Consultation Fee
+                    </label>
+                    <select
+                      value={filters.consultationFee}
+                      onChange={(e) =>
+                        setFilters((prev) => ({
+                          ...prev,
+                          consultationFee: e.target.value,
+                        }))
+                      }
+                      className="w-full px-3 py-2 border border-border bg-background text-foreground rounded-lg focus:border-primary focus:outline-none"
+                    >
+                      <option value="all">Any Fee Range</option>
+                      <option value="budget">Budget (Under ₱2,500)</option>
+                      <option value="moderate">
+                        Moderate (₱2,500 - ₱3,500)
+                      </option>
+                      <option value="premium">Premium (Above ₱3,500)</option>
+                    </select>
+                  </div>
+
+                  {/* Advanced Options */}
+                  <div>
+                    <label className="block text-sm font-semibold text-foreground mb-3">
+                      Advanced Options
+                    </label>
+                    <div className="space-y-2">
+                      {[
+                        {
+                          key: "availability",
+                          label: "Available Now",
+                          icon: Clock,
+                        },
+                        {
+                          key: "hasReviewed",
+                          label: "Previously Visited",
+                          icon: UserCheck,
+                        },
+                        {
+                          key: "certifications",
+                          label: "Has Certifications",
+                          icon: Badge,
+                        },
+                        { key: "awards", label: "Has Awards", icon: Trophy },
+                      ].map(({ key, label, icon: Icon }) => (
+                        <label
+                          key={key}
+                          className="flex items-center space-x-2 cursor-pointer hover:bg-muted/30 p-2 rounded"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={filters[key]}
+                            onChange={(e) =>
+                              setFilters((prev) => ({
+                                ...prev,
+                                [key]: e.target.checked,
+                              }))
+                            }
+                            className="w-4 h-4 text-primary rounded border-border focus:ring-2 focus:ring-primary/20"
+                          />
+                          <Icon className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-sm text-foreground">
+                            {label}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-4 border-t border-border">
+                  <button
+                    onClick={() =>
+                      setFilters({
+                        specializations: [],
+                        experience: 0,
+                        rating: 0,
+                        consultationFee: "all",
+                        availability: false,
+                        hasReviewed: false,
+                        certifications: false,
+                        awards: false,
+                      })
+                    }
+                    className="text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    Clear All Filters
+                  </button>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowFilters(false)}
+                      className="px-6 py-2 border border-border text-foreground rounded-lg hover:bg-muted/50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => setShowFilters(false)}
+                      className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+                    >
+                      Apply Filters
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+
+        {/* Dentists Display */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mb-6"></div>
+              <p className="text-muted-foreground text-lg">
+                Loading dentists...
+              </p>
+            </div>
+          ) : filteredDentists.length === 0 ? (
+            <div className="text-center py-20">
+              <Stethoscope className="w-20 h-20 text-muted-foreground mx-auto mb-6 opacity-50" />
+              <h3 className="text-2xl font-semibold text-foreground mb-3">
+                No Dentists Found
+              </h3>
+              <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                Try adjusting your search criteria or filters to find dentists
+                that match your needs.
+              </p>
+              <button
+                onClick={() => {
+                  setSearchQuery("");
+                  setPreferredLocation("");
+                  setFilters({
+                    specializations: [],
+                    experience: 0,
+                    rating: 0,
+                    consultationFee: "all",
+                    availability: false,
+                    hasReviewed: false,
+                    certifications: false,
+                    awards: false,
+                  });
+                }}
+                className="px-8 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 font-medium"
+              >
+                Clear All Filters
+              </button>
+            </div>
+          ) : (
+            <div
+              className={
+                viewMode === "grid"
+                  ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                  : "space-y-6"
+              }
+            >
+              {filteredDentists.map((dentist, index) => (
+                <motion.div
+                  key={dentist.id}
+                  className={`bg-card border-2 border-border rounded-2xl overflow-hidden shadow-lg hover:shadow-xl hover:border-primary/20 transition-all duration-300 cursor-pointer group ${
+                    viewMode === "list" ? "flex" : ""
+                  }`}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  onClick={() => openDentistModal(dentist)}
+                >
+                  {/* Doctor Image */}
+                  <div
+                    className={`relative overflow-hidden ${
+                      viewMode === "list" ? "w-80 h-72" : "h-56"
+                    }`}
+                  >
+                    <img
+                      src={dentist.profile_image_url}
+                      alt={dentist.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute top-3 left-3 flex items-center gap-2 flex-wrap">
+                      <span
+                        className={`px-2 py-1 text-white text-xs font-medium rounded-full backdrop-blur-sm ${
+                          dentist.is_available ? "bg-success/90" : "bg-muted/90"
+                        }`}
+                      >
+                        {dentist.is_available ? "Available" : "Busy"}
+                      </span>
+                      {sortBy === "recommended" && index < 5 && (
+                        <span className="px-2 py-1 bg-primary/90 text-white text-xs font-medium rounded-full backdrop-blur-sm flex items-center gap-1">
+                          <Award className="w-3 h-3" />
+                          Top Pick
+                        </span>
+                      )}
+                      {userInteractions.has(dentist.id) && (
+                        <span className="px-2 py-1 bg-info/90 text-white text-xs font-medium rounded-full backdrop-blur-sm flex items-center gap-1">
+                          <UserCheck className="w-3 h-3" />
+                          Visited
+                        </span>
+                      )}
+                    </div>
+                    <div className="absolute top-3 right-3 flex gap-2">
+                      <span className="px-2 py-1 bg-black/70 text-white text-xs font-medium rounded-full backdrop-blur-sm">
+                        ₱{dentist.consultation_fee?.toLocaleString()}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleSavedDentist(dentist.id);
+                        }}
+                        className="p-1.5 bg-black/70 hover:bg-black/80 text-white rounded-full backdrop-blur-sm transition-colors"
+                      >
+                        {savedDentists.has(dentist.id) ? (
+                          <BookmarkCheck className="w-4 h-4 text-yellow-400" />
+                        ) : (
+                          <Bookmark className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                    <div className="absolute bottom-3 left-3">
+                      <span className="px-3 py-1 bg-black/70 text-white text-xs font-medium rounded-full backdrop-blur-sm">
+                        {getExperienceLevel(dentist.experience_years).label}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Doctor Info */}
+                  <div className="p-6 space-y-4 flex-1">
+                    <div>
+                      <h3 className="font-bold text-foreground text-xl mb-2 group-hover:text-primary transition-colors">
+                        {dentist.name}
+                      </h3>
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="flex items-center gap-1">
+                          {renderStars(dentist.rating)}
+                        </div>
+                        <span className="text-sm font-medium text-foreground">
+                          {dentist.rating}
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          ({dentist.total_reviews} reviews)
+                        </span>
+                        <span className="text-sm text-success font-medium">
+                          {dentist.patient_satisfaction}% satisfaction
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-primary font-medium mb-3">
+                        <Stethoscope className="w-4 h-4" />
+                        <span>{dentist.specialization}</span>
+                      </div>
+                    </div>
+
+                    {/* Quick Stats Grid */}
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="flex items-center gap-2">
+                        <GraduationCap className="w-4 h-4 text-primary flex-shrink-0" />
+                        <span className="text-muted-foreground">
+                          {dentist.experience_years} years exp.
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-primary flex-shrink-0" />
+                        <span className="text-muted-foreground">
+                          {dentist.total_patients?.toLocaleString()} patients
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-primary flex-shrink-0" />
+                        <span className="text-muted-foreground">
+                          {dentist.clinic_locations?.length} location
+                          {dentist.clinic_locations?.length !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-primary flex-shrink-0" />
+                        <span className="text-muted-foreground">
+                          {dentist.next_available}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Clinic Locations Preview */}
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium text-foreground">
+                        Practice Locations:
+                      </h4>
+                      {dentist.clinic_locations
+                        ?.slice(0, 2)
+                        .map((clinic, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-2 text-sm text-muted-foreground"
+                          >
+                            <MapPin className="w-3 h-3 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-foreground truncate">
+                                {clinic.clinic_name}
+                              </div>
+                              <div className="text-xs truncate">
+                                {clinic.address} • {clinic.schedule}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      {dentist.clinic_locations?.length > 2 && (
+                        <div className="text-xs text-muted-foreground">
+                          +{dentist.clinic_locations.length - 2} more locations
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Awards & Certifications */}
+                    <div className="flex items-center gap-4 text-sm">
+                      {dentist.awards?.length > 0 && (
+                        <div className="flex items-center gap-1 text-warning">
+                          <Trophy className="w-4 h-4" />
+                          <span>
+                            {dentist.awards.length} award
+                            {dentist.awards.length !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+                      )}
+                      {dentist.certifications &&
+                        Object.keys(dentist.certifications).length > 0 && (
+                          <div className="flex items-center gap-1 text-info">
+                            <Badge className="w-4 h-4" />
+                            <span>
+                              {Object.keys(dentist.certifications).length} cert
+                              {Object.keys(dentist.certifications).length !== 1
+                                ? "s"
+                                : ""}
+                            </span>
+                          </div>
+                        )}
+                    </div>
+
+                    {/* Bio Preview */}
+                    <div className="text-sm text-muted-foreground">
+                      {dentist.bio?.substring(0, 100)}
+                      {dentist.bio?.length > 100 && "..."}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3 pt-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(`tel:${dentist.phone}`, "_self");
+                        }}
+                        className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-border text-foreground rounded-xl hover:border-primary/50 hover:bg-muted/50 transition-colors font-medium"
+                      >
+                        <Phone className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(`mailto:${dentist.email}`, "_self");
+                        }}
+                        className="flex items-center justify-center gap-2 px-4 py-3 bg-secondary text-secondary-foreground rounded-xl hover:bg-secondary/80 transition-colors font-medium"
+                      >
+                        <Mail className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          bookAppointment(dentist);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors font-medium"
+                      >
+                        <Calendar className="w-4 h-4" />
+                        Book Now
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      </div>
+
+      {/* Dentist Details Modal */}
+      <AnimatePresence>
+        {showDentistModal && selectedDentist && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowDentistModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative bg-card border border-border rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden"
+            >
+              {/* Modal Header */}
+              <div className="relative h-64 overflow-hidden">
+                <img
+                  src={selectedDentist.profile_image_url}
+                  alt={selectedDentist.name}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                <button
+                  onClick={() => setShowDentistModal(false)}
+                  className="absolute top-4 right-4 p-3 bg-black/20 hover:bg-black/40 text-white rounded-full backdrop-blur-sm transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+                <div className="absolute bottom-6 left-6 text-white">
+                  <h2 className="text-3xl font-bold mb-2">
+                    {selectedDentist.name}
+                  </h2>
+                  <div className="flex items-center gap-4 mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="flex">
+                        {renderStars(selectedDentist.rating)}
+                      </div>
+                      <span className="text-lg font-medium">
+                        {selectedDentist.rating}
+                      </span>
+                      <span className="text-sm opacity-90">
+                        ({selectedDentist.total_reviews} reviews)
+                      </span>
+                    </div>
+                    <span className="text-sm opacity-90">
+                      {selectedDentist.patient_satisfaction}% patient
+                      satisfaction
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span
+                      className={`px-3 py-1 text-white text-sm font-medium rounded-full backdrop-blur-sm ${
+                        selectedDentist.is_available
+                          ? "bg-success/90"
+                          : "bg-muted/90"
+                      }`}
+                    >
+                      {selectedDentist.is_available
+                        ? "Available for Appointments"
+                        : "Currently Busy"}
+                    </span>
+                    <span className="text-sm opacity-90 flex items-center gap-2">
+                      <DollarSign className="w-4 h-4" />₱
+                      {selectedDentist.consultation_fee?.toLocaleString()}{" "}
+                      consultation
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-8 max-h-[calc(90vh-256px)] overflow-y-auto">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                  {/* Main Content */}
+                  <div className="lg:col-span-2 space-y-8">
+                    {/* Quick Info Grid */}
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="flex items-start gap-3">
+                        <Stethoscope className="w-5 h-5 text-primary flex-shrink-0 mt-1" />
+                        <div>
+                          <div className="font-medium text-foreground">
+                            Specialization
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {selectedDentist.specialization}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <GraduationCap className="w-5 h-5 text-primary flex-shrink-0 mt-1" />
+                        <div>
+                          <div className="font-medium text-foreground">
+                            Experience
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {selectedDentist.experience_years} years practicing
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <Phone className="w-5 h-5 text-primary flex-shrink-0 mt-1" />
+                        <div>
+                          <div className="font-medium text-foreground">
+                            Phone
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {selectedDentist.phone}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <Mail className="w-5 h-5 text-primary flex-shrink-0 mt-1" />
+                        <div>
+                          <div className="font-medium text-foreground">
+                            Email
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {selectedDentist.email}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* About */}
+                    <div>
+                      <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                        <User className="w-5 h-5" />
+                        About Dr. {selectedDentist.name.split(" ").pop()}
+                      </h3>
+                      <p className="text-foreground leading-relaxed">
+                        {selectedDentist.bio}
+                      </p>
+                    </div>
+
+                    {/* Education */}
+                    <div>
+                      <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                        <GraduationCap className="w-5 h-5" />
+                        Education & Training
+                      </h3>
+                      <div className="bg-muted/30 rounded-xl p-4">
+                        <p className="text-foreground leading-relaxed">
+                          {selectedDentist.education}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Certifications */}
+                    {selectedDentist.certifications &&
+                      Object.keys(selectedDentist.certifications).length >
+                        0 && (
+                        <div>
+                          <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                            <Badge className="w-5 h-5" />
+                            Certifications
+                          </h3>
+                          <div className="grid gap-3">
+                            {Object.entries(selectedDentist.certifications).map(
+                              ([cert, year]) => (
+                                <div
+                                  key={cert}
+                                  className="flex items-center justify-between p-4 bg-primary/5 border border-primary/10 rounded-xl"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <CheckCircle2 className="w-5 h-5 text-primary" />
+                                    <span className="font-medium text-foreground">
+                                      {cert}
+                                    </span>
+                                  </div>
+                                  <span className="text-sm text-primary font-medium">
+                                    {year}
+                                  </span>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                    {/* Awards */}
+                    {selectedDentist.awards?.length > 0 && (
+                      <div>
+                        <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                          <Trophy className="w-5 h-5" />
+                          Awards & Recognition
+                        </h3>
+                        <div className="grid gap-3">
+                          {selectedDentist.awards.map((award, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center gap-3 p-4 bg-warning/5 border border-warning/10 rounded-xl"
+                            >
+                              <Award className="w-5 h-5 text-warning" />
+                              <span className="font-medium text-foreground">
+                                {award}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Practice Locations */}
+                    <div>
+                      <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                        <Building2 className="w-5 h-5" />
+                        Practice Locations
+                      </h3>
+                      <div className="grid gap-4">
+                        {selectedDentist.clinic_locations?.map(
+                          (clinic, index) => (
+                            <div
+                              key={index}
+                              className="p-4 bg-muted/30 rounded-xl hover:bg-muted/50 transition-colors"
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <h4 className="font-bold text-foreground text-lg mb-2">
+                                    {clinic.clinic_name}
+                                  </h4>
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                                    <MapPin className="w-4 h-4" />
+                                    <span>{clinic.address}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <Clock className="w-4 h-4" />
+                                    <span>{clinic.schedule}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sidebar */}
+                  <div className="space-y-6">
+                    {/* Quick Stats */}
+                    <div>
+                      <h3 className="text-lg font-bold text-foreground mb-4">
+                        Quick Stats
+                      </h3>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                          <span className="text-sm text-muted-foreground">
+                            Total Patients
+                          </span>
+                          <span className="font-bold text-primary">
+                            {selectedDentist.total_patients?.toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                          <span className="text-sm text-muted-foreground">
+                            Years Practicing
+                          </span>
+                          <span className="font-bold text-primary">
+                            {selectedDentist.experience_years} years
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                          <span className="text-sm text-muted-foreground">
+                            Patient Satisfaction
+                          </span>
+                          <span className="font-bold text-success">
+                            {selectedDentist.patient_satisfaction}%
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                          <span className="text-sm text-muted-foreground">
+                            Consultation Fee
+                          </span>
+                          <span className="font-bold text-primary">
+                            ₱
+                            {selectedDentist.consultation_fee?.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Actions */}
+                    <div className="space-y-3">
+                      <button
+                        onClick={() =>
+                          window.open(`tel:${selectedDentist.phone}`, "_self")
+                        }
+                        className="w-full flex items-center justify-center gap-3 px-4 py-4 bg-secondary text-secondary-foreground rounded-xl hover:bg-secondary/80 transition-colors font-medium"
+                      >
+                        <Phone className="w-5 h-5" />
+                        Call Now
+                      </button>
+                      <button
+                        onClick={() =>
+                          window.open(
+                            `mailto:${selectedDentist.email}`,
+                            "_self"
+                          )
+                        }
+                        className="w-full flex items-center justify-center gap-3 px-4 py-4 border-2 border-border text-foreground rounded-xl hover:border-primary/50 hover:bg-muted/50 transition-colors font-medium"
+                      >
+                        <Mail className="w-5 h-5" />
+                        Send Email
+                      </button>
+                      <button
+                        onClick={() => bookAppointment(selectedDentist)}
+                        className="w-full flex items-center justify-center gap-3 px-4 py-4 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors font-medium text-lg"
+                      >
+                        <Calendar className="w-5 h-5" />
+                        Book Appointment
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default Dentist;

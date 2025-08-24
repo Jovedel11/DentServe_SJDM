@@ -1,15 +1,15 @@
 import React from "react";
 import { ThemeProvider } from "@/core/contexts/ThemeProvider";
 import { Outlet } from "react-router-dom";
-import Dashboard from "@/app/staff/pages/Dashboard";
+import { SDashboardLayout } from "../components/layout/staff-dashboard-layout";
 
 const StaffLayout = () => {
   return (
     <ThemeProvider defaultTheme="light" storageKey="dentserve-theme">
-      <div className="min-h-screen bg-background text-foreground transition-colors duration-200">
-        <Dashboard>
+      <div className="min-h-screen bg-[#F1FAEE]">
+        <SDashboardLayout>
           <Outlet />
-        </Dashboard>
+        </SDashboardLayout>
       </div>
     </ThemeProvider>
   );

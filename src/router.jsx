@@ -35,7 +35,9 @@ const ResetPassword = lazy(() => import("./auth/components/ResetPassword"));
 const CompleteProfile = lazy(() => import("./auth/components/CompleteProfile"));
 const StaffLayout = lazy(() => import("./app/staff/layout/StaffLayout"));
 const AdminLayout = lazy(() => import("./app/admin/layout/AdminLayout"));
-const Dashboard = lazy(() => import("./app/patient/pages/Dashboard"));
+const PatientDashboard = lazy(() =>
+  import("./app/patient/pages/PatientDashboard")
+);
 const BookAppointment = lazy(() =>
   import("./app/patient/pages/BookAppointment")
 );
@@ -54,6 +56,23 @@ const PatientFeedback = lazy(() =>
   import("@/app/patient/pages/PatientFeedback")
 );
 const MapView = lazy(() => import("@/app/patient/pages/MapView"));
+const ClinicList = lazy(() => import("@/app/patient/pages/AllClinics"));
+const Dentist = lazy(() => import("@/app/patient/pages/Dentist"));
+const StaffDashboard = lazy(() => import("@/app/staff/pages/StaffDashboard"));
+const ManageAppointments = lazy(() =>
+  import("@/app/staff/pages/ManageAppointments")
+);
+const ClinicAnalytics = lazy(() => import("@/app/staff/pages/ClinicAnalytics"));
+const ClinicTeam = lazy(() => import("@/app/staff/pages/ClinicTeam"));
+const FeedbackManagement = lazy(() =>
+  import("@/app/staff/pages/FeedbackManagement")
+);
+const ClinicSettings = lazy(() => import("@/app/staff/pages/ClinicSettings"));
+const Help = lazy(() => import("@/app/staff/pages/Help"));
+const AdminDashboard = lazy(() => import("@/app/admin/pages/AdminDashboard"));
+const UIManagement = lazy(() => import("@/app/admin/pages/UIManagement"));
+const UserManagement = lazy(() => import("@/app/admin/pages/UserManagement"));
+const UserRecords = lazy(() => import("@/app/admin/pages/UserRecords"));
 
 export const router = createBrowserRouter([
   {
@@ -94,7 +113,7 @@ export const router = createBrowserRouter([
             {withSuspense(PatientLayout)}
           </AuthGuard>
         ),
-        children: [{ index: true, element: withSuspense(Dashboard) }],
+        children: [{ index: true, element: withSuspense(PatientDashboard) }],
       },
       {
         path: "/patient/appointments",
@@ -111,15 +130,6 @@ export const router = createBrowserRouter([
         ],
       },
       {
-        path: "/patient/dentists",
-        element: (
-          <AuthGuard requiredRole="patient">
-            {withSuspense(PatientLayout)}
-          </AuthGuard>
-        ),
-        children: [],
-      },
-      {
         path: "/patient/clinics",
         element: (
           <AuthGuard requiredRole="patient">
@@ -129,7 +139,17 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: withSuspense(MapView) },
           { path: "map", element: withSuspense(MapView) },
+          { path: "list", element: withSuspense(ClinicList) },
         ],
+      },
+      {
+        path: "/patient/dentists",
+        element: (
+          <AuthGuard requiredRole="patient">
+            {withSuspense(PatientLayout)}
+          </AuthGuard>
+        ),
+        children: [{ index: true, element: withSuspense(Dentist) }],
       },
       {
         path: "/patient/feedbacks",
@@ -174,6 +194,61 @@ export const router = createBrowserRouter([
             {withSuspense(StaffLayout)}
           </AuthGuard>
         ),
+        children: [{ index: true, element: withSuspense(StaffDashboard) }],
+      },
+      {
+        path: "/staff/manage-appointments",
+        element: (
+          <AuthGuard requiredRole="staff">
+            {withSuspense(StaffLayout)}
+          </AuthGuard>
+        ),
+        children: [{ index: true, element: withSuspense(ManageAppointments) }],
+      },
+      {
+        path: "/staff/clinic-analytics",
+        element: (
+          <AuthGuard requiredRole="staff">
+            {withSuspense(StaffLayout)}
+          </AuthGuard>
+        ),
+        children: [{ index: true, element: withSuspense(ClinicAnalytics) }],
+      },
+      {
+        path: "/staff/team",
+        element: (
+          <AuthGuard requiredRole="staff">
+            {withSuspense(StaffLayout)}
+          </AuthGuard>
+        ),
+        children: [{ index: true, element: withSuspense(ClinicTeam) }],
+      },
+      {
+        path: "/staff/feedbacks",
+        element: (
+          <AuthGuard requiredRole="staff">
+            {withSuspense(StaffLayout)}
+          </AuthGuard>
+        ),
+        children: [{ index: true, element: withSuspense(FeedbackManagement) }],
+      },
+      {
+        path: "/staff/settings",
+        element: (
+          <AuthGuard requiredRole="staff">
+            {withSuspense(StaffLayout)}
+          </AuthGuard>
+        ),
+        children: [{ index: true, element: withSuspense(ClinicSettings) }],
+      },
+      {
+        path: "/staff/help",
+        element: (
+          <AuthGuard requiredRole="staff">
+            {withSuspense(StaffLayout)}
+          </AuthGuard>
+        ),
+        children: [{ index: true, element: withSuspense(Help) }],
       },
       {
         path: "/admin/dashboard",
@@ -182,6 +257,31 @@ export const router = createBrowserRouter([
             {withSuspense(AdminLayout)}
           </AuthGuard>
         ),
+        children: [{ index: true, element: withSuspense(AdminDashboard) }],
+      },
+      {
+        path: "/admin/ui-management",
+        element: (
+          <AuthGuard requiredRole="admin">
+            {withSuspense(AdminLayout)}
+          </AuthGuard>
+        ),
+        children: [{ index: true, element: withSuspense(UIManagement) }],
+      },
+      {
+        path: "/admin/users-management",
+        element: (
+          <AuthGuard requiredRole="admin">
+            {withSuspense(AdminLayout)}
+          </AuthGuard>
+        ),
+        children: [
+          { index: true, element: withSuspense(UserManagement) },
+          {
+            path: "/admin/users-management/records",
+            element: withSuspense(UserRecords),
+          },
+        ],
       },
 
       // Utility routes
