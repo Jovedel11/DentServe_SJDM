@@ -6,6 +6,7 @@ import {
   SidebarMenuItem,
 } from "@/core/components/ui/sidebar";
 import { Badge } from "@/core/components/ui/badge";
+import { NavLink } from "react-router-dom";
 
 export function NavProjects({ projects, title = "Quick Actions" }) {
   return (
@@ -20,7 +21,14 @@ export function NavProjects({ projects, title = "Quick Actions" }) {
               asChild
               className="hover:bg-sidebar-accent rounded-lg transition-all duration-200 group-hover:shadow-sm"
             >
-              <a href={item.url} className="flex items-center justify-between">
+              <NavLink
+                to={item.url}
+                className={({ isActive }) =>
+                  `flex items-center justify-between ${
+                    isActive ? "bg-sidebar-accent shadow-sm" : ""
+                  }`
+                }
+              >
                 <div className="flex items-center gap-3">
                   <item.icon className="h-4 w-4 text-sidebar-foreground/70" />
                   <span className="font-medium text-sidebar-foreground">
@@ -35,7 +43,7 @@ export function NavProjects({ projects, title = "Quick Actions" }) {
                     {item.badge}
                   </Badge>
                 )}
-              </a>
+              </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
         ))}

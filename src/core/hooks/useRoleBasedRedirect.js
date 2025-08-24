@@ -10,13 +10,11 @@ export const useRoleBasedRedirect = () => {
   const redirectPath = useRedirectPath();
 
   useEffect(() => {
-    if (loading) return; // wait for auth state
-    if (!authStatus) return; // walang authStatus info
+    if (loading) return; 
+    if (!authStatus) return; 
 
-    // 🔹 Case 1: Not logged in → do nothing (can access public pages)
     if (!user) return;
 
-    // 🔹 Case 2: Logged in but cannot access app yet (verify/profile incomplete)
     if (!authStatus.can_access_app) {
       if (location.pathname !== redirectPath) {
         navigate(redirectPath, { replace: true });
@@ -27,7 +25,6 @@ export const useRoleBasedRedirect = () => {
     // 🔹 Case 3: Logged in & verified
     const entryRoutes = ["/", "/about", "/services", "/contact", "/login", "/signup", "/forgot-password"];
     if (entryRoutes.includes(location.pathname)) {
-      // If nasa public routes pero authenticated, redirect to role home
       const roleHome = {
         patient: "/patient/dashboard",
         staff: "/staff/dashboard",
@@ -40,7 +37,6 @@ export const useRoleBasedRedirect = () => {
       }
     }
 
-    // 🔹 Else: already in a protected route (e.g. /patient/appointments) → do nothing
   }, [
     user,
     userRole,

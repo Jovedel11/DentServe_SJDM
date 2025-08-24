@@ -218,4 +218,76 @@ export const authService = {
       return { success: false, error: errorMsg }
     }
   },
+
+  // get user profile
+  async getCompleteProfile(userId = null){
+    try {
+
+      const { data, error } = await supabase.rpc('get_user_complete_profile', { p_user_id: userId });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      return { success: true, data }
+    } catch (error) {
+      return { success: false, error: error.message || 'Failed to fetch complete profile'}
+    }
+  },
+
+  // update user profile
+  async updateProfile(profileData, roleSpecificData = {}, userId = null) {
+    try {
+      const { data, error } = await supabase.rpc('update_user_profile', {
+        p_user_id: userId,
+        p_profile_data: profileData,
+        p_role_specific_data: roleSpecificData
+      })
+
+      if (error) throw error
+      if (!data?.success) {
+        throw new Error(data?.error || 'Profile update failed')
+      }
+      
+      return { success: true, data }
+    } catch (error) {
+      return { success: false, error: error.message || 'Profile update failed'}
+    }
+  },
+
+  // dashboard data
+  async getDashboardData(userId = null) {
+    try {
+      const { data, error } = await supabase.rpc('get_dashboard_data', { p_user_id: userId })
+
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      
+      return { success: true, data }
+    } catch (error) {
+      return { success: false, error: error.message || 'Failed to fetch dashboard data' }
+    }
+  },
+
+  // user list
+  async getUserList(filter = {}) {
+    const { userType = null, clinicId = null, searchTerm = null, limit = 50, offset = 0 } = filter
+
+    try {
+      const { data, error } = await supabase.rpc('get_user_list', {
+        p_user_type: userType,
+        p_clinic_id: clinicId,
+        p_search_term: searchTerm,
+        p_limit: limit,
+        p_offset: offset
+      })
+
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+
+      ret
+    } catch (error) {
+      
+    }
+
+  }
 }

@@ -53,3 +53,5 @@ const UnauthorizedPage = () => {
     </div>
   );
 };
+
+export default UnauthorizedPage;

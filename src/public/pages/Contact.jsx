@@ -171,7 +171,7 @@ const Contact = () => {
             <h3>Patient Inquiry Form</h3>
             <p>Have questions? Our team will get back to you within 24 hours</p>
 
-            <form className={styles.patientFormContent}>
+            <form className={styles.patientFormContent} onSubmit={handleSubmit}>
               <div className={styles.formGroup}>
                 <div className={styles.formField}>
                   <label htmlFor="patientName">Full Name</label>
@@ -179,6 +179,7 @@ const Contact = () => {
                     id="patientName"
                     type="text"
                     placeholder="Your full name"
+                    autoComplete="name"
                   />
                 </div>
                 <div className={styles.formField}>
@@ -186,6 +187,7 @@ const Contact = () => {
                   <input
                     id="patientEmail"
                     type="email"
+                    autoComplete="email"
                     placeholder="your.email@example.com"
                   />
                 </div>
@@ -196,6 +198,7 @@ const Contact = () => {
                 <input
                   id="patientPhone"
                   type="tel"
+                  autoComplete="tel"
                   placeholder="(123) 456-7890"
                 />
               </div>

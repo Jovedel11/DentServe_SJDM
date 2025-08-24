@@ -1,8 +1,10 @@
-import { useState, useActionState } from "react";
+import { useState, useActionState, useEffect } from "react";
 import { useAuth } from "./context/AuthProvider";
 import { useRecaptcha } from "@/auth/hooks/useRecaptcha";
 import { validateSignupForm } from "@/utils/validation/auth-validation";
 import SvgDental from "@/core/components/svgDental";
+import Loader from "@/core/components/Loader";
+import { Eye, EyeOff, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 
 const Signup = () => {
   const [formData, setFormData] = useState({
@@ -15,12 +17,26 @@ const Signup = () => {
   });
   const [validationErrors, setValidationErrors] = useState({});
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState(0);
 
   const { signUpUser, loading, error } = useAuth();
   const { executeRecaptcha, isLoaded } = useRecaptcha();
 
+  // Password strength checker
+  const checkPasswordStrength = (password) => {
+    let strength = 0;
+    if (password.length >= 8) strength++;
+    if (/[A-Z]/.test(password)) strength++;
+    if (/[0-9]/.test(password)) strength++;
+    if (/[^A-Za-z0-9]/.test(password)) strength++;
+    return strength;
+  };
+
   // useActionState for form handling
-  const [state, formAction] = useActionState(
+  const [state, formAction, isPending] = useActionState(
     async (prevState, formDataAction) => {
       // Client-side validation
       const validation = validateSignupForm(formData);
@@ -66,6 +82,14 @@ const Signup = () => {
     null
   );
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -73,11 +97,20 @@ const Signup = () => {
       [name]: value,
     }));
 
+    // Check password strength
+    if (name === "password") {
+      setPasswordStrength(checkPasswordStrength(value));
+    }
+
     // Clear validation error when user starts typing
     if (validationErrors[name]) {
       setValidationErrors((prev) => ({ ...prev, [name]: null }));
     }
   };
+
+  if (isLoading) {
+    return <Loader message={"Loading... Please wait."} />;
+  }
 
   if (showEmailModal) {
     return (
@@ -170,6 +203,7 @@ const Signup = () => {
                     type="text"
                     name="first_name"
                     placeholder="First name"
+                    autoComplete="given-name"
                     value={formData.first_name}
                     onChange={handleInputChange}
                     className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
@@ -190,6 +224,7 @@ const Signup = () => {
                     type="text"
                     name="last_name"
                     placeholder="Last name"
+                    autoComplete="family-name"
                     value={formData.last_name}
                     onChange={handleInputChange}
                     className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
@@ -213,6 +248,7 @@ const Signup = () => {
                   type="email"
                   name="email"
                   placeholder="Email address"
+                  autoComplete="email"
                   value={formData.email}
                   onChange={handleInputChange}
                   className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
@@ -234,6 +270,7 @@ const Signup = () => {
                 <input
                   type="tel"
                   name="phone"
+                  autoComplete="tel"
                   placeholder="Phone number"
                   value={formData.phone}
                   onChange={handleInputChange}
@@ -252,42 +289,163 @@ const Signup = () => {
               </div>
 
               {/* Password */}
-              <div className="space-y-1">
-                <input
-                  type="password"
-                  name="password"
-                  placeholder="Password (min 8 characters)"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
-                    validationErrors.password
-                      ? "border-red-500 bg-red-50"
-                      : "border-gray-300"
-                  }`}
-                  required
-                />
-                {validationErrors.password && (
-                  <p className="text-red-500 text-sm mt-1">
-                    {validationErrors.password}
-                  </p>
+              <div className="space-y-2">
+                <div className="space-y-1 relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    placeholder="Password (min 8 characters)"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
+                      validationErrors.password
+                        ? "border-red-500 bg-red-50 pr-10"
+                        : "border-gray-300 pr-10"
+                    }`}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                  {validationErrors.password && (
+                    <p className="text-red-500 text-sm mt-1">
+                      {validationErrors.password}
+                    </p>
+                  )}
+                </div>
+
+                {/* Password Strength Indicator */}
+                {formData.password && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            passwordStrength === 0
+                              ? "bg-red-500"
+                              : passwordStrength === 1
+                              ? "bg-red-500 w-1/4"
+                              : passwordStrength === 2
+                              ? "bg-yellow-500 w-1/2"
+                              : passwordStrength === 3
+                              ? "bg-blue-500 w-3/4"
+                              : "bg-green-500"
+                          }`}
+                        ></div>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {passwordStrength === 0
+                          ? "Very weak"
+                          : passwordStrength === 1
+                          ? "Weak"
+                          : passwordStrength === 2
+                          ? "Fair"
+                          : passwordStrength === 3
+                          ? "Good"
+                          : "Strong"}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="flex items-center gap-1">
+                        {formData.password.length >= 8 ? (
+                          <CheckCircle size={14} className="text-green-500" />
+                        ) : (
+                          <XCircle size={14} className="text-gray-400" />
+                        )}
+                        <span
+                          className={
+                            formData.password.length >= 8
+                              ? "text-green-600"
+                              : "text-gray-500"
+                          }
+                        >
+                          8+ characters
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {/[A-Z]/.test(formData.password) ? (
+                          <CheckCircle size={14} className="text-green-500" />
+                        ) : (
+                          <XCircle size={14} className="text-gray-400" />
+                        )}
+                        <span
+                          className={
+                            /[A-Z]/.test(formData.password)
+                              ? "text-green-600"
+                              : "text-gray-500"
+                          }
+                        >
+                          Uppercase letter
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {/[0-9]/.test(formData.password) ? (
+                          <CheckCircle size={14} className="text-green-500" />
+                        ) : (
+                          <XCircle size={14} className="text-gray-400" />
+                        )}
+                        <span
+                          className={
+                            /[0-9]/.test(formData.password)
+                              ? "text-green-600"
+                              : "text-gray-500"
+                          }
+                        >
+                          Number
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {/[^A-Za-z0-9]/.test(formData.password) ? (
+                          <CheckCircle size={14} className="text-green-500" />
+                        ) : (
+                          <XCircle size={14} className="text-gray-400" />
+                        )}
+                        <span
+                          className={
+                            /[^A-Za-z0-9]/.test(formData.password)
+                              ? "text-green-600"
+                              : "text-gray-500"
+                          }
+                        >
+                          Special character
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
 
               {/* Confirm Password */}
-              <div className="space-y-1">
+              <div className="space-y-1 relative">
                 <input
-                  type="password"
+                  type={showConfirmPassword ? "text" : "password"}
                   name="confirmPassword"
                   placeholder="Confirm password"
                   value={formData.confirmPassword}
                   onChange={handleInputChange}
                   className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
                     validationErrors.confirmPassword
-                      ? "border-red-500 bg-red-50"
-                      : "border-gray-300"
+                      ? "border-red-500 bg-red-50 pr-10"
+                      : "border-gray-300 pr-10"
                   }`}
                   required
                 />
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff size={20} />
+                  ) : (
+                    <Eye size={20} />
+                  )}
+                </button>
                 {validationErrors.confirmPassword && (
                   <p className="text-red-500 text-sm mt-1">
                     {validationErrors.confirmPassword}
@@ -297,8 +455,12 @@ const Signup = () => {
 
               {/* Error Message */}
               {(error || state?.error) && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                  <p className="text-red-600 text-sm text-center">
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+                  <AlertCircle
+                    size={18}
+                    className="text-red-600 mt-0.5 flex-shrink-0"
+                  />
+                  <p className="text-red-600 text-sm">
                     {error || state?.error}
                   </p>
                 </div>
@@ -315,11 +477,30 @@ const Signup = () => {
                     <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
                     Creating Account...
                   </div>
+                ) : isPending ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
+                    Signing up...
+                  </div>
                 ) : (
                   "Create Account"
                 )}
               </button>
             </form>
+
+            {/* Terms and Privacy Notice */}
+            <div className="mt-4 text-center">
+              <p className="text-xs text-gray-500">
+                By creating an account, you agree to our{" "}
+                <a href="/terms" className="text-blue-600 hover:underline">
+                  Terms of Service
+                </a>{" "}
+                and{" "}
+                <a href="/privacy" className="text-blue-600 hover:underline">
+                  Privacy Policy
+                </a>
+              </p>
+            </div>
 
             {/* Footer Links */}
             <div className="mt-6">

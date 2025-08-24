@@ -34,6 +34,7 @@ const navigationData = {
     },
     {
       title: "Appointments",
+      url: "/patient/appointments/book",
       icon: CalendarRange,
       items: [
         {
@@ -45,22 +46,19 @@ const navigationData = {
       ],
     },
     {
-      title: "Find Dentists",
-      url: "/patient/dentists",
-      icon: UserSearch,
-      items: [
-        { title: "Search Dentists", url: "/patient/dentists/search" },
-        { title: "Reviews", url: "/patient/dentists/reviews" },
-      ],
-    },
-    {
       title: "Clinics Near Me",
       url: "/patient/clinics",
       icon: MapPinned,
       items: [
         { title: "Map View", url: "/patient/clinics/map" },
-        { title: "List View", url: "/patient/clinics/list" },
+        { title: "All Clinics", url: "/patient/clinics/list" },
       ],
+    },
+    {
+      title: "Dentists",
+      url: "/patient/dentists",
+      icon: UserSearch,
+      isActive: true,
     },
   ],
   projects: [
@@ -127,7 +125,7 @@ export function AppSidebar({ ...props }) {
 
       {/* Sidebar Footer */}
       <SidebarFooter className="border-t border-sidebar-border/50 p-4">
-        <NavUser user={profile} className="cursor-pointer" />
+        <NavUser user={profile.profile} className="cursor-pointer" />
       </SidebarFooter>
     </Sidebar>
   );

@@ -1,10 +1,9 @@
-import React, { useState } from "react";
-import { motion } from "framer-motion";
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   FiUser,
   FiMail,
   FiPhone,
-  FiMapPin,
   FiCalendar,
   FiCamera,
   FiEdit3,
@@ -13,84 +12,198 @@ import {
   FiClock,
   FiHeart,
   FiShield,
-  FiAward,
+  FiLoader,
+  FiCheckCircle,
+  FiAlertCircle,
+  FiStar,
 } from "react-icons/fi";
+import WelcomeToast from "../components/welcome-toast";
+import Loader from "@/core/components/Loader";
 
 /**
- * Profile page component - allows patients to view and edit their profile information
+ * Enhanced Patient Profile Component
  */
 const PatientProfile = () => {
   const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
+  const [showWelcomeToast, setShowWelcomeToast] = useState(false);
+  const [availableClinics, setAvailableClinics] = useState([]);
+  const [availableDoctors, setAvailableDoctors] = useState([]);
+
+  // Mock data - replace with real Supabase integration
   const [profileData, setProfileData] = useState({
     personalInfo: {
       firstName: "John",
       lastName: "Doe",
       email: "john.doe@email.com",
-      phone: "+1 (555) 123-4567",
+      phone: "+63 917 123 4567",
       dateOfBirth: "1990-05-15",
       gender: "Male",
       profileImage:
         "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&h=120&fit=crop&crop=face",
       emergencyContact: {
         name: "Jane Doe",
-        phone: "+1 (555) 987-6543",
+        phone: "+63 917 987 6543",
       },
     },
     medicalInfo: {
-      medicalHistory: "Regular checkups, no major issues",
+      medicalHistory:
+        "Regular dental checkups, no major issues. Had wisdom teeth removal in 2020.",
       conditions: ["Hypertension"],
       allergies: ["Penicillin", "Latex"],
       currentMedications: ["Aspirin 81mg daily"],
-      insuranceProvider: "Health Insurance Co.",
+      insuranceProvider: "PhilHealth + Maxicare",
     },
     preferences: {
-      preferredLocation: "Downtown Clinic",
-      preferredDoctor: "Dr. Martinez",
+      preferredClinicId: "clinic-uuid-1",
+      preferredDoctorIds: ["doctor-uuid-1", "doctor-uuid-2"],
+      emailNotifications: true,
+      smsNotifications: false,
     },
+    stats: {
+      totalAppointments: 24,
+      yearsAsPatient: 3,
+      treatmentsCompleted: 8,
+    },
+    isNewUser: false, // Set to true to show welcome toast
   });
 
   const [editedData, setEditedData] = useState(profileData);
 
-  // Mock stats data
-  const statsData = [
-    {
-      icon: FiCalendar,
-      label: "Total Appointments",
-      value: "24",
-      color: "primary",
-    },
-    {
-      icon: FiClock,
-      label: "Years as Patient",
-      value: "3",
-      color: "success",
-    },
-    {
-      icon: FiHeart,
-      label: "Treatments Completed",
-      value: "8",
-      color: "warning",
-    },
-  ];
+  // Load initial data
+  useEffect(() => {
+    loadProfileData();
+  }, []);
 
-  const handleEditToggle = () => {
-    if (isEditing) {
-      setEditedData(profileData); // Reset to original data if canceling
+  // Check if user is new and show welcome toast
+  useEffect(() => {
+    const checkNewUser = () => {
+      const hasCompletedProfile =
+        profileData.personalInfo.firstName &&
+        profileData.personalInfo.lastName &&
+        profileData.personalInfo.phone;
+
+      if (!hasCompletedProfile) {
+        setShowWelcomeToast(true);
+      }
+    };
+
+    if (!loading) {
+      checkNewUser();
     }
-    setIsEditing(!isEditing);
+  }, [loading, profileData]);
+
+  const loadProfileData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Mock loading delay
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // In real implementation:
+      // 1. Load user profile and patient profile
+      // 2. Load available clinics and doctors
+      // 3. Calculate stats from appointments
+
+      setAvailableClinics([
+        {
+          id: "clinic-uuid-1",
+          name: "Downtown Dental Care",
+          address: "123 Ayala Avenue, Makati City",
+          city: "Makati",
+          phone: "+63 2 8123 4567",
+        },
+        {
+          id: "clinic-uuid-2",
+          name: "Uptown Medical Center",
+          address: "456 EDSA, Quezon City",
+          city: "Quezon City",
+          phone: "+63 2 8234 5678",
+        },
+        {
+          id: "clinic-uuid-3",
+          name: "Westside Dental Clinic",
+          address: "789 Roxas Blvd, Manila",
+          city: "Manila",
+          phone: "+63 2 8345 6789",
+        },
+      ]);
+
+      setAvailableDoctors([
+        {
+          id: "doctor-uuid-1",
+          first_name: "Dr. Maria",
+          last_name: "Santos",
+          specialization: "General Dentistry",
+          consultation_fee: 1500.0,
+          profile_image_url:
+            "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=120&h=120&fit=crop&crop=face",
+          rating: 4.8,
+        },
+        {
+          id: "doctor-uuid-2",
+          first_name: "Dr. Jose",
+          last_name: "Garcia",
+          specialization: "Orthodontics",
+          consultation_fee: 2000.0,
+          profile_image_url:
+            "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=120&h=120&fit=crop&crop=face",
+          rating: 4.9,
+        },
+        {
+          id: "doctor-uuid-3",
+          first_name: "Dr. Anna",
+          last_name: "Cruz",
+          specialization: "Oral Surgery",
+          consultation_fee: 2500.0,
+          profile_image_url:
+            "https://images.unsplash.com/photo-1594824475325-87b7c6c10b46?w=120&h=120&fit=crop&crop=face",
+          rating: 4.7,
+        },
+      ]);
+    } catch (error) {
+      console.error("Error loading profile:", error);
+      setError("Failed to load profile data");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSave = async () => {
     try {
-      // Here you would call your Supabase update function
-      console.log("Updating profile:", editedData);
+      setSaving(true);
+      setError(null);
+
+      // Mock save delay
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // In real implementation:
+      // 1. Update user_profiles table
+      // 2. Update or insert patient_profiles table
+      // 3. Handle preferred_doctors array update
+
       setProfileData(editedData);
       setIsEditing(false);
-      // Show success toast/notification
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
     } catch (error) {
       console.error("Error updating profile:", error);
-      // Show error toast/notification
+      setError("Failed to update profile");
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const handleEditToggle = () => {
+    if (isEditing) {
+      setEditedData(profileData);
+    }
+    setIsEditing(!isEditing);
+    setError(null);
   };
 
   const handleInputChange = (section, field, value) => {
@@ -131,11 +244,42 @@ const PatientProfile = () => {
     }));
   };
 
+  const handleMultiSelectChange = (section, field, selectedIds) => {
+    setEditedData((prev) => ({
+      ...prev,
+      [section]: {
+        ...prev[section],
+        [field]: selectedIds,
+      },
+    }));
+  };
+
   const currentData = isEditing ? editedData : profileData;
+
+  const statsData = [
+    {
+      icon: FiCalendar,
+      label: "Total Appointments",
+      value: currentData.stats.totalAppointments.toString(),
+      color: "primary",
+    },
+    {
+      icon: FiClock,
+      label: "Years as Patient",
+      value: currentData.stats.yearsAsPatient.toString(),
+      color: "success",
+    },
+    {
+      icon: FiHeart,
+      label: "Treatments Completed",
+      value: currentData.stats.treatmentsCompleted.toString(),
+      color: "warning",
+    },
+  ];
 
   const getStatCardClasses = (color) => {
     const baseClasses =
-      "flex items-start gap-4 p-4 rounded-lg border-2 border-transparent transition-all duration-300 hover:-translate-y-0.5 md:flex-row flex-col md:items-start items-center text-center md:text-left";
+      "flex items-start gap-4 p-4 rounded-xl border-2 border-transparent transition-all duration-300 hover:-translate-y-0.5 md:flex-row flex-col md:items-start items-center text-center md:text-left";
 
     switch (color) {
       case "primary":
@@ -144,8 +288,6 @@ const PatientProfile = () => {
         return `${baseClasses} bg-gradient-to-br from-green-50 to-green-100 border-green-200 dark:from-green-950 dark:to-green-900 dark:border-green-700`;
       case "warning":
         return `${baseClasses} bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200 dark:from-amber-950 dark:to-amber-900 dark:border-amber-700`;
-      case "dental":
-        return `${baseClasses} bg-gradient-to-br from-accent/10 to-accent/20 border-accent/30`;
       default:
         return baseClasses;
     }
@@ -153,7 +295,7 @@ const PatientProfile = () => {
 
   const getStatIconClasses = (color) => {
     const baseClasses =
-      "w-12 h-12 rounded-lg flex items-center justify-center text-white flex-shrink-0 md:w-12 md:h-12 w-10 h-10";
+      "w-12 h-12 rounded-xl flex items-center justify-center text-white flex-shrink-0";
 
     switch (color) {
       case "primary":
@@ -162,56 +304,110 @@ const PatientProfile = () => {
         return `${baseClasses} bg-green-600`;
       case "warning":
         return `${baseClasses} bg-amber-600`;
-      case "dental":
-        return `${baseClasses} bg-accent`;
       default:
         return `${baseClasses} bg-primary`;
     }
   };
 
+  const getSelectedClinicName = () => {
+    const clinic = availableClinics.find(
+      (c) => c.id === currentData.preferences.preferredClinicId
+    );
+    return clinic ? clinic.name : "No preference";
+  };
+
+  const getSelectedDoctorNames = () => {
+    const selectedDoctors = availableDoctors.filter((d) =>
+      currentData.preferences.preferredDoctorIds.includes(d.id)
+    );
+    return selectedDoctors.length > 0
+      ? selectedDoctors.map((d) => `${d.first_name} ${d.last_name}`).join(", ")
+      : "No preference";
+  };
+
+  if (loading) {
+    return <Loader message={"Loading your profile... Please wait a moment"} />;
+  }
+
   return (
     <div className="min-h-screen p-6 bg-background md:p-6 p-4">
       <div className="max-w-6xl mx-auto">
+        {/* Welcome Toast */}
+        <WelcomeToast
+          isVisible={showWelcomeToast}
+          onClose={() => setShowWelcomeToast(false)}
+        />
+
+        {/* Success/Error Messages */}
+        {success && (
+          <motion.div
+            className="mb-6 p-4 bg-green-50 border-2 border-green-200 rounded-xl flex items-center gap-3 text-green-800 dark:bg-green-950 dark:border-green-700 dark:text-green-200"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <FiCheckCircle className="text-xl flex-shrink-0" />
+            <span className="font-medium">Profile updated successfully!</span>
+          </motion.div>
+        )}
+
+        {error && (
+          <motion.div
+            className="mb-6 p-4 bg-red-50 border-2 border-red-200 rounded-xl flex items-center gap-3 text-red-800 dark:bg-red-950 dark:border-red-700 dark:text-red-200"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <FiAlertCircle className="text-xl flex-shrink-0" />
+            <span className="font-medium">{error}</span>
+          </motion.div>
+        )}
+
         {/* Header */}
         <motion.div
-          className="mb-8 md:mb-8 mb-6"
+          className="mb-8"
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <div className="flex justify-between items-start gap-6 md:flex-row flex-col md:items-start items-start md:gap-6 gap-4">
+          <div className="flex justify-between items-start gap-6 md:flex-row flex-col">
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-foreground mb-2 font-sans md:text-3xl text-2xl">
+              <h1 className="text-3xl font-bold text-foreground mb-2 font-sans">
                 My Profile
               </h1>
-              <p className="text-muted-foreground md:text-base text-sm">
+              <p className="text-muted-foreground">
                 Manage your personal information and preferences
               </p>
             </div>
-            <div className="flex items-start gap-3 md:flex-row flex-row md:w-auto w-full">
+            <div className="flex items-start gap-3 md:w-auto w-full">
               {!isEditing ? (
                 <button
-                  className="flex items-center gap-2 px-5 py-3 bg-primary text-primary-foreground border-2 border-primary rounded-lg text-sm font-medium cursor-pointer transition-all duration-300 hover:bg-primary/90 hover:border-primary/90 md:flex-1 flex-1"
+                  className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground border-2 border-primary rounded-xl text-sm font-medium cursor-pointer transition-all duration-300 hover:bg-primary/90 hover:border-primary/90 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed md:flex-initial flex-1"
                   onClick={handleEditToggle}
+                  disabled={saving}
                 >
                   <FiEdit3 className="text-base" />
                   <span>Edit Profile</span>
                 </button>
               ) : (
-                <div className="flex items-start gap-3 md:flex-row flex-row md:w-auto w-full">
+                <div className="flex items-start gap-3 md:w-auto w-full">
                   <button
-                    className="flex items-center gap-2 px-5 py-3 bg-card text-card-foreground border-2 border-border rounded-lg text-sm font-medium cursor-pointer transition-all duration-300 hover:border-muted-foreground hover:bg-muted md:flex-1 flex-1"
+                    className="flex items-center gap-2 px-6 py-3 bg-card text-card-foreground border-2 border-border rounded-xl text-sm font-medium cursor-pointer transition-all duration-300 hover:border-muted-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed md:flex-initial flex-1"
                     onClick={handleEditToggle}
+                    disabled={saving}
                   >
                     <FiX className="text-base" />
                     <span>Cancel</span>
                   </button>
                   <button
-                    className="flex items-center gap-2 px-5 py-3 bg-green-600 text-white border-2 border-green-600 rounded-lg text-sm font-medium cursor-pointer transition-all duration-300 hover:bg-green-700 hover:border-green-700 md:flex-1 flex-1"
+                    className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white border-2 border-green-600 rounded-xl text-sm font-medium cursor-pointer transition-all duration-300 hover:bg-green-700 hover:border-green-700 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed md:flex-initial flex-1"
                     onClick={handleSave}
+                    disabled={saving}
                   >
-                    <FiSave className="text-base" />
-                    <span>Save Changes</span>
+                    {saving ? (
+                      <FiLoader className="text-base animate-spin" />
+                    ) : (
+                      <FiSave className="text-base" />
+                    )}
+                    <span>{saving ? "Saving..." : "Save Changes"}</span>
                   </button>
                 </div>
               )}
@@ -226,36 +422,44 @@ const PatientProfile = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <div className="bg-card border border-border rounded-2xl p-8 shadow-lg md:p-8 p-6">
-            <div className="flex items-start gap-6 mb-8 md:flex-row flex-col md:items-start items-center md:text-left text-center md:gap-6 gap-4">
+          <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
+            <div className="flex items-start gap-6 mb-8 md:flex-row flex-col md:items-start items-center md:text-left text-center">
               <div className="relative flex-shrink-0">
-                <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-primary/20 md:w-32 md:h-32 w-28 h-28 md:border-4 border-3">
-                  <img
-                    src={currentData.personalInfo.profileImage}
-                    alt="Profile"
-                    className="w-full h-full object-cover"
-                  />
+                <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-primary/20 bg-muted/30">
+                  {currentData.personalInfo.profileImage ? (
+                    <img
+                      src={currentData.personalInfo.profileImage}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                      <FiUser className="text-4xl" />
+                    </div>
+                  )}
                 </div>
-                <button className="absolute bottom-0 right-0 w-10 h-10 rounded-full bg-primary text-primary-foreground border-3 border-card flex items-center justify-center cursor-pointer transition-all duration-300 hover:bg-primary/90 hover:scale-105 md:w-10 md:h-10 w-8 h-8 md:border-3 border-2">
-                  <FiCamera className="text-base md:text-base text-sm" />
+                <button className="absolute bottom-0 right-0 w-10 h-10 rounded-full bg-primary text-primary-foreground border-4 border-card flex items-center justify-center cursor-pointer transition-all duration-300 hover:bg-primary/90 hover:scale-105 shadow-lg">
+                  <FiCamera className="text-base" />
                 </button>
               </div>
               <div className="flex-1 min-w-0">
-                <h2 className="text-2xl font-bold text-foreground mb-4 md:text-2xl text-xl">
-                  {currentData.personalInfo.firstName}{" "}
-                  {currentData.personalInfo.lastName}
+                <h2 className="text-2xl font-bold text-foreground mb-4">
+                  {currentData.personalInfo.firstName &&
+                  currentData.personalInfo.lastName
+                    ? `${currentData.personalInfo.firstName} ${currentData.personalInfo.lastName}`
+                    : "Complete your profile"}
                 </h2>
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-3 text-foreground md:justify-start justify-center">
                     <FiMail className="text-primary text-base flex-shrink-0" />
-                    <span className="md:text-base text-sm">
-                      {currentData.personalInfo.email}
+                    <span className="text-sm md:text-base">
+                      {currentData.personalInfo.email || "No email provided"}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 text-foreground md:justify-start justify-center">
                     <FiPhone className="text-primary text-base flex-shrink-0" />
-                    <span className="md:text-base text-sm">
-                      {currentData.personalInfo.phone}
+                    <span className="text-sm md:text-base">
+                      {currentData.personalInfo.phone || "No phone provided"}
                     </span>
                   </div>
                 </div>
@@ -263,7 +467,7 @@ const PatientProfile = () => {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-4 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {statsData.map((stat, index) => {
                 const Icon = stat.icon;
                 return (
@@ -275,13 +479,13 @@ const PatientProfile = () => {
                     transition={{ delay: 0.3 + index * 0.1 }}
                   >
                     <div className={getStatIconClasses(stat.color)}>
-                      <Icon className="md:text-xl text-lg" />
+                      <Icon className="text-xl" />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <span className="text-2xl font-bold text-foreground md:text-2xl text-xl">
+                      <span className="text-2xl font-bold text-foreground">
                         {stat.value}
                       </span>
-                      <span className="text-sm font-medium text-muted-foreground md:text-sm text-xs">
+                      <span className="text-sm font-medium text-muted-foreground">
                         {stat.label}
                       </span>
                     </div>
@@ -296,19 +500,19 @@ const PatientProfile = () => {
         <div className="flex flex-col gap-6">
           {/* Personal Information */}
           <motion.div
-            className="bg-card border border-border rounded-2xl overflow-hidden shadow-md"
+            className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
           >
-            <div className="px-6 py-6 bg-muted/30 border-b border-border md:px-6 px-4">
-              <h3 className="flex items-center gap-3 text-xl font-semibold text-foreground md:text-xl text-lg">
+            <div className="px-6 py-6 bg-muted/30 border-b border-border">
+              <h3 className="flex items-center gap-3 text-xl font-semibold text-foreground">
                 <FiUser className="text-primary text-xl flex-shrink-0" />
                 Personal Information
               </h3>
             </div>
-            <div className="p-6 md:p-6 p-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-5 gap-4">
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-semibold text-foreground/80">
                     First Name
@@ -324,11 +528,12 @@ const PatientProfile = () => {
                           e.target.value
                         )
                       }
-                      className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
+                      className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
+                      placeholder="Enter your first name"
                     />
                   ) : (
                     <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                      {currentData.personalInfo.firstName}
+                      {currentData.personalInfo.firstName || "Not provided"}
                     </span>
                   )}
                 </div>
@@ -347,11 +552,12 @@ const PatientProfile = () => {
                           e.target.value
                         )
                       }
-                      className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
+                      className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
+                      placeholder="Enter your last name"
                     />
                   ) : (
                     <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                      {currentData.personalInfo.lastName}
+                      {currentData.personalInfo.lastName || "Not provided"}
                     </span>
                   )}
                 </div>
@@ -359,24 +565,12 @@ const PatientProfile = () => {
                   <label className="text-sm font-semibold text-foreground/80">
                     Email Address
                   </label>
-                  {isEditing ? (
-                    <input
-                      type="email"
-                      value={currentData.personalInfo.email}
-                      onChange={(e) =>
-                        handleInputChange(
-                          "personalInfo",
-                          "email",
-                          e.target.value
-                        )
-                      }
-                      className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
-                    />
-                  ) : (
-                    <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                      {currentData.personalInfo.email}
+                  <span className="py-3 text-base text-foreground flex items-center min-h-[48px] opacity-60">
+                    {currentData.personalInfo.email || "Not provided"}
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      (managed by account)
                     </span>
-                  )}
+                  </span>
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-semibold text-foreground/80">
@@ -393,11 +587,12 @@ const PatientProfile = () => {
                           e.target.value
                         )
                       }
-                      className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
+                      className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
+                      placeholder="Enter your phone number"
                     />
                   ) : (
                     <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                      {currentData.personalInfo.phone}
+                      {currentData.personalInfo.phone || "Not provided"}
                     </span>
                   )}
                 </div>
@@ -416,13 +611,15 @@ const PatientProfile = () => {
                           e.target.value
                         )
                       }
-                      className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
+                      className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
                     />
                   ) : (
                     <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                      {new Date(
-                        currentData.personalInfo.dateOfBirth
-                      ).toLocaleDateString()}
+                      {currentData.personalInfo.dateOfBirth
+                        ? new Date(
+                            currentData.personalInfo.dateOfBirth
+                          ).toLocaleDateString()
+                        : "Not provided"}
                     </span>
                   )}
                 </div>
@@ -440,7 +637,7 @@ const PatientProfile = () => {
                           e.target.value
                         )
                       }
-                      className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
+                      className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
                     >
                       <option value="">Select Gender</option>
                       <option value="Male">Male</option>
@@ -452,7 +649,7 @@ const PatientProfile = () => {
                     </select>
                   ) : (
                     <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                      {currentData.personalInfo.gender}
+                      {currentData.personalInfo.gender || "Not provided"}
                     </span>
                   )}
                 </div>
@@ -463,7 +660,7 @@ const PatientProfile = () => {
                 <h4 className="text-lg font-semibold text-foreground mb-4">
                   Emergency Contact
                 </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-5 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-semibold text-foreground/80">
                       Contact Name
@@ -479,11 +676,13 @@ const PatientProfile = () => {
                             e.target.value
                           )
                         }
-                        className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
+                        className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
+                        placeholder="Enter emergency contact name"
                       />
                     ) : (
                       <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                        {currentData.personalInfo.emergencyContact.name}
+                        {currentData.personalInfo.emergencyContact.name ||
+                          "Not provided"}
                       </span>
                     )}
                   </div>
@@ -502,11 +701,13 @@ const PatientProfile = () => {
                             e.target.value
                           )
                         }
-                        className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
+                        className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
+                        placeholder="Enter emergency contact phone"
                       />
                     ) : (
                       <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                        {currentData.personalInfo.emergencyContact.phone}
+                        {currentData.personalInfo.emergencyContact.phone ||
+                          "Not provided"}
                       </span>
                     )}
                   </div>
@@ -517,19 +718,19 @@ const PatientProfile = () => {
 
           {/* Medical Information */}
           <motion.div
-            className="bg-card border border-border rounded-2xl overflow-hidden shadow-md"
+            className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
           >
-            <div className="px-6 py-6 bg-muted/30 border-b border-border md:px-6 px-4">
-              <h3 className="flex items-center gap-3 text-xl font-semibold text-foreground md:text-xl text-lg">
+            <div className="px-6 py-6 bg-muted/30 border-b border-border">
+              <h3 className="flex items-center gap-3 text-xl font-semibold text-foreground">
                 <FiShield className="text-primary text-xl flex-shrink-0" />
                 Medical Information
               </h3>
             </div>
-            <div className="p-6 md:p-6 p-4">
-              <div className="grid grid-cols-1 gap-5 md:gap-5 gap-4">
+            <div className="p-6">
+              <div className="grid grid-cols-1 gap-6">
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-semibold text-foreground/80">
                     Medical History
@@ -544,8 +745,8 @@ const PatientProfile = () => {
                           e.target.value
                         )
                       }
-                      className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10 resize-vertical min-h-[80px]"
-                      rows="3"
+                      className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 resize-vertical min-h-[100px]"
+                      rows="4"
                       placeholder="Describe your medical history..."
                     />
                   ) : (
@@ -555,7 +756,7 @@ const PatientProfile = () => {
                     </span>
                   )}
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-5 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-semibold text-foreground/80">
                       Medical Conditions
@@ -571,7 +772,7 @@ const PatientProfile = () => {
                             e.target.value
                           )
                         }
-                        className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
+                        className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
                         placeholder="Separate multiple conditions with commas"
                       />
                     ) : (
@@ -597,7 +798,7 @@ const PatientProfile = () => {
                             e.target.value
                           )
                         }
-                        className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
+                        className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
                         placeholder="Separate multiple allergies with commas"
                       />
                     ) : (
@@ -625,7 +826,7 @@ const PatientProfile = () => {
                             e.target.value
                           )
                         }
-                        className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
+                        className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
                         placeholder="Separate multiple medications with commas"
                       />
                     ) : (
@@ -653,11 +854,13 @@ const PatientProfile = () => {
                             e.target.value
                           )
                         }
-                        className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
+                        className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
+                        placeholder="Enter your insurance provider"
                       />
                     ) : (
                       <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                        {currentData.medicalInfo.insuranceProvider}
+                        {currentData.medicalInfo.insuranceProvider ||
+                          "Not provided"}
                       </span>
                     )}
                   </div>
@@ -666,83 +869,118 @@ const PatientProfile = () => {
             </div>
           </motion.div>
 
-          {/* Preferences */}
+          {/* Preferences & Settings */}
           <motion.div
-            className="bg-card border border-border rounded-2xl overflow-hidden shadow-md"
+            className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6 }}
           >
-            <div className="px-6 py-6 bg-muted/30 border-b border-border md:px-6 px-4">
-              <h3 className="flex items-center gap-3 text-xl font-semibold text-foreground md:text-xl text-lg">
+            <div className="px-6 py-6 bg-muted/30 border-b border-border">
+              <h3 className="flex items-center gap-3 text-xl font-semibold text-foreground">
                 <FiHeart className="text-primary text-xl flex-shrink-0" />
                 Preferences & Settings
               </h3>
             </div>
-            <div className="p-6 md:p-6 p-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-5 gap-4">
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-foreground/80">
-                    Preferred Location
-                  </label>
-                  {isEditing ? (
-                    <select
-                      value={currentData.preferences.preferredLocation}
-                      onChange={(e) =>
-                        handleInputChange(
-                          "preferences",
-                          "preferredLocation",
-                          e.target.value
-                        )
-                      }
-                      className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
-                    >
-                      <option value="">No preference</option>
-                      <option value="Downtown Clinic">Downtown Clinic</option>
-                      <option value="Uptown Medical Center">
-                        Uptown Medical Center
-                      </option>
-                      <option value="Westside Dental">Westside Dental</option>
-                      <option value="Eastside Health Hub">
-                        Eastside Health Hub
-                      </option>
-                    </select>
-                  ) : (
-                    <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                      {currentData.preferences.preferredLocation ||
-                        "No preference"}
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-col gap-2">
-                  <label className="text-sm font-semibold text-foreground/80">
-                    Preferred Doctor
-                  </label>
-                  {isEditing ? (
-                    <select
-                      value={currentData.preferences.preferredDoctor}
-                      onChange={(e) =>
-                        handleInputChange(
-                          "preferences",
-                          "preferredDoctor",
-                          e.target.value
-                        )
-                      }
-                      className="px-3 py-3 border-2 border-input bg-input text-foreground rounded-lg text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-3 focus:ring-primary/10"
-                    >
-                      <option value="">No preference</option>
-                      <option value="Dr. Martinez">Dr. Martinez</option>
-                      <option value="Dr. Smith">Dr. Smith</option>
-                      <option value="Dr. Johnson">Dr. Johnson</option>
-                      <option value="Dr. Brown">Dr. Brown</option>
-                      <option value="Dr. Wilson">Dr. Wilson</option>
-                    </select>
-                  ) : (
-                    <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                      {currentData.preferences.preferredDoctor ||
-                        "No preference"}
-                    </span>
-                  )}
+            <div className="p-6">
+              <div className="grid grid-cols-1 gap-6">
+                {/* Appointment Preferences */}
+                <div>
+                  <h4 className="text-lg font-semibold text-foreground mb-4">
+                    Appointment Preferences
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-semibold text-foreground/80">
+                        Preferred Clinic
+                      </label>
+                      {isEditing ? (
+                        <select
+                          value={currentData.preferences.preferredClinicId}
+                          onChange={(e) =>
+                            handleInputChange(
+                              "preferences",
+                              "preferredClinicId",
+                              e.target.value
+                            )
+                          }
+                          className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
+                        >
+                          <option value="">No preference</option>
+                          {availableClinics.map((clinic) => (
+                            <option key={clinic.id} value={clinic.id}>
+                              {clinic.name} - {clinic.city}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
+                          {getSelectedClinicName()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-semibold text-foreground/80">
+                        Preferred Doctors
+                      </label>
+                      {isEditing ? (
+                        <div className="space-y-2">
+                          {availableDoctors.map((doctor) => (
+                            <label
+                              key={doctor.id}
+                              className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-muted/50"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={currentData.preferences.preferredDoctorIds.includes(
+                                  doctor.id
+                                )}
+                                onChange={(e) => {
+                                  const isChecked = e.target.checked;
+                                  const currentIds =
+                                    currentData.preferences.preferredDoctorIds;
+                                  const newIds = isChecked
+                                    ? [...currentIds, doctor.id]
+                                    : currentIds.filter(
+                                        (id) => id !== doctor.id
+                                      );
+                                  handleMultiSelectChange(
+                                    "preferences",
+                                    "preferredDoctorIds",
+                                    newIds
+                                  );
+                                }}
+                                className="w-4 h-4 text-primary bg-input border-2 border-border rounded focus:ring-primary/10 focus:ring-4"
+                              />
+                              <div className="flex items-center gap-2">
+                                <img
+                                  src={doctor.profile_image_url}
+                                  alt={`${doctor.first_name} ${doctor.last_name}`}
+                                  className="w-6 h-6 rounded-full object-cover"
+                                />
+                                <span className="text-sm font-medium">
+                                  {doctor.first_name} {doctor.last_name}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {doctor.specialization}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <FiStar className="w-3 h-3 text-amber-400 fill-current" />
+                                  <span className="text-xs text-muted-foreground">
+                                    {doctor.rating}
+                                  </span>
+                                </div>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
+                          {getSelectedDoctorNames()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

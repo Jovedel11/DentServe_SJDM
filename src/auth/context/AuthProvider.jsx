@@ -1,11 +1,4 @@
-import {
-  useState,
-  useEffect,
-  createContext,
-  useContext,
-  use,
-  useMemo,
-} from "react";
+import { useState, useEffect, createContext, useContext, useMemo } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { authService } from "../hooks/authService";
 import { useVerification } from "../hooks/useVerification";
@@ -17,6 +10,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [authStatus, setAuthStatus] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -44,42 +38,31 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     if (!user) return;
 
-    const fetchProfile = async () => {
-      setLoading(true);
-
-      const { data: userRow, error: userError } = await supabase
-        .from("users")
-        .select("id")
-        .eq("auth_user_id", user.id)
-        .maybeSingle();
-
-      if (userError) {
-        console.error("Error fetching user row:", userError);
-        return;
-      }
-
-      if (!userRow) {
-        console.log("No user row found for this auth user");
-        return;
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .eq("user_id", userRow.id)
-        .maybeSingle();
-
-      if (profileError) {
-        console.error("Error fetching profile:", profileError);
-      } else {
-        console.log("User profile found:", profile);
+    const loadProfile = async () => {
+      try {
+        setLoading(true);
+        const profile = await fetchUserProfile(user.id);
         setProfile(profile);
+      } catch (err) {
+        console.error("Error fetching profile:", err);
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     };
 
-    fetchProfile();
+    loadProfile();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    loadDashboardData(user.id, true);
+
+    const interval = setInterval(() => {
+      loadDashboardData(user.id, false);
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => clearInterval(interval);
   }, [user]);
 
   const initializeAuth = async () => {
@@ -117,11 +100,46 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const fetchUserProfile = async (userId) => {
+    if (!userId) return null;
+
+    const { data: userRow, error: userError } = await supabase
+      .from("users")
+      .select("id")
+      .eq("auth_user_id", userId)
+      .maybeSingle();
+
+    if (userError) throw userError;
+    if (!userRow) return null;
+
+    const { data: profile, error: profileError } = await supabase.rpc(
+      "get_user_complete_profile",
+      { p_user_id: userRow.id }
+    );
+
+    if (profileError) throw profileError;
+    return profile;
+  };
+
+  const handleRefreshProfile = async () => {
+    if (!user) return;
+    try {
+      setLoading(true);
+      const profile = await fetchUserProfile(user.id);
+      setProfile(profile);
+    } catch (err) {
+      console.error("Error refreshing profile:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resetAuthState = () => {
     setUser(null);
     setAuthStatus(null);
     setError(null);
     setProfile(null);
+    setDashboardData(null);
   };
 
   // from auth status
@@ -135,6 +153,8 @@ export const AuthProvider = ({ children }) => {
   console.log("AuthGuard -> user:", user);
   console.log("AuthGuard -> authStatus:", authStatus);
   console.log("AuthGuard -> userRole:", userRole);
+  console.log("AuthGuard -> profile:", profile);
+
   // Role checks
   const isPatient = () => userRole === "patient";
   const isStaff = () => userRole === "staff";
@@ -263,6 +283,46 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const updateProfile = async (profileData, roleSpecificData = {}) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await authService.updateProfile(
+        profileData,
+        roleSpecificData
+      );
+      if (result.success) {
+        await handleRefresh();
+        return { success: true };
+      } else {
+        throw new Error(result.error || "Failed to update profile");
+      }
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  //dashboard data
+  const loadDashboardData = async (userId, isShowLoading = true) => {
+    if (isShowLoading) setLoading(true);
+    setError(null);
+    try {
+      const result = await authService.getDashboardData(userId);
+
+      if (result.success) {
+        setDashboardData(result.data);
+      } else {
+        throw new Error(result.error || "Failed to fetch user list");
+      }
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      if (isShowLoading) setLoading(false);
+    }
+  };
+
   const value = useMemo(
     () => ({
       // Core state
@@ -286,6 +346,12 @@ export const AuthProvider = ({ children }) => {
 
       //users profile
       profile,
+      dashboardData,
+
+      // user functions
+      updateProfile,
+      handleRefreshProfile,
+
       // Navigation
       useRedirectPath,
 
@@ -299,6 +365,8 @@ export const AuthProvider = ({ children }) => {
       refreshAuthStatus,
       updatePassword,
       resetPassword,
+      fetchUserProfile,
+      loadDashboardData,
     }),
     [
       user,
@@ -315,6 +383,7 @@ export const AuthProvider = ({ children }) => {
       isStaff,
       isAdmin,
       profile,
+      dashboardData,
       useRedirectPath,
       signUpUser,
       inviteStaff,
@@ -325,6 +394,9 @@ export const AuthProvider = ({ children }) => {
       refreshAuthStatus,
       updatePassword,
       resetPassword,
+      fetchUserProfile,
+      handleRefreshProfile,
+      loadDashboardData,
     ]
   );
 

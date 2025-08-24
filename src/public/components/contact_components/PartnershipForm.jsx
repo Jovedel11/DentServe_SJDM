@@ -166,6 +166,7 @@ const PartnershipForm = forwardRef(
                     <label htmlFor={field.name}>{field.label}</label>
                     <input
                       id={field.name}
+                      autoComplete="name"
                       type={field.type}
                       placeholder={field.placeholder}
                       {...register(field.name, field.options)}
@@ -190,6 +191,7 @@ const PartnershipForm = forwardRef(
                     <label htmlFor={field.name}>{field.label}</label>
                     <input
                       id={field.name}
+                      autoComplete="name"
                       type={field.type}
                       placeholder={field.placeholder}
                       {...register(field.name, field.options)}
