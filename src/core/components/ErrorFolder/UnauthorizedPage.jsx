@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { LockIllustration } from "./lock-illustration";
+import { LockIllustration } from "@/core/components/ui/lock-illustration";
 
 const UnauthorizedPage = () => {
   const navigate = useNavigate();

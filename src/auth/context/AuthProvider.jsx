@@ -1,4 +1,11 @@
-import { useState, useEffect, createContext, useContext, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  createContext,
+  useContext,
+  useMemo,
+  useRef,
+} from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { authService } from "../hooks/authService";
 import { useVerification } from "../hooks/useVerification";
@@ -13,6 +20,11 @@ export const AuthProvider = ({ children }) => {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  //prevent duplicate requests
+  const lastFetchTime = useRef({ profile: 0, authStatus: 0 });
+  const refreshTimeout = useRef(null);
 
   useEffect(() => {
     initializeAuth();
@@ -25,36 +37,26 @@ export const AuthProvider = ({ children }) => {
       if (session?.user) {
         setUser(session.user);
         console.log("User logged in:", session.user.email);
-        setTimeout(() => refreshAuthStatus(session.user.id), 1000);
+        handleRefreshAuthStatus(session.user.id);
       } else {
         resetAuthState();
       }
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      if (refreshTimeout.current) clearTimeout(refreshTimeout.current);
+    };
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-
-    const loadProfile = async () => {
-      try {
-        setLoading(true);
-        const profile = await fetchUserProfile(user.id);
-        setProfile(profile);
-      } catch (err) {
-        console.error("Error fetching profile:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadProfile();
-  }, [user]);
+    if (!user || !isInitialized) return;
+    loadProfile(user.id);
+  }, [user, isInitialized]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isInitialized) return;
 
     loadDashboardData(user.id, true);
 
@@ -63,28 +65,48 @@ export const AuthProvider = ({ children }) => {
     }, 5 * 60 * 1000); // 5 minutes
 
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user, isInitialized]);
 
   const initializeAuth = async () => {
     try {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+
       if (session?.user) {
         setUser(session.user);
         await refreshAuthStatus(session.user.id);
       }
     } catch (error) {
       console.error("Error initializing auth:", error);
+      setError("Failed to initialize authentication");
     } finally {
       setLoading(false);
+      setIsInitialized(true);
     }
+  };
+
+  // prevent spam calls
+  const handleRefreshAuthStatus = (userId) => {
+    if (refreshTimeout.current) {
+      clearTimeout(refreshTimeout.current);
+    }
+
+    refreshTimeout.current = setTimeout(() => {
+      refreshAuthStatus(userId);
+    }, 500);
   };
 
   const refreshAuthStatus = async (authUserId = null) => {
     try {
       const targetId = authUserId || user?.id;
       if (!targetId) return;
+
+      const now = Date.now();
+      if (now - lastFetchTime.current.authStatus < 2000) {
+        return;
+      }
+      lastFetchTime.current.authStatus = now;
 
       const result = await authService.getAuthStatus(targetId);
 
@@ -97,6 +119,28 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error("Error refreshing auth status:", error);
       setError("Failed to get authentication status");
+    }
+  };
+
+  const loadProfile = async (userId) => {
+    if (!userId) return;
+
+    try {
+      // spam prevention
+      const now = Date.now();
+      if (now - lastFetchTime.current.profile < 3000) {
+        return;
+      }
+      lastFetchTime.current.profile = now;
+
+      setLoading(true);
+      const profile = await fetchUserProfile(userId);
+      setProfile(profile);
+    } catch (err) {
+      console.error("Error fetching profile:", err);
+      setError("Failed to load profile");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -123,15 +167,10 @@ export const AuthProvider = ({ children }) => {
 
   const handleRefreshProfile = async () => {
     if (!user) return;
-    try {
-      setLoading(true);
-      const profile = await fetchUserProfile(user.id);
-      setProfile(profile);
-    } catch (err) {
-      console.error("Error refreshing profile:", err);
-    } finally {
-      setLoading(false);
-    }
+
+    // reset the timer to allow immediate fetch
+    lastFetchTime.current.profile = 0;
+    await loadProfile(user.id);
   };
 
   const resetAuthState = () => {
@@ -140,9 +179,12 @@ export const AuthProvider = ({ children }) => {
     setError(null);
     setProfile(null);
     setDashboardData(null);
+
+    // reset timers
+    lastFetchTime.current = { profile: 0, authStatus: 0 };
   };
 
-  // from auth status
+  // auth status derived values
   const userRole = authStatus?.user_role;
   const isEmailVerified = authStatus?.email_verified || false;
   const isPhoneVerified = authStatus?.phone_verified || false;
@@ -150,61 +192,45 @@ export const AuthProvider = ({ children }) => {
   const canAccessApp = authStatus?.can_access_app || false;
   const nextStep = authStatus?.next_step;
 
-  console.log("AuthGuard -> user:", user);
-  console.log("AuthGuard -> authStatus:", authStatus);
-  console.log("AuthGuard -> userRole:", userRole);
-  console.log("AuthGuard -> profile:", profile);
+  console.log("AuthProvider -> user:", user);
+  console.log("AuthProvider -> authStatus:", authStatus);
+  console.log("AuthProvider -> userRole:", userRole);
+  console.log("AuthProvider -> profile:", profile);
 
-  // Role checks
+  // role checks
   const isPatient = () => userRole === "patient";
   const isStaff = () => userRole === "staff";
   const isAdmin = () => userRole === "admin";
 
+  // wrap auth actions with loading/error handling
+  const wrapAuthAction = (actionName, actionFunction) => {
+    return async (...args) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await actionFunction(...args);
+        if (result.error) setError(result.error);
+        return result;
+      } catch (error) {
+        const errorMessage = error.message || `Failed to ${actionName}`;
+        setError(errorMessage);
+        return { success: false, error: errorMessage };
+      } finally {
+        setLoading(false);
+      }
+    };
+  };
+
   // Auth actions
-  const signUpUser = async (userData) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await authService.signUpUser(userData);
-      if (result.error) setError(result.error);
-      return result;
-    } catch (error) {
-      setError(error.message);
-      return { success: false, error: error.message };
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const inviteStaff = async (inviteData) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await authService.staffInvitation(inviteData);
-      if (result.error) setError(result.error);
-      return result;
-    } catch (error) {
-      setError(error.message);
-      return { success: false, error: error.message };
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const inviteAdmin = async (inviteData) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await authService.adminInvitation(inviteData);
-      if (result.error) setError(result.error);
-      return result;
-    } catch (error) {
-      setError(error.message);
-      return { success: false, error: error.message };
-    } finally {
-      setLoading(false);
-    }
-  };
+  const signUpUser = wrapAuthAction("sign up", authService.signUpUser);
+  const inviteStaff = wrapAuthAction(
+    "invite staff",
+    authService.staffInvitation
+  );
+  const inviteAdmin = wrapAuthAction(
+    "invite admin",
+    authService.adminInvitation
+  );
 
   const sendPhoneOTP = async () => {
     setLoading(true);
@@ -225,7 +251,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const result = await useVerification.verifyPhoneOTP(phone, otpCode);
       if (result.success) {
-        setTimeout(() => refreshAuthStatus(), 1000);
+        handleRefreshAuthStatus();
       }
       if (result.error) setError(result.error);
       return result;
@@ -242,7 +268,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const result = await authService.updatePassword(newPassword);
       if (result.success) {
-        setTimeout(() => refreshAuthStatus(), 1000);
+        handleRefreshAuthStatus();
       }
       if (result.error) setError(result.error);
       return result;
@@ -259,7 +285,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const result = await authService.resetPassword(email);
       if (result.success) {
-        setTimeout(() => refreshAuthStatus(), 1000);
+        handleRefreshAuthStatus();
       }
       if (result.error) setError(result.error);
       return result;
@@ -292,29 +318,32 @@ export const AuthProvider = ({ children }) => {
         roleSpecificData
       );
       if (result.success) {
-        await handleRefresh();
+        await handleRefreshProfile();
         return { success: true };
       } else {
         throw new Error(result.error || "Failed to update profile");
       }
     } catch (error) {
       setError(error.message);
+      return { success: false, error: error.message };
     } finally {
       setLoading(false);
     }
   };
 
-  //dashboard data
   const loadDashboardData = async (userId, isShowLoading = true) => {
+    if (!userId) return;
+
     if (isShowLoading) setLoading(true);
     setError(null);
+
     try {
       const result = await authService.getDashboardData(userId);
 
       if (result.success) {
         setDashboardData(result.data);
       } else {
-        throw new Error(result.error || "Failed to fetch user list");
+        throw new Error(result.error || "Failed to fetch dashboard data");
       }
     } catch (error) {
       setError(error.message);
@@ -330,6 +359,7 @@ export const AuthProvider = ({ children }) => {
       authStatus,
       loading,
       error,
+      isInitialized,
 
       // Derived state
       userRole,
@@ -344,16 +374,9 @@ export const AuthProvider = ({ children }) => {
       isStaff,
       isAdmin,
 
-      //users profile
+      // Profile and dashboard
       profile,
       dashboardData,
-
-      // user functions
-      updateProfile,
-      handleRefreshProfile,
-
-      // Navigation
-      useRedirectPath,
 
       // Actions
       signUpUser,
@@ -365,38 +388,29 @@ export const AuthProvider = ({ children }) => {
       refreshAuthStatus,
       updatePassword,
       resetPassword,
-      fetchUserProfile,
+      updateProfile,
+      handleRefreshProfile,
       loadDashboardData,
+      fetchUserProfile,
+
+      // Navigation
+      useRedirectPath,
     }),
     [
       user,
       authStatus,
       loading,
       error,
+      isInitialized,
       userRole,
       isEmailVerified,
       isPhoneVerified,
       phoneRequired,
       canAccessApp,
       nextStep,
-      isPatient,
-      isStaff,
-      isAdmin,
       profile,
       dashboardData,
       useRedirectPath,
-      signUpUser,
-      inviteStaff,
-      inviteAdmin,
-      sendPhoneOTP,
-      verifyPhoneOTP,
-      signOut,
-      refreshAuthStatus,
-      updatePassword,
-      resetPassword,
-      fetchUserProfile,
-      handleRefreshProfile,
-      loadDashboardData,
     ]
   );
 

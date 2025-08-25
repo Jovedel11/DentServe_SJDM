@@ -4,25 +4,53 @@ import withSuspense from "./core/components/withSuspense";
 import AuthGuard from "./core/routes/AuthGuard";
 import { useVerificationMonitor } from "@/auth/hooks/useVerificationMonitor";
 import { useRoleBasedRedirect } from "./core/hooks/useRoleBasedRedirect";
+import { RouterErrorBoundary } from "./core/components/ErrorFolder/ErrorBoundary";
+import { NetworkMonitor } from "./core/components/NetworkMonitor";
 
 const AuthLayout = () => {
   useVerificationMonitor();
   useRoleBasedRedirect();
-  return <Outlet />;
+  return (
+    <NetworkMonitor>
+      <Outlet />
+    </NetworkMonitor>
+  );
 };
 
-const PublicLayout = lazy(() => import("./public/layout/PublicLayout"));
-const ErrorPage = lazy(() => import("./core/components/ui/ErrorPage"));
-const UnauthorizedPage = lazy(() =>
-  import("./core/components/ui/UnauthorizedPage")
+// Lazy loaded components with proper error boundaries and retries
+const PublicLayout = lazy(() =>
+  import("./public/layout/PublicLayout").catch((error) => {
+    console.error("Failed to load PublicLayout:", error);
+    // Retry logic for chunk load errors
+    if (error.message?.includes("Loading chunk")) {
+      return import("./public/layout/PublicLayout");
+    }
+    return {
+      default: () => (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <h1>Error loading layout</h1>
+            <button onClick={() => window.location.reload()}>Retry</button>
+          </div>
+        </div>
+      ),
+    };
+  })
 );
+
+// Error pages - these are special and should not be lazy loaded
+import ErrorPage from "./core/components/ErrorFolder/ErrorPage";
+import UnauthorizedPage from "./core/components/ErrorFolder/UnauthorizedPage";
+
+// Public pages
 const Home = lazy(() => import("./public/pages/Home"));
 const About = lazy(() => import("./public/pages/About"));
 const Service = lazy(() => import("./public/pages/Service"));
 const Contact = lazy(() => import("./public/pages/Contact"));
+
+// Auth pages
 const Login = lazy(() => import("./auth/Login.jsx"));
 const Signup = lazy(() => import("./auth/Signup"));
-const PatientLayout = lazy(() => import("./app/patient/layout/PatientLayout"));
 const AuthCallback = lazy(() => import("./auth/components/AuthCallback"));
 const EmailVerification = lazy(() =>
   import("./auth/components/EmailVerification")
@@ -33,8 +61,13 @@ const PhoneVerification = lazy(() =>
 );
 const ResetPassword = lazy(() => import("./auth/components/ResetPassword"));
 const CompleteProfile = lazy(() => import("./auth/components/CompleteProfile"));
+
+// Layouts
+const PatientLayout = lazy(() => import("./app/patient/layout/PatientLayout"));
 const StaffLayout = lazy(() => import("./app/staff/layout/StaffLayout"));
 const AdminLayout = lazy(() => import("./app/admin/layout/AdminLayout"));
+
+// Patient pages
 const PatientDashboard = lazy(() =>
   import("./app/patient/pages/PatientDashboard")
 );
@@ -58,6 +91,8 @@ const PatientFeedback = lazy(() =>
 const MapView = lazy(() => import("@/app/patient/pages/MapView"));
 const ClinicList = lazy(() => import("@/app/patient/pages/AllClinics"));
 const Dentist = lazy(() => import("@/app/patient/pages/Dentist"));
+
+// Staff pages
 const StaffDashboard = lazy(() => import("@/app/staff/pages/StaffDashboard"));
 const ManageAppointments = lazy(() =>
   import("@/app/staff/pages/ManageAppointments")
@@ -69,19 +104,33 @@ const FeedbackManagement = lazy(() =>
 );
 const ClinicSettings = lazy(() => import("@/app/staff/pages/ClinicSettings"));
 const Help = lazy(() => import("@/app/staff/pages/Help"));
+
+// Admin pages
 const AdminDashboard = lazy(() => import("@/app/admin/pages/AdminDashboard"));
 const UIManagement = lazy(() => import("@/app/admin/pages/UIManagement"));
 const UserManagement = lazy(() => import("@/app/admin/pages/UserManagement"));
 const UserRecords = lazy(() => import("@/app/admin/pages/UserRecords"));
 
+// Helper function to create protected routes with role-based access
+const createProtectedRoute = (requiredRole, LayoutComponent, children) => ({
+  element: (
+    <AuthGuard requiredRole={requiredRole}>
+      {withSuspense(LayoutComponent)}
+    </AuthGuard>
+  ),
+  errorElement: <RouterErrorBoundary />,
+  children,
+});
+
 export const router = createBrowserRouter([
   {
     element: <AuthLayout />,
-    errorElement: withSuspense(ErrorPage),
+    errorElement: <RouterErrorBoundary />,
     children: [
-      // public routes
+      // Public routes
       {
         element: withSuspense(PublicLayout),
+        errorElement: <RouterErrorBoundary />,
         children: [
           { index: true, element: withSuspense(Home) },
           { path: "about", element: withSuspense(About) },
@@ -89,204 +138,89 @@ export const router = createBrowserRouter([
           { path: "contact", element: withSuspense(Contact) },
           { path: "login", element: withSuspense(Login) },
           { path: "signup", element: withSuspense(Signup) },
-          { path: "/forgot-password", element: withSuspense(ForgotPassword) },
+          { path: "forgot-password", element: withSuspense(ForgotPassword) },
         ],
       },
 
-      // auth routes
-      { path: "/auth-callback", element: withSuspense(AuthCallback) },
-      { path: "/reset-password", element: withSuspense(ResetPassword) },
+      // Auth callback and verification routes (no role restriction)
+      { path: "auth-callback", element: withSuspense(AuthCallback) },
+      { path: "reset-password", element: withSuspense(ResetPassword) },
+      { path: "verify-email", element: withSuspense(EmailVerification) },
+      { path: "verify-phone", element: withSuspense(PhoneVerification) },
+      { path: "complete-profile", element: withSuspense(CompleteProfile) },
+      { path: "change-password", element: withSuspense(ResetPassword) },
 
-      // verification routes
-      { path: "/verify-email", element: withSuspense(EmailVerification) },
-      { path: "/verify-phone", element: withSuspense(PhoneVerification) },
-
-      // profile completion
-      { path: "/complete-profile", element: withSuspense(CompleteProfile) },
-      { path: "/change-password", element: withSuspense(ResetPassword) },
-
-      // protected routes
+      // Patient routes - ONLY accessible by patient role
       {
-        path: "/patient/dashboard",
-        element: (
-          <AuthGuard requiredRole="patient">
-            {withSuspense(PatientLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(PatientDashboard) }],
-      },
-      {
-        path: "/patient/appointments",
-        element: (
-          <AuthGuard requiredRole="patient">
-            {withSuspense(PatientLayout)}
-          </AuthGuard>
-        ),
-        children: [
-          { index: true, element: withSuspense(BookAppointment) },
-          { path: "book", element: withSuspense(BookAppointment) },
-          { path: "upcoming", element: withSuspense(UpcomingAppointments) },
-          { path: "history", element: withSuspense(AppointmentHistory) },
-        ],
-      },
-      {
-        path: "/patient/clinics",
-        element: (
-          <AuthGuard requiredRole="patient">
-            {withSuspense(PatientLayout)}
-          </AuthGuard>
-        ),
-        children: [
-          { index: true, element: withSuspense(MapView) },
-          { path: "map", element: withSuspense(MapView) },
-          { path: "list", element: withSuspense(ClinicList) },
-        ],
-      },
-      {
-        path: "/patient/dentists",
-        element: (
-          <AuthGuard requiredRole="patient">
-            {withSuspense(PatientLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(Dentist) }],
-      },
-      {
-        path: "/patient/feedbacks",
-        element: (
-          <AuthGuard requiredRole="patient">
-            {withSuspense(PatientLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(PatientFeedback) }],
-      },
-      {
-        path: "/patient/profile",
-        element: (
-          <AuthGuard requiredRole="patient">
-            {withSuspense(PatientLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(PatientProfile) }],
-      },
-      {
-        path: "/patient/settings",
-        element: (
-          <AuthGuard requiredRole="patient">
-            {withSuspense(PatientLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(PatientSettings) }],
-      },
-      {
-        path: "/patient/help",
-        element: (
-          <AuthGuard requiredRole="patient">
-            {withSuspense(PatientLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(PatientHelp) }],
-      },
-      {
-        path: "/staff/dashboard",
-        element: (
-          <AuthGuard requiredRole="staff">
-            {withSuspense(StaffLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(StaffDashboard) }],
-      },
-      {
-        path: "/staff/manage-appointments",
-        element: (
-          <AuthGuard requiredRole="staff">
-            {withSuspense(StaffLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(ManageAppointments) }],
-      },
-      {
-        path: "/staff/clinic-analytics",
-        element: (
-          <AuthGuard requiredRole="staff">
-            {withSuspense(StaffLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(ClinicAnalytics) }],
-      },
-      {
-        path: "/staff/team",
-        element: (
-          <AuthGuard requiredRole="staff">
-            {withSuspense(StaffLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(ClinicTeam) }],
-      },
-      {
-        path: "/staff/feedbacks",
-        element: (
-          <AuthGuard requiredRole="staff">
-            {withSuspense(StaffLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(FeedbackManagement) }],
-      },
-      {
-        path: "/staff/settings",
-        element: (
-          <AuthGuard requiredRole="staff">
-            {withSuspense(StaffLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(ClinicSettings) }],
-      },
-      {
-        path: "/staff/help",
-        element: (
-          <AuthGuard requiredRole="staff">
-            {withSuspense(StaffLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(Help) }],
-      },
-      {
-        path: "/admin/dashboard",
-        element: (
-          <AuthGuard requiredRole="admin">
-            {withSuspense(AdminLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(AdminDashboard) }],
-      },
-      {
-        path: "/admin/ui-management",
-        element: (
-          <AuthGuard requiredRole="admin">
-            {withSuspense(AdminLayout)}
-          </AuthGuard>
-        ),
-        children: [{ index: true, element: withSuspense(UIManagement) }],
-      },
-      {
-        path: "/admin/users-management",
-        element: (
-          <AuthGuard requiredRole="admin">
-            {withSuspense(AdminLayout)}
-          </AuthGuard>
-        ),
-        children: [
-          { index: true, element: withSuspense(UserManagement) },
+        path: "patient",
+        ...createProtectedRoute("patient", PatientLayout, [
+          { path: "dashboard", element: withSuspense(PatientDashboard) },
           {
-            path: "/admin/users-management/records",
-            element: withSuspense(UserRecords),
+            path: "appointments",
+            children: [
+              { index: true, element: withSuspense(BookAppointment) },
+              { path: "book", element: withSuspense(BookAppointment) },
+              { path: "upcoming", element: withSuspense(UpcomingAppointments) },
+              { path: "history", element: withSuspense(AppointmentHistory) },
+            ],
           },
-        ],
+          {
+            path: "clinics",
+            children: [
+              { index: true, element: withSuspense(MapView) },
+              { path: "map", element: withSuspense(MapView) },
+              { path: "list", element: withSuspense(ClinicList) },
+            ],
+          },
+          { path: "dentists", element: withSuspense(Dentist) },
+          { path: "feedbacks", element: withSuspense(PatientFeedback) },
+          { path: "profile", element: withSuspense(PatientProfile) },
+          { path: "settings", element: withSuspense(PatientSettings) },
+          { path: "help", element: withSuspense(PatientHelp) },
+        ]),
+      },
+
+      // Staff routes - ONLY accessible by staff role
+      {
+        path: "staff",
+        ...createProtectedRoute("staff", StaffLayout, [
+          { path: "dashboard", element: withSuspense(StaffDashboard) },
+          {
+            path: "manage-appointments",
+            element: withSuspense(ManageAppointments),
+          },
+          { path: "clinic-analytics", element: withSuspense(ClinicAnalytics) },
+          { path: "team", element: withSuspense(ClinicTeam) },
+          { path: "feedbacks", element: withSuspense(FeedbackManagement) },
+          { path: "settings", element: withSuspense(ClinicSettings) },
+          { path: "help", element: withSuspense(Help) },
+        ]),
+      },
+
+      // Admin routes - ONLY accessible by admin role
+      {
+        path: "admin",
+        ...createProtectedRoute("admin", AdminLayout, [
+          { path: "dashboard", element: withSuspense(AdminDashboard) },
+          { path: "ui-management", element: withSuspense(UIManagement) },
+          {
+            path: "users-management",
+            children: [
+              { index: true, element: withSuspense(UserManagement) },
+              { path: "records", element: withSuspense(UserRecords) },
+            ],
+          },
+        ]),
       },
 
       // Utility routes
-      { path: "/unauthorized", element: withSuspense(UnauthorizedPage) },
-      { path: "*", element: withSuspense(ErrorPage) },
+      { path: "unauthorized", element: <UnauthorizedPage /> },
     ],
+  },
+
+  // 404 Route - This should be at the root level, NOT inside children
+  {
+    path: "*",
+    element: <ErrorPage />,
   },
 ]);
