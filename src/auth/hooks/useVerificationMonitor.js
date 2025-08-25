@@ -1,12 +1,12 @@
-import { useEffect } from 'react'
-import { supabase } from '@/lib/supabaseClient'
-import { useAuth } from '../context/AuthProvider'
+import { useEffect } from 'react';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '../context/AuthProvider';
 
 export const useVerificationMonitor = () => {
-  const { user, checkUserProfile } = useAuth()
+  const { user, refreshAuthStatus } = useAuth();
 
   useEffect(() => {
-    if (!user) return
+    if (!user) return;
 
     const channel = supabase
       .channel('user-verification-monitor')
@@ -18,12 +18,15 @@ export const useVerificationMonitor = () => {
           filter: `auth_user_id=eq.${user.id}`
         },
         async (payload) => {
-          console.log('Verification status updated:', payload)
-          await checkUserProfile(user)
+          console.log('Verification status updated:', payload);
+          // Use the enhanced refresh with force update
+          setTimeout(() => {
+            refreshAuthStatus(user.id, true);
+          }, 500);
         }
       )
-      .subscribe()
+      .subscribe();
 
-    return () => supabase.removeChannel(channel)
-  }, [user?.id])
-}
+    return () => supabase.removeChannel(channel);
+  }, [user?.id, refreshAuthStatus]);
+};

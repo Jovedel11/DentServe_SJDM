@@ -23,6 +23,7 @@ import {
 } from "@/core/components/ui/sidebar";
 import { useAuth } from "@/auth/context/AuthProvider";
 import Logo from "@/core/components/ui/Logo";
+import Loader from "@/core/components/Loader";
 
 const navigationData = {
   navMain: [
@@ -87,7 +88,11 @@ const navigationData = {
 };
 
 export function AppSidebar({ ...props }) {
-  const { profile } = useAuth();
+  const { profile, loading } = useAuth();
+
+  if (loading) {
+    return <Loader message="Loading sidebar..." />;
+  }
 
   return (
     <Sidebar

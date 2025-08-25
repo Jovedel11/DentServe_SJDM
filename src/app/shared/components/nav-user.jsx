@@ -21,14 +21,19 @@ import {
 } from "@/core/components/ui/sidebar";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { cn } from "@/lib/utils";
+import Loader from "@/core/components/Loader";
 
 export function NavUser({ user, className }) {
   const { isMobile } = useSidebar();
-  const { signOut } = useAuth();
+  const { signOut, loading } = useAuth();
 
   const handleLogout = async () => {
     await signOut();
   };
+
+  if (loading) {
+    return <Loader message="Loading user information..." />;
+  }
 
   return (
     <SidebarMenu>

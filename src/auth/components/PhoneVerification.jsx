@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import { useRedirectPath } from "../hooks/useRedirectPath";
@@ -8,9 +8,46 @@ const PhoneVerification = () => {
   const [otp, setOtp] = useState("");
   const [phone, setPhone] = useState("");
 
-  const { sendPhoneOTP, verifyPhoneOTP, loading, error } = useAuth();
+  const {
+    sendPhoneOTP,
+    verifyPhoneOTP,
+    loading,
+    getVerificationStep,
+    isPhoneVerified,
+    error,
+    userRole,
+    user,
+  } = useAuth();
   const redirectPath = useRedirectPath();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (loading) return;
+
+    if (!user) {
+      console.log("No user, redirecting to login");
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    if (isPhoneVerified) {
+      console.log("Phone already verified, checking next step");
+      try {
+        const nextStep = getVerificationStep();
+        if (nextStep && typeof nextStep === "string") {
+          console.log("Redirecting to next step:", nextStep);
+          navigate(`/${nextStep}`, { replace: true });
+        } else {
+          console.log("All verifications complete, redirecting to dashboard");
+          navigate("/dashboard", { replace: true });
+        }
+      } catch (err) {
+        console.error("Error getting verification step:", err);
+        navigate("/dashboard", { replace: true });
+      }
+      return;
+    }
+  }, [user, userRole, isPhoneVerified, getVerificationStep, loading, navigate]);
 
   const handleSendOTP = async () => {
     const result = await sendPhoneOTP();
