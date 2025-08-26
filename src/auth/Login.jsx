@@ -31,7 +31,8 @@ const Login = () => {
     error,
   } = useLogin();
 
-  const { isLoaded, executeRecaptcha } = useRecaptcha();
+  const { isLoaded, executeRecaptchaWithFallback, isVerifying } =
+    useRecaptcha();
 
   // useActionState for form handling
   const [state, formAction, isPending] = useActionState(
@@ -59,7 +60,7 @@ const Login = () => {
           result = await loginWithEmailPassword(
             credentials.email,
             credentials.password,
-            executeRecaptcha
+            executeRecaptchaWithFallback
           );
           break;
         case "phone-password":
@@ -506,13 +507,18 @@ const Login = () => {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={loading || !isLoaded || isPending}
+                disabled={(loading || !isLoaded || isPending, isVerifying)}
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transform hover:scale-[1.02] disabled:transform-none"
               >
                 {loading || isPending ? (
                   <div className="flex items-center justify-center">
                     <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
                     {otpSent ? "Verifying..." : "Processing..."}
+                  </div>
+                ) : isVerifying ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
+                    Verifying Security...
                   </div>
                 ) : (
                   <>

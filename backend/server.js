@@ -1,6 +1,11 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import recaptchaRoutes from "./routes/recaptcha.js"
+import { adminSupabase } from './lib/supabaseSuperAdmin.js';
+import cloudinary from './lib/cloudinary.js';
 
 dotenv.config();
 
@@ -8,21 +13,71 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // middlewares
-app.use(express.json());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
-app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
+try {
+  new URL(process.env.FRONTEND_URL);
+  console.log("FRONTEND_URL is valid");
+} catch (err) {
+  console.error("Invalid FRONTEND_URL:", process.env.FRONTEND_URL);
+}
 
-// routes
-app.get("/api/hello", (req, res) => {
-  res.json({ message: "Hello from Express Backend" })
+// for react to connect
+app.use(cors({
+  origin: 
+  process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true, // allow cookies
+  methods: ['GET', 'POST'], // only http methods allowed
+  allowedHeaders: ['Content-Type', 'Authorization'] // allowed headers
+}));
+
+// parse data
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// log all queries/ to debug
+app.use(morgan('combined'));
+
+app.get('/health', (_req, res) => {
+  res.json({
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    message: 'Backend server is running',
+  });
 });
 
-app.post("/api/echo", (req, res) => {
-  res.json({ youSent: req.body })
+app.listen(PORT, () =>  console.log(`Custom Server is running on http://localhost:${PORT}`));
+
+app.use('/api/recaptcha', recaptchaRoutes);
+
+// Add error handling middleware
+app.use((error, req, res, next) => {
+  console.error('Server Error:', {
+    message: error.message,
+    stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+    timestamp: new Date().toISOString(),
+    path: req.path,
+    method: req.method,
+    ip: req.ip
+  });
+
+  res.status(error.status || 500).json({
+    success: false,
+    error: process.env.NODE_ENV === 'development' 
+      ? error.message 
+      : 'Internal server error',
+    timestamp: new Date().toISOString()
+  });
 });
 
-app.get("/", (req, res) => res.send("<h1>Hello From Backend</h1>"))
-
-app.get("/health", (_req, res) => res.send("OK"));
-
-app.listen(PORT, () => console.log(`API listening at http://localhost:${PORT}`))
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Route not found',
+    path: req.originalUrl,
+    method: req.method
+  });
+});

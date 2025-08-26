@@ -7,11 +7,11 @@ import { phoneUtils } from "@/utils/phoneUtils"
 export const useLogin = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const { executeRecaptcha } = useRecaptcha()
+  const { executeRecaptchaWithFallback } = useRecaptcha()
   const { checkRateLimit } = useRateLimit()
 
   // Method 1: Email + Password
-  const loginWithEmailPassword = async (email, password) => {
+  const loginWithEmailPassword = async (email, password, executeRecaptcha) => {
     setLoading(true)
     setError(null)
 
@@ -21,10 +21,17 @@ export const useLogin = () => {
         throw new Error('Too many login attempts. Please try again in 15 minutes.')
       }
 
-      const recaptchaToken = await executeRecaptcha('login')
-      if (!recaptchaToken) {
-        throw new Error('reCAPTCHA verification failed')
+      const recaptchaFunction = executeRecaptcha || executeRecaptchaWithFallback
+
+      console.log('🔐 Starting reCAPTCHA verification for login...');
+      const recaptchaResult = await recaptchaFunction('login')
+
+      if (!recaptchaResult.verified) {
+        throw new Error('Security verification failed. Please try again.')
       }
+
+      console.log(`✅ reCAPTCHA passed with score: ${recaptchaResult.score}`);
+      console.log('🔑 Proceeding with Supabase authentication...');
 
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email,

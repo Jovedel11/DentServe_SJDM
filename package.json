@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:all": "concurrently -n FRONTEND,BACKEND -c magenta,cyan \"npm run dev\" \"npm run dev:backend\""
   },
   "dependencies": {
     "@googlemaps/react-wrapper": "^1.2.0",
@@ -70,6 +72,7 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^9.2.1",
     "eslint": "^9.30.1",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
