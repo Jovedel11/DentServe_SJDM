@@ -17,154 +17,113 @@ import {
   FiAlertCircle,
   FiStar,
 } from "react-icons/fi";
-import WelcomeToast from "../components/welcome-toast";
+import { useAuth } from "@/auth/context/AuthProvider";
+import ProfileUpload from "@/app/shared/components/profile-upload";
+// import WelcomeToast from "../components/welcome-toast";
 import Loader from "@/core/components/Loader";
 
-/**
- * Enhanced Patient Profile Component
- */
 const PatientProfile = () => {
+  const { profile, handleRefreshProfile, updateProfile, user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
-  const [showWelcomeToast, setShowWelcomeToast] = useState(false);
-  const [availableClinics, setAvailableClinics] = useState([]);
-  const [availableDoctors, setAvailableDoctors] = useState([]);
-
-  // Mock data - replace with real Supabase integration
-  const [profileData, setProfileData] = useState({
-    personalInfo: {
-      firstName: "John",
-      lastName: "Doe",
-      email: "john.doe@email.com",
-      phone: "+63 917 123 4567",
-      dateOfBirth: "1990-05-15",
-      gender: "Male",
-      profileImage:
-        "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&h=120&fit=crop&crop=face",
-      emergencyContact: {
-        name: "Jane Doe",
-        phone: "+63 917 987 6543",
-      },
-    },
-    medicalInfo: {
-      medicalHistory:
-        "Regular dental checkups, no major issues. Had wisdom teeth removal in 2020.",
-      conditions: ["Hypertension"],
-      allergies: ["Penicillin", "Latex"],
-      currentMedications: ["Aspirin 81mg daily"],
-      insuranceProvider: "PhilHealth + Maxicare",
-    },
-    preferences: {
-      preferredClinicId: "clinic-uuid-1",
-      preferredDoctorIds: ["doctor-uuid-1", "doctor-uuid-2"],
-      emailNotifications: true,
-      smsNotifications: false,
-    },
-    stats: {
-      totalAppointments: 24,
-      yearsAsPatient: 3,
-      treatmentsCompleted: 8,
-    },
-    isNewUser: false, // Set to true to show welcome toast
-  });
-
-  const [editedData, setEditedData] = useState(profileData);
+  // const [showWelcomeToast, setShowWelcomeToast] = useState(false);
+  // const [availableClinics, setAvailableClinics] = useState([]);
+  // const [availableDoctors, setAvailableDoctors] = useState([]);
+  const [profileData, setProfileData] = useState({});
+  const [editedData, setEditedData] = useState({});
 
   // Load initial data
   useEffect(() => {
     loadProfileData();
   }, []);
 
-  // Check if user is new and show welcome toast
   useEffect(() => {
-    const checkNewUser = () => {
-      const hasCompletedProfile =
-        profileData.personalInfo.firstName &&
-        profileData.personalInfo.lastName &&
-        profileData.personalInfo.phone;
+    if (profileData) setEditedData(profileData);
+  }, [profileData]);
 
-      if (!hasCompletedProfile) {
-        setShowWelcomeToast(true);
-      }
-    };
+  // Check if user is new and show welcome toast
+  // useEffect(() => {
+  //   const checkNewUser = () => {
+  //     const hasCompletedProfile =
+  //       profileData.personalInfo.firstName &&
+  //       profileData.personalInfo.lastName &&
+  //       profileData.personalInfo.phone;
 
-    if (!loading) {
-      checkNewUser();
-    }
-  }, [loading, profileData]);
+  // if (!hasCompletedProfile) {
+  //   setShowWelcomeToast(true);
+  // }
+  //   };
+
+  //   if (!loading) {
+  //     checkNewUser();
+  //   }
+  // }, [loading, profileData]);
 
   const loadProfileData = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Mock loading delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setProfileData(profile);
+      // setAvailableClinics([
+      //   {
+      //     id: "clinic-uuid-1",
+      //     name: "Downtown Dental Care",
+      //     address: "123 Ayala Avenue, Makati City",
+      //     city: "Makati",
+      //     phone: "+63 2 8123 4567",
+      //   },
+      //   {
+      //     id: "clinic-uuid-2",
+      //     name: "Uptown Medical Center",
+      //     address: "456 EDSA, Quezon City",
+      //     city: "Quezon City",
+      //     phone: "+63 2 8234 5678",
+      //   },
+      //   {
+      //     id: "clinic-uuid-3",
+      //     name: "Westside Dental Clinic",
+      //     address: "789 Roxas Blvd, Manila",
+      //     city: "Manila",
+      //     phone: "+63 2 8345 6789",
+      //   },
+      // ]);
 
-      // In real implementation:
-      // 1. Load user profile and patient profile
-      // 2. Load available clinics and doctors
-      // 3. Calculate stats from appointments
-
-      setAvailableClinics([
-        {
-          id: "clinic-uuid-1",
-          name: "Downtown Dental Care",
-          address: "123 Ayala Avenue, Makati City",
-          city: "Makati",
-          phone: "+63 2 8123 4567",
-        },
-        {
-          id: "clinic-uuid-2",
-          name: "Uptown Medical Center",
-          address: "456 EDSA, Quezon City",
-          city: "Quezon City",
-          phone: "+63 2 8234 5678",
-        },
-        {
-          id: "clinic-uuid-3",
-          name: "Westside Dental Clinic",
-          address: "789 Roxas Blvd, Manila",
-          city: "Manila",
-          phone: "+63 2 8345 6789",
-        },
-      ]);
-
-      setAvailableDoctors([
-        {
-          id: "doctor-uuid-1",
-          first_name: "Dr. Maria",
-          last_name: "Santos",
-          specialization: "General Dentistry",
-          consultation_fee: 1500.0,
-          profile_image_url:
-            "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=120&h=120&fit=crop&crop=face",
-          rating: 4.8,
-        },
-        {
-          id: "doctor-uuid-2",
-          first_name: "Dr. Jose",
-          last_name: "Garcia",
-          specialization: "Orthodontics",
-          consultation_fee: 2000.0,
-          profile_image_url:
-            "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=120&h=120&fit=crop&crop=face",
-          rating: 4.9,
-        },
-        {
-          id: "doctor-uuid-3",
-          first_name: "Dr. Anna",
-          last_name: "Cruz",
-          specialization: "Oral Surgery",
-          consultation_fee: 2500.0,
-          profile_image_url:
-            "https://images.unsplash.com/photo-1594824475325-87b7c6c10b46?w=120&h=120&fit=crop&crop=face",
-          rating: 4.7,
-        },
-      ]);
+      // setAvailableDoctors([
+      //   {
+      //     id: "doctor-uuid-1",
+      //     first_name: "Dr. Maria",
+      //     last_name: "Santos",
+      //     specialization: "General Dentistry",
+      //     consultation_fee: 1500.0,
+      //     profile_image_url:
+      //       "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=120&h=120&fit=crop&crop=face",
+      //     rating: 4.8,
+      //   },
+      //   {
+      //     id: "doctor-uuid-2",
+      //     first_name: "Dr. Jose",
+      //     last_name: "Garcia",
+      //     specialization: "Orthodontics",
+      //     consultation_fee: 2000.0,
+      //     profile_image_url:
+      //       "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=120&h=120&fit=crop&crop=face",
+      //     rating: 4.9,
+      //   },
+      //   {
+      //     id: "doctor-uuid-3",
+      //     first_name: "Dr. Anna",
+      //     last_name: "Cruz",
+      //     specialization: "Oral Surgery",
+      //     consultation_fee: 2500.0,
+      //     profile_image_url:
+      //       "https://images.unsplash.com/photo-1594824475325-87b7c6c10b46?w=120&h=120&fit=crop&crop=face",
+      //     rating: 4.7,
+      //   },
+      // ]);
     } catch (error) {
       console.error("Error loading profile:", error);
       setError("Failed to load profile data");
@@ -260,19 +219,19 @@ const PatientProfile = () => {
     {
       icon: FiCalendar,
       label: "Total Appointments",
-      value: currentData.stats.totalAppointments.toString(),
+      value: currentData?.statistics?.total_appointments.toString(),
       color: "primary",
     },
     {
       icon: FiClock,
-      label: "Years as Patient",
-      value: currentData.stats.yearsAsPatient.toString(),
+      label: "Upcoming Appointments",
+      value: currentData?.statistics?.upcoming_appointments.toString(),
       color: "success",
     },
     {
       icon: FiHeart,
       label: "Treatments Completed",
-      value: currentData.stats.treatmentsCompleted.toString(),
+      value: currentData?.statistics?.completed_appointments.toString(),
       color: "warning",
     },
   ];
@@ -309,21 +268,21 @@ const PatientProfile = () => {
     }
   };
 
-  const getSelectedClinicName = () => {
-    const clinic = availableClinics.find(
-      (c) => c.id === currentData.preferences.preferredClinicId
-    );
-    return clinic ? clinic.name : "No preference";
-  };
+  // const getSelectedClinicName = () => {
+  //   const clinic = availableClinics.find(
+  //     (c) => c.id === currentData.preferences.preferredClinicId
+  //   );
+  //   return clinic ? clinic.name : "No preference";
+  // };
 
-  const getSelectedDoctorNames = () => {
-    const selectedDoctors = availableDoctors.filter((d) =>
-      currentData.preferences.preferredDoctorIds.includes(d.id)
-    );
-    return selectedDoctors.length > 0
-      ? selectedDoctors.map((d) => `${d.first_name} ${d.last_name}`).join(", ")
-      : "No preference";
-  };
+  // const getSelectedDoctorNames = () => {
+  //   const selectedDoctors = availableDoctors.filter((d) =>
+  //     currentData.preferences.preferredDoctorIds.includes(d.id)
+  //   );
+  //   return selectedDoctors.length > 0
+  //     ? selectedDoctors.map((d) => `${d.first_name} ${d.last_name}`).join(", ")
+  //     : "No preference";
+  // };
 
   if (loading) {
     return <Loader message={"Loading your profile... Please wait a moment"} />;
@@ -333,10 +292,10 @@ const PatientProfile = () => {
     <div className="min-h-screen p-6 bg-background md:p-6 p-4">
       <div className="max-w-6xl mx-auto">
         {/* Welcome Toast */}
-        <WelcomeToast
+        {/* <WelcomeToast
           isVisible={showWelcomeToast}
           onClose={() => setShowWelcomeToast(false)}
-        />
+        /> */}
 
         {/* Success/Error Messages */}
         {success && (
@@ -425,41 +384,52 @@ const PatientProfile = () => {
           <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
             <div className="flex items-start gap-6 mb-8 md:flex-row flex-col md:items-start items-center md:text-left text-center">
               <div className="relative flex-shrink-0">
-                <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-primary/20 bg-muted/30">
-                  {currentData.personalInfo.profileImage ? (
-                    <img
-                      src={currentData.personalInfo.profileImage}
-                      alt="Profile"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                      <FiUser className="text-4xl" />
-                    </div>
-                  )}
-                </div>
+                <ProfileUpload
+                  currentImageUrl={currentData?.profile?.profile_image_url}
+                  onImageUpdate={async (newImageUrl) => {
+                    //using hook
+                    const result = await updateProfile(
+                      { profile_image_url: newImageUrl },
+                      {},
+                      user?.id
+                    );
+                    if (result.success) {
+                      setProfileData((prev) => ({
+                        ...prev,
+                        profile: {
+                          ...prev.profile,
+                          profile_image_url: newImageUrl,
+                        },
+                      }));
+                    } else {
+                      setError(
+                        result.error || "Failed to update profile image"
+                      );
+                    }
+                  }}
+                ></ProfileUpload>
                 <button className="absolute bottom-0 right-0 w-10 h-10 rounded-full bg-primary text-primary-foreground border-4 border-card flex items-center justify-center cursor-pointer transition-all duration-300 hover:bg-primary/90 hover:scale-105 shadow-lg">
                   <FiCamera className="text-base" />
                 </button>
               </div>
               <div className="flex-1 min-w-0">
                 <h2 className="text-2xl font-bold text-foreground mb-4">
-                  {currentData.personalInfo.firstName &&
-                  currentData.personalInfo.lastName
-                    ? `${currentData.personalInfo.firstName} ${currentData.personalInfo.lastName}`
+                  {currentData.profile.first_name &&
+                  currentData.profile.last_name
+                    ? `${currentData.profile.first_name} ${currentData.profile.last_name}`
                     : "Complete your profile"}
                 </h2>
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-3 text-foreground md:justify-start justify-center">
                     <FiMail className="text-primary text-base flex-shrink-0" />
                     <span className="text-sm md:text-base">
-                      {currentData.personalInfo.email || "No email provided"}
+                      {currentData?.email || "No email provided"}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 text-foreground md:justify-start justify-center">
                     <FiPhone className="text-primary text-base flex-shrink-0" />
                     <span className="text-sm md:text-base">
-                      {currentData.personalInfo.phone || "No phone provided"}
+                      {currentData?.phone || "No phone provided"}
                     </span>
                   </div>
                 </div>
@@ -520,7 +490,7 @@ const PatientProfile = () => {
                   {isEditing ? (
                     <input
                       type="text"
-                      value={currentData.personalInfo.firstName}
+                      value={currentData.profile.first_name}
                       onChange={(e) =>
                         handleInputChange(
                           "personalInfo",
@@ -533,7 +503,7 @@ const PatientProfile = () => {
                     />
                   ) : (
                     <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                      {currentData.personalInfo.firstName || "Not provided"}
+                      {currentData.profile.first_name || "Not provided"}
                     </span>
                   )}
                 </div>
@@ -544,7 +514,7 @@ const PatientProfile = () => {
                   {isEditing ? (
                     <input
                       type="text"
-                      value={currentData.personalInfo.lastName}
+                      value={currentData?.profile?.last_name}
                       onChange={(e) =>
                         handleInputChange(
                           "personalInfo",
@@ -557,7 +527,7 @@ const PatientProfile = () => {
                     />
                   ) : (
                     <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                      {currentData.personalInfo.lastName || "Not provided"}
+                      {currentData?.profile?.last_name || "Not provided"}
                     </span>
                   )}
                 </div>
@@ -566,7 +536,7 @@ const PatientProfile = () => {
                     Email Address
                   </label>
                   <span className="py-3 text-base text-foreground flex items-center min-h-[48px] opacity-60">
-                    {currentData.personalInfo.email || "Not provided"}
+                    {currentData?.email || "Not provided"}
                     <span className="ml-2 text-xs text-muted-foreground">
                       (managed by account)
                     </span>
@@ -579,7 +549,7 @@ const PatientProfile = () => {
                   {isEditing ? (
                     <input
                       type="tel"
-                      value={currentData.personalInfo.phone}
+                      value={currentData?.phone}
                       onChange={(e) =>
                         handleInputChange(
                           "personalInfo",
@@ -592,7 +562,7 @@ const PatientProfile = () => {
                     />
                   ) : (
                     <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                      {currentData.personalInfo.phone || "Not provided"}
+                      {currentData?.phone || "Not provided"}
                     </span>
                   )}
                 </div>
@@ -603,7 +573,7 @@ const PatientProfile = () => {
                   {isEditing ? (
                     <input
                       type="date"
-                      value={currentData.personalInfo.dateOfBirth}
+                      value={currentData?.profile?.date_of_birth}
                       onChange={(e) =>
                         handleInputChange(
                           "personalInfo",
@@ -615,9 +585,9 @@ const PatientProfile = () => {
                     />
                   ) : (
                     <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                      {currentData.personalInfo.dateOfBirth
+                      {currentData?.profile?.date_of_birth
                         ? new Date(
-                            currentData.personalInfo.dateOfBirth
+                            currentData?.profile?.date_of_birth
                           ).toLocaleDateString()
                         : "Not provided"}
                     </span>
@@ -629,7 +599,7 @@ const PatientProfile = () => {
                   </label>
                   {isEditing ? (
                     <select
-                      value={currentData.personalInfo.gender}
+                      value={currentData?.profile?.gender}
                       onChange={(e) =>
                         handleInputChange(
                           "personalInfo",
@@ -649,7 +619,7 @@ const PatientProfile = () => {
                     </select>
                   ) : (
                     <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                      {currentData.personalInfo.gender || "Not provided"}
+                      {currentData?.profile?.gender || "Not provided"}
                     </span>
                   )}
                 </div>
@@ -668,7 +638,10 @@ const PatientProfile = () => {
                     {isEditing ? (
                       <input
                         type="text"
-                        value={currentData.personalInfo.emergencyContact.name}
+                        value={
+                          currentData?.role_specific_data
+                            ?.emergency_contact_name
+                        }
                         onChange={(e) =>
                           handleInputChange(
                             "personalInfo",
@@ -681,8 +654,8 @@ const PatientProfile = () => {
                       />
                     ) : (
                       <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                        {currentData.personalInfo.emergencyContact.name ||
-                          "Not provided"}
+                        {currentData?.role_specific_data
+                          ?.emergency_contact_name || "Not provided"}
                       </span>
                     )}
                   </div>
@@ -693,7 +666,10 @@ const PatientProfile = () => {
                     {isEditing ? (
                       <input
                         type="tel"
-                        value={currentData.personalInfo.emergencyContact.phone}
+                        value={
+                          currentData?.role_specific_data
+                            ?.emergency_contact_phone
+                        }
                         onChange={(e) =>
                           handleInputChange(
                             "personalInfo",
@@ -706,8 +682,8 @@ const PatientProfile = () => {
                       />
                     ) : (
                       <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                        {currentData.personalInfo.emergencyContact.phone ||
-                          "Not provided"}
+                        {currentData?.role_specific_data
+                          ?.emergency_contact_phone || "Not provided"}
                       </span>
                     )}
                   </div>
@@ -733,11 +709,13 @@ const PatientProfile = () => {
               <div className="grid grid-cols-1 gap-6">
                 <div className="flex flex-col gap-2">
                   <label className="text-sm font-semibold text-foreground/80">
-                    Medical History
+                    Medical Conditions
                   </label>
                   {isEditing ? (
                     <textarea
-                      value={currentData.medicalInfo.medicalHistory}
+                      value={
+                        currentData?.role_specific_data?.medical_conditions
+                      }
                       onChange={(e) =>
                         handleInputChange(
                           "medicalInfo",
@@ -751,46 +729,22 @@ const PatientProfile = () => {
                     />
                   ) : (
                     <span className="py-3 text-base text-foreground flex items-start min-h-[48px]">
-                      {currentData.medicalInfo.medicalHistory ||
+                      {currentData?.role_specific_data?.medical_conditions ||
                         "No medical history provided"}
                     </span>
                   )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-semibold text-foreground/80">
-                      Medical Conditions
-                    </label>
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={currentData.medicalInfo.conditions.join(", ")}
-                        onChange={(e) =>
-                          handleArrayChange(
-                            "medicalInfo",
-                            "conditions",
-                            e.target.value
-                          )
-                        }
-                        className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
-                        placeholder="Separate multiple conditions with commas"
-                      />
-                    ) : (
-                      <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                        {currentData.medicalInfo.conditions.length > 0
-                          ? currentData.medicalInfo.conditions.join(", ")
-                          : "None reported"}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-2">
+                  {/* <div className="flex flex-col gap-2">
                     <label className="text-sm font-semibold text-foreground/80">
                       Allergies
                     </label>
                     {isEditing ? (
                       <input
                         type="text"
-                        value={currentData.medicalInfo.allergies.join(", ")}
+                        value={currentData?.role_specific_data?.allergies.join(
+                          ", "
+                        )}
                         onChange={(e) =>
                           handleArrayChange(
                             "medicalInfo",
@@ -803,42 +757,14 @@ const PatientProfile = () => {
                       />
                     ) : (
                       <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                        {currentData.medicalInfo.allergies.length > 0
-                          ? currentData.medicalInfo.allergies.join(", ")
-                          : "None reported"}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-semibold text-foreground/80">
-                      Current Medications
-                    </label>
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={currentData.medicalInfo.currentMedications.join(
-                          ", "
-                        )}
-                        onChange={(e) =>
-                          handleArrayChange(
-                            "medicalInfo",
-                            "currentMedications",
-                            e.target.value
-                          )
-                        }
-                        className="px-4 py-3 border-2 border-input bg-input text-foreground rounded-xl text-base transition-all duration-300 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
-                        placeholder="Separate multiple medications with commas"
-                      />
-                    ) : (
-                      <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                        {currentData.medicalInfo.currentMedications.length > 0
-                          ? currentData.medicalInfo.currentMedications.join(
+                        {currentData?.role_specific_data?.allergies.length > 0
+                          ? currentData?.role_specific_data?.allergies.join(
                               ", "
                             )
                           : "None reported"}
                       </span>
                     )}
-                  </div>
+                  </div> */}
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-semibold text-foreground/80">
                       Insurance Provider
@@ -846,7 +772,9 @@ const PatientProfile = () => {
                     {isEditing ? (
                       <input
                         type="text"
-                        value={currentData.medicalInfo.insuranceProvider}
+                        value={
+                          currentData?.role_specific_data?.insurance_provider
+                        }
                         onChange={(e) =>
                           handleInputChange(
                             "medicalInfo",
@@ -859,7 +787,7 @@ const PatientProfile = () => {
                       />
                     ) : (
                       <span className="py-3 text-base text-foreground flex items-center min-h-[48px]">
-                        {currentData.medicalInfo.insuranceProvider ||
+                        {currentData?.role_specific_data?.insurance_provider ||
                           "Not provided"}
                       </span>
                     )}
@@ -890,7 +818,7 @@ const PatientProfile = () => {
                     Appointment Preferences
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="flex flex-col gap-2">
+                    {/* <div className="flex flex-col gap-2">
                       <label className="text-sm font-semibold text-foreground/80">
                         Preferred Clinic
                       </label>
@@ -918,8 +846,8 @@ const PatientProfile = () => {
                           {getSelectedClinicName()}
                         </span>
                       )}
-                    </div>
-                    <div className="flex flex-col gap-2">
+                    </div> */}
+                    {/* <div className="flex flex-col gap-2">
                       <label className="text-sm font-semibold text-foreground/80">
                         Preferred Doctors
                       </label>
@@ -979,7 +907,7 @@ const PatientProfile = () => {
                           {getSelectedDoctorNames()}
                         </span>
                       )}
-                    </div>
+                    </div> */}
                   </div>
                 </div>
               </div>

@@ -1,13 +1,11 @@
+import './config.js'
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import recaptchaRoutes from "./routes/recaptcha.js"
-import { adminSupabase } from './lib/supabaseSuperAdmin.js';
-import cloudinary from './lib/cloudinary.js';
-
-dotenv.config();
+import multer from 'multer';
+import uploadRoutes from "./routes/cloudImage.js"
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -50,7 +48,11 @@ app.get('/health', (_req, res) => {
 
 app.listen(PORT, () =>  console.log(`Custom Server is running on http://localhost:${PORT}`));
 
+// captcha
 app.use('/api/recaptcha', recaptchaRoutes);
+
+// cloudinary
+app.use('/api/upload', uploadRoutes)
 
 // Add error handling middleware
 app.use((error, req, res, next) => {
@@ -62,6 +64,25 @@ app.use((error, req, res, next) => {
     method: req.method,
     ip: req.ip
   });
+
+  // multer specific error
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        error: 'File too large. Maximum size is 5mb',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  if (error.message === 'Only image files are allowed') {
+    return res.status(400).json({
+      success: false,
+      error: 'Only image files are allowed',
+      timestamps: new Date().toISOString(),
+    });
+  }
 
   res.status(error.status || 500).json({
     success: false,

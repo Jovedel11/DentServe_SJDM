@@ -15,6 +15,7 @@ const AuthContext = createContext({});
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [session, setSession] = useState(undefined);
   const [authStatus, setAuthStatus] = useState(null);
   const [profile, setProfile] = useState(null);
   const [dashboardData, setDashboardData] = useState(null);
@@ -35,6 +36,7 @@ export const AuthProvider = ({ children }) => {
       console.log("Auth state changed:", event, session?.user?.email);
 
       if (session?.user) {
+        setSession(session);
         setUser(session.user);
         console.log("User logged in:", session.user.email);
         handleRefreshAuthStatus(session.user.id);
@@ -74,6 +76,7 @@ export const AuthProvider = ({ children }) => {
       } = await supabase.auth.getSession();
 
       if (session?.user) {
+        setSession(session);
         setUser(session.user);
         await refreshAuthStatus(session.user.id);
       }
@@ -309,11 +312,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const updateProfile = async (profileData, roleSpecificData = {}) => {
+  const updateProfile = async (profileData, roleSpecificData = {}, userId) => {
+    if (!userId) return;
     setLoading(true);
     setError(null);
     try {
       const result = await authService.updateProfile(
+        userId,
         profileData,
         roleSpecificData
       );
@@ -355,6 +360,7 @@ export const AuthProvider = ({ children }) => {
   const value = useMemo(
     () => ({
       // Core state
+      session,
       user,
       authStatus,
       loading,

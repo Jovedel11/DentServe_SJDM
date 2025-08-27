@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useTheme } from "@/core/contexts/ThemeProvider";
 import {
   Calendar,
   Clock,
   MapPin,
   Heart,
   Star,
-  MessageSquare,
   CheckCircle2,
   Stethoscope,
   Activity,
@@ -16,8 +14,6 @@ import {
   Search,
   Navigation,
   Phone,
-  Target,
-  Bell,
   Calendar as CalendarIcon,
   TrendingUp,
   Award,
@@ -30,7 +26,6 @@ import {
   format,
   isToday,
   isTomorrow,
-  addDays,
   differenceInDays,
   parseISO,
 } from "date-fns";
@@ -41,21 +36,14 @@ import {
   ChartLegend,
   ChartLegendContent,
 } from "@/core/components/ui/chart";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import { useAuth } from "@/auth/context/AuthProvider";
 
 /**
  * Enhanced Professional Patient Dashboard
  */
 const PatientDashboard = () => {
+  const { profile } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -102,10 +90,9 @@ const PatientDashboard = () => {
 
       // Mock data setup
       const mockUserProfile = {
-        first_name: "John",
-        last_name: "Doe",
-        profile_image_url:
-          "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&h=120&fit=crop&crop=face",
+        first_name: profile?.profile?.first_name,
+        last_name: profile?.profile?.last_name,
+        profile_image_url: profile?.profile?.profile_image_url,
       };
 
       const mockAnalytics = {

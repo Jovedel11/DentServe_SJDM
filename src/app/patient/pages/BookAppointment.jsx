@@ -25,10 +25,11 @@ import {
   services,
   serviceCategories,
   timeSlots,
-  userProfile,
 } from "@/data/patient/real/mock-appointment";
+import { useAuth } from "@/auth/context/AuthProvider";
 
 const BookAppointment = () => {
+  const { profile } = useAuth();
   // Modal and UI State
   const [showWelcomeModal, setShowWelcomeModal] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
@@ -65,6 +66,10 @@ const BookAppointment = () => {
       clinic.specialties.some((specialty) =>
         specialty.toLowerCase().includes(searchQuery.toLowerCase())
       )
+  );
+
+  const conditions = profile?.role_specific_data?.medical_conditions?.forEach(
+    (condition) => condition
   );
 
   const filteredServices =
@@ -679,7 +684,7 @@ const BookAppointment = () => {
                       Patient Name
                     </div>
                     <div className="text-muted-foreground">
-                      {userProfile.name}
+                      {profile?.profile?.first_name}
                     </div>
                   </div>
                 </div>
@@ -689,7 +694,7 @@ const BookAppointment = () => {
                   <div className="flex-1">
                     <div className="font-medium text-foreground">Phone</div>
                     <div className="text-muted-foreground">
-                      {userProfile.phone}
+                      {profile?.phone}
                     </div>
                   </div>
                 </div>
@@ -699,7 +704,7 @@ const BookAppointment = () => {
                   <div className="flex-1">
                     <div className="font-medium text-foreground">Email</div>
                     <div className="text-muted-foreground">
-                      {userProfile.email}
+                      {profile?.email}
                     </div>
                   </div>
                 </div>
@@ -707,9 +712,11 @@ const BookAppointment = () => {
                 <div className="flex items-start gap-3">
                   <MapPin className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
                   <div className="flex-1">
-                    <div className="font-medium text-foreground">Address</div>
+                    <div className="font-medium text-foreground">
+                      Medical Conditions
+                    </div>
                     <div className="text-muted-foreground text-sm">
-                      {userProfile.address}
+                      {conditions || []}
                     </div>
                   </div>
                 </div>
