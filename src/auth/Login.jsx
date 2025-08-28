@@ -1,9 +1,9 @@
 import { useState, useActionState, useEffect } from "react";
 import { useLogin } from "./hooks/useLogin";
-import { useRecaptcha } from "./hooks/useRecaptcha";
 import { validateLoginForm } from "@/utils/validation/auth-validation";
 import SvgDental from "@/core/components/SvgDental";
 import Loader from "@/core/components/Loader";
+import ProtectedForm from "@/core/components/security/ProtectedForm";
 import { Eye, EyeOff, RefreshCw } from "lucide-react";
 
 const Login = () => {
@@ -31,36 +31,29 @@ const Login = () => {
     error,
   } = useLogin();
 
-  const { isLoaded, executeRecaptchaWithFallback, isVerifying } =
-    useRecaptcha();
+  // Enhanced form submit handler that receives reCAPTCHA info
+  const handleFormSubmit = async (e, recaptchaInfo) => {
+    console.log("🔐 Form submitted with reCAPTCHA info:", recaptchaInfo);
 
-  // useActionState for form handling
-  const [state, formAction, isPending] = useActionState(
-    async (prevState, formData) => {
-      // Client-side validation
-      const validation = validateLoginForm(credentials, loginMethod);
-      if (!validation.isValid) {
-        setValidationErrors(validation.errors);
-        return { success: false, errors: validation.errors };
-      }
+    // Client-side validation
+    const validation = validateLoginForm(credentials, loginMethod);
+    if (!validation.isValid) {
+      setValidationErrors(validation.errors);
+      throw new Error("Please fill in all required fields correctly");
+    }
 
-      setValidationErrors({});
+    setValidationErrors({});
 
-      if (!isLoaded) {
-        return {
-          success: false,
-          error: "Please wait for security verification to load",
-        };
-      }
+    let result;
 
-      let result;
-
+    try {
       switch (loginMethod) {
         case "email-password":
+          // Pass the reCAPTCHA function that's already been executed
           result = await loginWithEmailPassword(
             credentials.email,
             credentials.password,
-            executeRecaptchaWithFallback
+            () => Promise.resolve(recaptchaInfo)
           );
           break;
         case "phone-password":
@@ -75,7 +68,6 @@ const Login = () => {
             if (result.success) {
               setOtpSent(true);
               setOtpIdentifier(credentials.email);
-              // Start resend timer
               setResendTimer(30);
             }
           } else {
@@ -92,7 +84,6 @@ const Login = () => {
             if (result.success) {
               setOtpSent(true);
               setOtpIdentifier(credentials.phone);
-              // Start resend timer
               setResendTimer(30);
             }
           } else {
@@ -106,13 +97,19 @@ const Login = () => {
       }
 
       if (result?.success) {
-        console.log("Login successful - AuthProvider will handle navigation");
+        console.log(
+          "✅ Login successful - AuthProvider will handle navigation"
+        );
+      } else if (result?.error) {
+        throw new Error(result.error);
       }
 
       return result;
-    },
-    null
-  );
+    } catch (error) {
+      console.error("❌ Login error:", error);
+      throw error; // Re-throw to show error in UI
+    }
+  };
 
   // Handle resend OTP timer
   useEffect(() => {
@@ -129,7 +126,6 @@ const Login = () => {
     const timer = setTimeout(() => {
       setIsLoading(false);
     }, 400);
-
     return () => clearTimeout(timer);
   }, []);
 
@@ -137,7 +133,6 @@ const Login = () => {
     const { name, value } = e.target;
     setCredentials((prev) => ({ ...prev, [name]: value }));
 
-    // Clear validation error when user starts typing
     if (validationErrors[name]) {
       setValidationErrors((prev) => ({ ...prev, [name]: null }));
     }
@@ -232,7 +227,14 @@ const Login = () => {
               ))}
             </div>
 
-            <form action={formAction} className="space-y-4">
+            {/* Protected Form - reCAPTCHA will only run on submit */}
+            <ProtectedForm
+              onSubmit={handleFormSubmit}
+              action="login"
+              className="space-y-4"
+              showProtection={true}
+              protectionSize="normal"
+            >
               {/* Email + Password */}
               {loginMethod === "email-password" && (
                 <>
@@ -496,29 +498,22 @@ const Login = () => {
               )}
 
               {/* Error Message */}
-              {(error || state?.error) && (
+              {error && (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                  <p className="text-red-600 text-sm text-center">
-                    {error || state?.error}
-                  </p>
+                  <p className="text-red-600 text-sm text-center">{error}</p>
                 </div>
               )}
 
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={(loading || !isLoaded || isPending, isVerifying)}
+                disabled={loading}
                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transform hover:scale-[1.02] disabled:transform-none"
               >
-                {loading || isPending ? (
+                {loading ? (
                   <div className="flex items-center justify-center">
                     <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
                     {otpSent ? "Verifying..." : "Processing..."}
-                  </div>
-                ) : isVerifying ? (
-                  <div className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
-                    Verifying Security...
                   </div>
                 ) : (
                   <>
@@ -530,7 +525,7 @@ const Login = () => {
                   </>
                 )}
               </button>
-            </form>
+            </ProtectedForm>
 
             {/* Footer Links */}
             <div className="mt-6 space-y-4">

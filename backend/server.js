@@ -24,11 +24,19 @@ try {
 
 // for react to connect
 app.use(cors({
-  origin: 
-  process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true, // allow cookies
-  methods: ['GET', 'POST'], // only http methods allowed
-  allowedHeaders: ['Content-Type', 'Authorization'] // allowed headers
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Added more methods
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization',
+    'X-Upload-Id', // Added the custom upload header
+    'X-Requested-With',
+    'Accept',
+    'Origin'
+  ], // Enhanced allowed headers
+  exposedHeaders: ['X-Upload-Id'], // Expose custom headers to frontend
+  optionsSuccessStatus: 200 // Support legacy browsers
 }));
 
 // parse data

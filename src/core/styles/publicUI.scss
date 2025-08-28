@@ -29,6 +29,11 @@
     min-height: 100vh;
   }
 
+  body.offline-mode {
+    background: var(--background) !important;
+    color: var(--foreground) !important;
+  }
+
   /* Animations */
   @keyframes fadeInUp {
     from {

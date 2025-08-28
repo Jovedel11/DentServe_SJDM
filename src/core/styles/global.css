@@ -201,3 +201,9 @@
 .dark .glass-effect {
   @apply bg-gray-900/80 backdrop-blur-sm border border-gray-700/20;
 }
+
+body.offline-mode {
+  background: var(--background) !important;
+  color: var(--foreground) !important;
+}
+

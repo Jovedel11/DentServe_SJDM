@@ -1,44 +1,39 @@
 import { lazy } from "react";
 import { createBrowserRouter, Outlet } from "react-router-dom";
 import withSuspense from "./core/components/withSuspense";
-import AuthGuard from "./core/routes/AuthGuard";
+import RouteGuard from "./core/routes/RouteGuard";
 import { useVerificationMonitor } from "@/auth/hooks/useVerificationMonitor";
-import { useRoleBasedRedirect } from "./core/hooks/useRoleBasedRedirect";
+import {
+  useNavigationManager,
+  UnauthorizedWarning,
+} from "@/core/contexts/NavigationManager";
 import { RouterErrorBoundary } from "./core/components/ErrorFolder/ErrorBoundary";
 import { NetworkMonitor } from "./core/components/NetworkMonitor";
+import { StyleTransitionManager } from "./core/components/StyleTransitionManager";
 
-const AuthLayout = () => {
+const AppLayout = () => {
   useVerificationMonitor();
-  useRoleBasedRedirect();
+  const { showUnauthorizedWarning, warningMessage, dismissWarning } =
+    useNavigationManager();
+
   return (
     <NetworkMonitor>
-      <Outlet />
+      <StyleTransitionManager>
+        <UnauthorizedWarning
+          showWarning={showUnauthorizedWarning}
+          message={warningMessage}
+          onDismiss={dismissWarning}
+        />
+        <Outlet />
+      </StyleTransitionManager>
     </NetworkMonitor>
   );
 };
 
-// Lazy loaded components with proper error boundaries and retries
-const PublicLayout = lazy(() =>
-  import("./public/layout/PublicLayout").catch((error) => {
-    console.error("Failed to load PublicLayout:", error);
-    // Retry logic for chunk load errors
-    if (error.message?.includes("Loading chunk")) {
-      return import("./public/layout/PublicLayout");
-    }
-    return {
-      default: () => (
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <h1>Error loading layout</h1>
-            <button onClick={() => window.location.reload()}>Retry</button>
-          </div>
-        </div>
-      ),
-    };
-  })
-);
+// Simple lazy loading without complex error handling
+const PublicLayout = lazy(() => import("./public/layout/PublicLayout"));
 
-// Error pages - these are special and should not be lazy loaded
+// Error pages
 import ErrorPage from "./core/components/ErrorFolder/ErrorPage";
 import UnauthorizedPage from "./core/components/ErrorFolder/UnauthorizedPage";
 
@@ -111,12 +106,12 @@ const UIManagement = lazy(() => import("@/app/admin/pages/UIManagement"));
 const UserManagement = lazy(() => import("@/app/admin/pages/UserManagement"));
 const UserRecords = lazy(() => import("@/app/admin/pages/UserRecords"));
 
-// Helper function to create protected routes with role-based access
-const createProtectedRoute = (requiredRole, LayoutComponent, children) => ({
+// Simple route creation
+const createProtectedRoute = (allowedRoles, LayoutComponent, children) => ({
   element: (
-    <AuthGuard requiredRole={requiredRole}>
+    <RouteGuard allowedRoles={allowedRoles}>
       {withSuspense(LayoutComponent)}
-    </AuthGuard>
+    </RouteGuard>
   ),
   errorElement: <RouterErrorBoundary />,
   children,
@@ -124,7 +119,11 @@ const createProtectedRoute = (requiredRole, LayoutComponent, children) => ({
 
 export const router = createBrowserRouter([
   {
-    element: <AuthLayout />,
+    element: (
+      <NetworkMonitor>
+        <AppLayout />
+      </NetworkMonitor>
+    ),
     errorElement: <RouterErrorBoundary />,
     children: [
       // Public routes
@@ -142,7 +141,7 @@ export const router = createBrowserRouter([
         ],
       },
 
-      // Auth callback and verification routes (no role restriction)
+      // Auth routes
       { path: "auth-callback", element: withSuspense(AuthCallback) },
       { path: "reset-password", element: withSuspense(ResetPassword) },
       { path: "verify-email", element: withSuspense(EmailVerification) },
@@ -150,10 +149,10 @@ export const router = createBrowserRouter([
       { path: "complete-profile", element: withSuspense(CompleteProfile) },
       { path: "change-password", element: withSuspense(ResetPassword) },
 
-      // Patient routes - ONLY accessible by patient role
+      // Protected routes
       {
         path: "patient",
-        ...createProtectedRoute("patient", PatientLayout, [
+        ...createProtectedRoute(["patient"], PatientLayout, [
           { path: "dashboard", element: withSuspense(PatientDashboard) },
           {
             path: "appointments",
@@ -180,10 +179,9 @@ export const router = createBrowserRouter([
         ]),
       },
 
-      // Staff routes - ONLY accessible by staff role
       {
         path: "staff",
-        ...createProtectedRoute("staff", StaffLayout, [
+        ...createProtectedRoute(["staff"], StaffLayout, [
           { path: "dashboard", element: withSuspense(StaffDashboard) },
           {
             path: "manage-appointments",
@@ -197,10 +195,9 @@ export const router = createBrowserRouter([
         ]),
       },
 
-      // Admin routes - ONLY accessible by admin role
       {
         path: "admin",
-        ...createProtectedRoute("admin", AdminLayout, [
+        ...createProtectedRoute(["admin"], AdminLayout, [
           { path: "dashboard", element: withSuspense(AdminDashboard) },
           { path: "ui-management", element: withSuspense(UIManagement) },
           {
@@ -213,12 +210,9 @@ export const router = createBrowserRouter([
         ]),
       },
 
-      // Utility routes
       { path: "unauthorized", element: <UnauthorizedPage /> },
     ],
   },
-
-  // 404 Route - This should be at the root level, NOT inside children
   {
     path: "*",
     element: <ErrorPage />,

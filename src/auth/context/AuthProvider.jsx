@@ -312,21 +312,27 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const updateProfile = async (profileData, roleSpecificData = {}, userId) => {
-    if (!userId) return;
+  const updateProfile = async (
+    profileData,
+    roleSpecificData = {},
+    userId = null
+  ) => {
     setLoading(true);
     setError(null);
     try {
       const result = await authService.updateProfile(
-        userId,
         profileData,
-        roleSpecificData
+        roleSpecificData,
+        userId
       );
       if (result.success) {
         await handleRefreshProfile();
         return { success: true };
       } else {
-        throw new Error(result.error || "Failed to update profile");
+        return {
+          success: false,
+          error: result.error || "Failed to update profile",
+        };
       }
     } catch (error) {
       setError(error.message);

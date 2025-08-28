@@ -5,7 +5,13 @@ const NetworkContext = createContext();
 export const useNetworkStatus = () => {
   const context = useContext(NetworkContext);
   if (!context) {
-    throw new Error("useNetworkStatus must be used within NetworkMonitor");
+    return {
+      isOnline: navigator.onLine,
+      wasOffline: false,
+      connectionQuality: "unknown",
+      isSlowConnection: false,
+      isFastConnection: false,
+    };
   }
   return context;
 };
@@ -16,29 +22,78 @@ export const NetworkMonitor = ({ children }) => {
   const [connectionQuality, setConnectionQuality] = useState("unknown");
 
   useEffect(() => {
-    //CONNECTION MONITORING
     const updateOnlineStatus = () => {
       const online = navigator.onLine;
       setIsOnline(online);
 
       if (online && wasOffline) {
-        // connection restored
         setWasOffline(false);
         console.log("✅ Connection restored");
 
-        // Optional: Trigger data refresh after reconnection
+        // Restore normal styles when back online
+        handleOnlineStyles();
+
         window.dispatchEvent(new CustomEvent("connection-restored"));
       } else if (!online) {
-        // connection lost
         setWasOffline(true);
         console.log("❌ Connection lost");
 
-        // Optional: Cache current state before going offline
+        // Apply offline-safe styles
+        handleOfflineStyles();
+
         window.dispatchEvent(new CustomEvent("connection-lost"));
       }
     };
 
-    // CONNECTION QUALITY DETECTION
+    const handleOfflineStyles = () => {
+      const body = document.body;
+
+      // Add offline mode class
+      body.classList.add("offline-mode");
+
+      // Preserve current theme state
+      const isDark = body.classList.contains("dark");
+      const isPublic = body.classList.contains("public-styles");
+      const isPrivate = body.classList.contains("private-styles");
+
+      // Store theme information as data attributes for offline preservation
+      body.setAttribute("data-offline-theme", isDark ? "dark" : "light");
+      body.setAttribute("data-offline-mode", isPublic ? "public" : "private");
+
+      // Force critical styles to be inline for offline reliability
+      if (isPublic) {
+        body.style.setProperty("background-color", "#F1FAEE", "important");
+        body.style.setProperty("color", "#2D3748", "important");
+      } else if (isPrivate) {
+        if (isDark) {
+          body.style.setProperty("background-color", "#1D3557", "important");
+          body.style.setProperty("color", "#F1FAEE", "important");
+        } else {
+          body.style.setProperty("background-color", "#F1FAEE", "important");
+          body.style.setProperty("color", "#1A202C", "important");
+        }
+      }
+
+      console.log("🎨 Offline styles applied");
+    };
+
+    const handleOnlineStyles = () => {
+      const body = document.body;
+
+      // Remove offline mode class
+      body.classList.remove("offline-mode");
+
+      // Remove inline styles to restore normal CSS behavior
+      body.style.removeProperty("background-color");
+      body.style.removeProperty("color");
+
+      // Clean up data attributes
+      body.removeAttribute("data-offline-theme");
+      body.removeAttribute("data-offline-mode");
+
+      console.log("🎨 Online styles restored");
+    };
+
     const detectConnectionQuality = () => {
       if ("connection" in navigator) {
         const connection =
@@ -51,10 +106,11 @@ export const NetworkMonitor = ({ children }) => {
       }
     };
 
+    // Event listeners
     window.addEventListener("online", updateOnlineStatus);
     window.addEventListener("offline", updateOnlineStatus);
 
-    // initial check
+    // Initial setup
     updateOnlineStatus();
     detectConnectionQuality();
 
@@ -68,7 +124,6 @@ export const NetworkMonitor = ({ children }) => {
     isOnline,
     wasOffline,
     connectionQuality,
-    // helper methods
     isSlowConnection:
       connectionQuality === "slow-2g" || connectionQuality === "2g",
     isFastConnection: connectionQuality === "4g",
@@ -76,12 +131,35 @@ export const NetworkMonitor = ({ children }) => {
 
   return (
     <NetworkContext.Provider value={value}>
-      {/* OFFLINE NOTIFICATION BAR */}
+      {/* Enhanced offline notification with preserved styling */}
       {!isOnline && (
-        <div className="fixed top-0 left-0 right-0 bg-red-500 text-white text-center py-3 px-4 z-50 shadow-lg">
-          <div className="flex items-center justify-center space-x-2">
+        <div
+          className="fixed top-0 left-0 right-0 z-50"
+          style={{
+            backgroundColor: "#EF4444",
+            color: "#FFFFFF",
+            textAlign: "center",
+            padding: "0.5rem 1rem",
+            fontSize: "0.875rem",
+            fontWeight: "500",
+            boxShadow:
+              "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.5rem",
+            }}
+          >
             <svg
-              className="w-5 h-5 animate-pulse"
+              style={{
+                width: "1.25rem",
+                height: "1.25rem",
+                animation: "pulse 2s infinite",
+              }}
               fill="currentColor"
               viewBox="0 0 20 20"
             >
@@ -91,25 +169,36 @@ export const NetworkMonitor = ({ children }) => {
                 clipRule="evenodd"
               />
             </svg>
-            <span className="text-sm font-medium">
-              You're offline - Some features may not work properly
-            </span>
+            <span>You're offline - Content cached for viewing</span>
           </div>
         </div>
       )}
 
-      {/* SLOW CONNECTION WARNING (Optional enhancement) */}
+      {/* Slow connection warning */}
       {isOnline && value.isSlowConnection && (
-        <div className="fixed top-0 left-0 right-0 bg-orange-500 text-white text-center py-2 px-4 z-40">
-          <span className="text-sm">
-            Slow connection detected - Please be patient
-          </span>
+        <div
+          className="fixed top-0 left-0 right-0 z-40"
+          style={{
+            backgroundColor: "#F59E0B",
+            color: "#FFFFFF",
+            textAlign: "center",
+            padding: "0.375rem 1rem",
+            fontSize: "0.75rem",
+          }}
+        >
+          <span>Slow connection detected - Please be patient</span>
         </div>
       )}
 
       {/* Main content with appropriate padding */}
       <div
-        className={!isOnline ? "pt-14" : value.isSlowConnection ? "pt-10" : ""}
+        style={{
+          paddingTop: !isOnline
+            ? "3rem"
+            : value.isSlowConnection
+            ? "2.5rem"
+            : "0",
+        }}
       >
         {children}
       </div>
