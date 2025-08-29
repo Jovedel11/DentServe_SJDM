@@ -11,6 +11,14 @@ import smsRoutes from "./routes/sms.js"
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+const allowedOrigins = [
+  "http://localhost:5174",  // Development Vite
+  "http://localhost:5173",  // Alternative Vite port
+  "http://localhost:3000",  // Development backend alternative
+  process.env.FRONTEND_URL, // Production
+  "https://dentserve-sjdm.vercel.app" // Explicit production URL
+].filter(Boolean);
+
 // middlewares
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
@@ -25,7 +33,14 @@ try {
 
 // for react to connect
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5174',
+  origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      } else {
+        return callback(new Error("Not allowed by CORS"));
+      }
+    },
   credentials: true, // allow cookies
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Added more methods
   allowedHeaders: [
