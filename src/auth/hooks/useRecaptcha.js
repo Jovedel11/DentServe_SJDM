@@ -73,6 +73,7 @@ export const useRecaptcha = () => {
     try {
       setIsVerifying(true)
       console.log(`🔄 Generating reCAPTCHA token for action: ${action}`);
+      console.log("SITE KEY:", import.meta.env.VITE_RECAPTCHA_SITE_KEY);
 
       // Generate token from Google
       const token = await new Promise((resolve, reject) => {

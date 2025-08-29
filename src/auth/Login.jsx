@@ -34,6 +34,7 @@ const Login = () => {
   // Enhanced form submit handler that receives reCAPTCHA info
   const handleFormSubmit = async (e, recaptchaInfo) => {
     console.log("🔐 Form submitted with reCAPTCHA info:", recaptchaInfo);
+    console.log("SITE KEY:", import.meta.env.VITE_RECAPTCHA_SITE_KEY);
 
     // Client-side validation
     const validation = validateLoginForm(credentials, loginMethod);
