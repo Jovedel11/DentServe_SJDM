@@ -24,8 +24,10 @@ try {
 }
 
 const allowedOrigins = [
-  'http://localhost:5174',       
-  'https://dentserve-sjdm.vercel.app', 
+  process.env.FRONTEND,  // default Vite
+  process.env.FRONTEND2,  // incase other import
+  process.env.FRONTEND3,  // last fallback
+  process.env.FRONTEND_URL, // deployed frontend
 ];
 
 app.use(cors({
@@ -49,6 +51,7 @@ app.use(cors({
   exposedHeaders: ['X-Upload-Id'],
   optionsSuccessStatus: 200
 }));
+
 
 // parse data
 app.use(express.json({ limit: '10mb' }));
