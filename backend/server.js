@@ -23,21 +23,31 @@ try {
   console.error("Invalid FRONTEND_URL:", process.env.FRONTEND_URL);
 }
 
-// for react to connect
+const allowedOrigins = [
+  'http://localhost:5174',       
+  'https://dentserve-sjdm.vercel.app', 
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5175',
-  credentials: true, // allow cookies
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], // Added more methods
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: [
     'Content-Type', 
     'Authorization',
-    'X-Upload-Id', // Added the custom upload header
+    'X-Upload-Id',
     'X-Requested-With',
     'Accept',
     'Origin'
-  ], // Enhanced allowed headers
-  exposedHeaders: ['X-Upload-Id'], // Expose custom headers to frontend
-  optionsSuccessStatus: 200 // Support legacy browsers
+  ],
+  exposedHeaders: ['X-Upload-Id'],
+  optionsSuccessStatus: 200
 }));
 
 // parse data
