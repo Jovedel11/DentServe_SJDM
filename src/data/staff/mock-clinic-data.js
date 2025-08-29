@@ -1,0 +1,60 @@
+  export const mockClinicData = {
+    id: "c1a2b3c4-5e6f-7g8h-9i0j-1k2l3m4n5o6p",
+    name: "Bright Smile Dental Clinic",
+    description:
+      "Premier dental care facility providing comprehensive oral health services with state-of-the-art technology and experienced professionals.",
+    address: "123 Rizal Street, Makati City",
+    city: "Makati City",
+    province: "Metro Manila",
+    zip_code: "1200",
+    country: "Philippines",
+    phone: "+63 2 8123-4567",
+    email: "info@brightsmile.ph",
+    website_url: "https://brightsmile.ph",
+    operating_hours: {
+      monday: { open: "08:00", close: "18:00", closed: false },
+      tuesday: { open: "08:00", close: "18:00", closed: false },
+      wednesday: { open: "08:00", close: "18:00", closed: false },
+      thursday: { open: "08:00", close: "18:00", closed: false },
+      friday: { open: "08:00", close: "17:00", closed: false },
+      saturday: { open: "09:00", close: "15:00", closed: false },
+      sunday: { open: "00:00", close: "00:00", closed: true },
+    },
+    services_offered: [
+      {
+        name: "General Consultation",
+        price: 800,
+        description: "Basic dental checkup and consultation",
+      },
+      {
+        name: "Dental Cleaning",
+        price: 1500,
+        description: "Professional teeth cleaning and polishing",
+      },
+      {
+        name: "Tooth Extraction",
+        price: 2500,
+        description: "Simple and surgical tooth extraction",
+      },
+      {
+        name: "Root Canal Treatment",
+        price: 8000,
+        description: "Endodontic treatment for infected teeth",
+      },
+      {
+        name: "Teeth Whitening",
+        price: 5000,
+        description: "Professional teeth whitening treatment",
+      },
+      {
+        name: "Dental Filling",
+        price: 1200,
+        description: "Composite and amalgam fillings",
+      },
+    ],
+    appointment_limit_per_patient: 5,
+    cancellation_policy_hours: 48,
+    rating: 4.8,
+    total_reviews: 245,
+    created_at: "2024-01-15T08:00:00Z",
+  };

@@ -35,6 +35,5 @@ backend.env
 .env.test.local
 .env.production.local
 .env.development
-src/data/
 
 *.env

@@ -1,0 +1,50 @@
+  export const mockAnalyticsData = {
+    clinic_growth: {
+      patient_growth_30d: 45,
+      patient_growth_rate: 18.5,
+      total_patients: 245,
+      appointment_growth_30d: 89,
+      appointment_growth_rate: 22.3,
+      completion_rate: 92.5,
+      clinic_performance_score: 87,
+    },
+    monthly_trends: [
+      { month: "Jan", appointments: 65, new_patients: 12, revenue: 45000 },
+      { month: "Feb", appointments: 78, new_patients: 18, revenue: 52000 },
+      { month: "Mar", appointments: 82, new_patients: 15, revenue: 48000 },
+      { month: "Apr", appointments: 94, new_patients: 22, revenue: 58000 },
+      { month: "May", appointments: 88, new_patients: 19, revenue: 55000 },
+      { month: "Jun", appointments: 105, new_patients: 28, revenue: 65000 },
+      { month: "Jul", appointments: 112, new_patients: 31, revenue: 68000 },
+      { month: "Aug", appointments: 98, new_patients: 24, revenue: 62000 },
+    ],
+    patient_loyalty: [
+      { category: "Loyal (5+ visits)", count: 85, percentage: 34.7 },
+      { category: "Regular (3-4 visits)", count: 92, percentage: 37.6 },
+      { category: "Occasional (2 visits)", count: 45, percentage: 18.4 },
+      { category: "One-time", count: 23, percentage: 9.4 },
+    ],
+    doctor_performance: [
+      {
+        doctor_name: "Dr. Juan Dela Cruz",
+        appointments: 156,
+        completion_rate: 94.5,
+        avg_rating: 4.8,
+        specialization: "General Dentistry",
+      },
+      {
+        doctor_name: "Dr. Maria Lopez",
+        appointments: 132,
+        completion_rate: 91.2,
+        avg_rating: 4.6,
+        specialization: "Cosmetic Dentistry",
+      },
+    ],
+    service_analytics: [
+      { service: "Cleaning", count: 145, revenue: 87000 },
+      { service: "Root Canal", count: 78, revenue: 156000 },
+      { service: "Extraction", count: 65, revenue: 45500 },
+      { service: "Whitening", count: 52, revenue: 62400 },
+      { service: "Consultation", count: 89, revenue: 26700 },
+    ],
+  };
