@@ -6,6 +6,8 @@ import ErrorBoundary from "./core/components/ErrorFolder/ErrorBoundary";
 import * as Sentry from "@sentry/react";
 import "./core/styles/global.css";
 
+console.log("ENV:", import.meta.env);
+
 Sentry.init({
   dsn: "https://e9b018cf8a2b73e64f6b93e0d35a048c@o4509898883727360.ingest.us.sentry.io/4509898884775936",
   tracesSampleRate: 1.0,
