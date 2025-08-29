@@ -2,7 +2,7 @@ import { useState, useActionState, useEffect } from "react";
 import { useAuth } from "./context/AuthProvider";
 import { useRecaptcha } from "@/auth/hooks/useRecaptcha";
 import { validateSignupForm } from "@/utils/validation/auth-validation";
-import SvgDental from "@/core/components/svgDental";
+import SvgDental from "@/core/components/SvgDental.jsx";
 import Loader from "@/core/components/Loader";
 import { Eye, EyeOff, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 

@@ -1,10 +1,10 @@
-const RECAPTCHA_SERVER_URL = import.meta.env.VITE_RECAPTCHA_SERVER_URL || 'http://localhost:3001';
+const IMAGE_SERVER_URL = import.meta.env.VITE_CUSTOM_SERVER_URL || 'http://localhost:3001';
 
 export const imageService = {
   async uploadImage(access_token, formData, onProgress = null, signal = null) {
     const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    const response = await fetch(`${RECAPTCHA_SERVER_URL}/api/upload/profile-image`, {
+    const response = await fetch(`${IMAGE_SERVER_URL}/api/upload/profile-image`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${access_token}`,
@@ -28,7 +28,7 @@ export const imageService = {
 
   async cancelUpload(access_token, uploadId) {
     try {
-      const response = await fetch(`${RECAPTCHA_SERVER_URL}/api/upload/profile-image/${uploadId}`, {
+      const response = await fetch(`${IMAGE_SERVER_URL}/api/upload/profile-image/${uploadId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${access_token}`,

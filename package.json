@@ -44,6 +44,8 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "express-validator": "^7.2.1",
     "framer-motion": "^12.23.12",
     "gsap": "^3.13.0",
     "icons-react": "^3.7.1",
@@ -63,7 +65,7 @@
     "recharts": "^2.15.4",
     "sass": "^1.89.2",
     "tailwind-merge": "^3.3.1",
-    "twilio": "^5.8.0",
+    "twilio": "^5.8.2",
     "zod": "^4.0.14"
   },
   "devDependencies": {

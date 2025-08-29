@@ -6,6 +6,7 @@ import morgan from 'morgan';
 import recaptchaRoutes from "./routes/recaptcha.js"
 import multer from 'multer';
 import uploadRoutes from "./routes/cloudImage.js"
+import smsRoutes from "./routes/sms.js"
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -51,16 +52,16 @@ app.get('/health', (_req, res) => {
     status: "OK",
     timestamp: new Date().toISOString(),
     message: 'Backend server is running',
+    port: PORT
   });
 });
 
-app.listen(PORT, () =>  console.log(`Custom Server is running on http://localhost:${PORT}`));
-
-// captcha
+// Routes
 app.use('/api/recaptcha', recaptchaRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/sms', smsRoutes); // Add SMS routes
 
-// cloudinary
-app.use('/api/upload', uploadRoutes)
+app.listen(PORT, () =>  console.log(`Custom Server is running on http://localhost:${PORT}`));
 
 // Add error handling middleware
 app.use((error, req, res, next) => {

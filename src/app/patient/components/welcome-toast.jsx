@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { FiX, FiHeart, FiCheckCircle } from "react-icons/fi";
 
-const WelcomeToast = ({ isVisible, onClose }) => {
+const WelcomeToast = ({ isVisible, onClose, onNavigate }) => {
   return (
     <AnimatePresence>
       {isVisible && (
@@ -52,14 +52,14 @@ const WelcomeToast = ({ isVisible, onClose }) => {
 
               <div className="flex items-center gap-2">
                 <button
-                  onClick={onClose}
-                  className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium transition-all duration-200 hover:bg-primary/90"
+                  onClick={onNavigate}
+                  className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium transition-all duration-200 hover:bg-primary/90 cursor-pointer"
                 >
                   Start Setup
                 </button>
                 <button
                   onClick={onClose}
-                  className="px-3 py-2 text-muted-foreground hover:text-foreground transition-colors duration-200"
+                  className="px-3 py-2 text-muted-foreground hover:text-foreground transition-colors duration-200 cursor-pointer"
                 >
                   <FiX className="text-lg" />
                 </button>

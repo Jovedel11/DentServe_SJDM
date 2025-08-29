@@ -1,5 +1,5 @@
 import express from "express"
-import authenticateToken from "../middleware/auth.js";
+import authenticateToken from "../middlewares/auth.js";
 import { uploadLimiter, upload } from "../lib/upload.js"
 import cloudinary from "../lib/cloudinary.js";
 import streamifier from "streamifier"
