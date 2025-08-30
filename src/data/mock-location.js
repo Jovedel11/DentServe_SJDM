@@ -8,8 +8,4 @@
     "Pasig",
     "Mandaluyong",
     "BGC",
-    "Ortigas",
-    "Alabang",
-    "Muntinlupa",
-    "San Juan",
   ];

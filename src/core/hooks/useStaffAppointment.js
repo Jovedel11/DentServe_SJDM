@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../auth/context/AuthProvider';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -6,52 +6,39 @@ export const useStaffAppointments = () => {
   const { user, profile, isStaff } = useAuth();
   
   const [appointments, setAppointments] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [filters, setFilters] = useState({
-    status: null, // null = all, ['pending'] = only pending, etc.
-    dateFrom: null,
-    dateTo: null,
-    searchTerm: ''
-  });
-  const [pagination, setPagination] = useState({
-    limit: 20,
-    offset: 0,
-    totalCount: 0,
-    hasMore: false
+  const [stats, setStats] = useState({
+    total: 0,
+    pending: 0,
+    confirmed: 0,
+    completed: 0,
+    cancelled: 0
   });
 
-  // Fetch appointments using the optimized function
-  const fetchAppointments = useCallback(async (options = {}) => {
-    if (!isStaff()) return;
+  // ENHANCED: Fetch appointments with comprehensive filtering
+  const fetchAppointments = useCallback(async (filters = {}) => {
+    if (!isStaff()) {
+      return { success: false, error: 'Access denied: Staff only' };
+    }
+
+    setIsLoading(true);
+    setError(null);
 
     try {
-      setLoading(true);
-      setError(null);
-
-      const { 
-        status = filters.status, 
-        dateFrom = filters.dateFrom, 
-        dateTo = filters.dateTo,
-        limit = pagination.limit,
-        offset = pagination.offset,
-        refresh = false
-      } = options;
-
-      const { data, error } = await supabase.rpc('get_appointments_by_role', {
-        p_status: status,
-        p_date_from: dateFrom,
-        p_date_to: dateTo,
-        p_limit: limit,
-        p_offset: refresh ? 0 : offset
-      });
+      const { data, error } = await supabase
+        .rpc('get_appointments_by_role', {
+          p_status: filters.status || null,
+          p_date_from: filters.dateFrom || null,
+          p_date_to: filters.dateTo || null,
+          p_limit: filters.limit || 50,
+          p_offset: filters.offset || 0
+        });
 
       if (error) throw new Error(error.message);
 
-      // Handle authentication errors
       if (data?.authenticated === false) {
-        setError('Please log in to continue');
-        return;
+        throw new Error('Authentication required');
       }
 
       if (!data?.success) {
@@ -59,254 +46,250 @@ export const useStaffAppointments = () => {
       }
 
       const appointmentData = data.data;
-      const newAppointments = appointmentData.appointments || [];
+      setAppointments(appointmentData.appointments || []);
+      
+      // Update stats
+      setStats({
+        total: appointmentData.total_count || 0,
+        pending: appointmentData.pending_count || 0,
+        confirmed: appointmentData.appointments?.filter(a => a.status === 'confirmed').length || 0,
+        completed: appointmentData.appointments?.filter(a => a.status === 'completed').length || 0,
+        cancelled: appointmentData.appointments?.filter(a => a.status === 'cancelled').length || 0
+      });
 
-      if (refresh || offset === 0) {
-        setAppointments(newAppointments);
-      } else {
-        setAppointments(prev => [...prev, ...newAppointments]);
+      return {
+        success: true,
+        appointments: appointmentData.appointments,
+        totalCount: appointmentData.total_count,
+        pendingCount: appointmentData.pending_count
+      };
+
+    } catch (err) {
+      const errorMessage = err.message || 'Failed to fetch appointments';
+      setError(errorMessage);
+      console.error('Fetch appointments error:', err);
+      
+      return { 
+        success: false, 
+        error: errorMessage,
+        appointments: [], 
+        totalCount: 0 
+      };
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isStaff]);
+
+  // ENHANCED: Approve with optimistic updates
+  const approveAppointment = useCallback(async (appointmentId, staffNotes = '') => {
+    if (!appointmentId) {
+      return { success: false, error: 'Appointment ID required' };
+    }
+
+    try {
+      setIsLoading(true);
+      
+      const { data, error } = await supabase
+        .rpc('approve_appointment', {
+          p_appointment_id: appointmentId,
+          p_staff_notes: staffNotes
+        });
+
+      if (error) throw new Error(error.message);
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to approve appointment');
       }
 
-      setPagination(prev => ({
+      // Optimistic update
+      setAppointments(prev => 
+        prev.map(apt => 
+          apt.id === appointmentId 
+            ? { 
+                ...apt, 
+                status: 'confirmed',
+                notes: staffNotes || apt.notes,
+                updated_at: new Date().toISOString()
+              }
+            : apt
+        )
+      );
+
+      // Update stats
+      setStats(prev => ({
         ...prev,
-        totalCount: appointmentData.total_count || 0,
-        hasMore: newAppointments.length === limit,
-        offset: refresh ? newAppointments.length : prev.offset + newAppointments.length
+        pending: Math.max(0, prev.pending - 1),
+        confirmed: prev.confirmed + 1
       }));
 
-    } catch (err) {
-      const errorMsg = err?.message || 'Failed to load appointments';
-      setError(errorMsg);
-      console.error('Fetch appointments error:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [isStaff, filters, pagination.limit, pagination.offset]);
-
-  // Approve appointment
-  const approveAppointment = useCallback(async (appointmentId, notes = null) => {
-    if (!isStaff()) return { success: false, error: 'Access denied' };
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const { data, error } = await supabase.rpc('approve_appointment', {
-        p_appointment_id: appointmentId,
-        p_staff_notes: notes
-      });
-
-      if (error) throw new Error(error.message);
-
-      if (data?.authenticated === false) {
-        setError('Please log in to continue');
-        return { success: false };
-      }
-
-      if (!data?.success) {
-        setError(data?.error || 'Failed to approve appointment');
-        return { success: false };
-      }
-
-      // Update local state
-      setAppointments(prev => prev.map(apt => 
-        apt.id === appointmentId 
-          ? { ...apt, status: 'confirmed', notes: notes }
-          : apt
-      ));
-
       return {
         success: true,
         message: data.message,
+        appointmentId: appointmentId,
         patientName: data.patient_name
       };
 
     } catch (err) {
-      const errorMsg = err?.message || 'Failed to approve appointment';
-      setError(errorMsg);
-      return { success: false, error: errorMsg };
+      const errorMessage = err.message || 'Failed to approve appointment';
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
-  }, [isStaff]);
-
-  // Reject appointment
-  const rejectAppointment = useCallback(async (appointmentId, reason) => {
-    if (!isStaff()) return { success: false, error: 'Access denied' };
-
-    if (!reason || reason.trim() === '') {
-      return { success: false, error: 'Rejection reason is required' };
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const { data, error } = await supabase.rpc('reject_appointment', {
-        p_appointment_id: appointmentId,
-        p_rejection_reason: reason.trim()
-      });
-
-      if (error) throw new Error(error.message);
-
-      if (data?.authenticated === false) {
-        setError('Please log in to continue');
-        return { success: false };
-      }
-
-      if (!data?.success) {
-        setError(data?.error || 'Failed to reject appointment');
-        return { success: false };
-      }
-
-      // Update local state
-      setAppointments(prev => prev.map(apt => 
-        apt.id === appointmentId 
-          ? { ...apt, status: 'cancelled', cancellation_reason: reason }
-          : apt
-      ));
-
-      return {
-        success: true,
-        message: data.message,
-        patientName: data.patient_name
-      };
-
-    } catch (err) {
-      const errorMsg = err?.message || 'Failed to reject appointment';
-      setError(errorMsg);
-      return { success: false, error: errorMsg };
-    } finally {
-      setLoading(false);
-    }
-  }, [isStaff]);
-
-  // Complete appointment
-  const completeAppointment = useCallback(async (appointmentId, completionNotes = null) => {
-    if (!isStaff()) return { success: false, error: 'Access denied' };
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const { data, error } = await supabase.rpc('complete_appointment', {
-        p_appointment_id: appointmentId,
-        p_completion_notes: completionNotes
-      });
-
-      if (error) throw new Error(error.message);
-
-      if (data?.authenticated === false) {
-        setError('Please log in to continue');
-        return { success: false };
-      }
-
-      if (!data?.success) {
-        setError(data?.error || 'Failed to complete appointment');
-        return { success: false };
-      }
-
-      // Update local state
-      setAppointments(prev => prev.map(apt => 
-        apt.id === appointmentId 
-          ? { ...apt, status: 'completed', notes: completionNotes }
-          : apt
-      ));
-
-      return {
-        success: true,
-        message: data.message
-      };
-
-    } catch (err) {
-      const errorMsg = err?.message || 'Failed to complete appointment';
-      setError(errorMsg);
-      return { success: false, error: errorMsg };
-    } finally {
-      setLoading(false);
-    }
-  }, [isStaff]);
-
-  // Update filters
-  const updateFilters = useCallback((newFilters) => {
-    setFilters(prev => ({ ...prev, ...newFilters }));
-    setPagination(prev => ({ ...prev, offset: 0 }));
-    setError(null);
   }, []);
 
-  // Load more appointments (pagination)
-  const loadMore = useCallback(() => {
-    if (!loading && pagination.hasMore) {
-      fetchAppointments({ offset: pagination.offset });
-    }
-  }, [loading, pagination.hasMore, pagination.offset, fetchAppointments]);
-
-  // Refresh appointments
-  const refresh = useCallback(() => {
-    fetchAppointments({ refresh: true });
-  }, [fetchAppointments]);
-
-  // Get filtered appointments for display
-  const getFilteredAppointments = useCallback((searchTerm = filters.searchTerm) => {
-    if (!searchTerm || searchTerm.trim() === '') {
-      return appointments;
+  // ENHANCED: Reject with validation
+  const rejectAppointment = useCallback(async (appointmentId, rejectionReason) => {
+    if (!appointmentId || !rejectionReason?.trim()) {
+      return { success: false, error: 'Appointment ID and rejection reason are required' };
     }
 
-    const term = searchTerm.toLowerCase().trim();
-    return appointments.filter(apt => 
-      apt.patient?.name?.toLowerCase().includes(term) ||
-      apt.patient?.email?.toLowerCase().includes(term) ||
-      apt.service_type?.toLowerCase().includes(term) ||
-      apt.symptoms?.toLowerCase().includes(term)
-    );
-  }, [appointments, filters.searchTerm]);
+    try {
+      setIsLoading(true);
 
-  // Get appointment statistics
-  const getStats = useCallback(() => {
-    return {
-      total: appointments.length,
-      pending: appointments.filter(apt => apt.status === 'pending').length,
-      confirmed: appointments.filter(apt => apt.status === 'confirmed').length,
-      completed: appointments.filter(apt => apt.status === 'completed').length,
-      cancelled: appointments.filter(apt => apt.status === 'cancelled').length,
-      todayCount: appointments.filter(apt => {
-        const today = new Date().toISOString().split('T')[0];
-        return apt.appointment_date === today;
-      }).length
-    };
-  }, [appointments]);
+      const { data, error } = await supabase
+        .rpc('reject_appointment', {
+          p_appointment_id: appointmentId,
+          p_rejection_reason: rejectionReason.trim()
+        });
 
-  // Auto-fetch on component mount and filter changes
+      if (error) throw new Error(error.message);
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to reject appointment');
+      }
+
+      // Optimistic update
+      setAppointments(prev => 
+        prev.map(apt => 
+          apt.id === appointmentId 
+            ? { 
+                ...apt, 
+                status: 'cancelled',
+                cancellation_reason: rejectionReason,
+                cancelled_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              }
+            : apt
+        )
+      );
+
+      // Update stats
+      setStats(prev => ({
+        ...prev,
+        pending: Math.max(0, prev.pending - 1),
+        cancelled: prev.cancelled + 1
+      }));
+
+      return {
+        success: true,
+        message: data.message,
+        appointmentId: appointmentId,
+        patientName: data.patient_name
+      };
+
+    } catch (err) {
+      const errorMessage = err.message || 'Failed to reject appointment';
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // ENHANCED: Complete appointment
+  const completeAppointment = useCallback(async (appointmentId, completionNotes = '') => {
+    if (!appointmentId) {
+      return { success: false, error: 'Appointment ID required' };
+    }
+
+    try {
+      setIsLoading(true);
+
+      const { data, error } = await supabase
+        .rpc('complete_appointment', {
+          p_appointment_id: appointmentId,
+          p_completion_notes: completionNotes
+        });
+
+      if (error) throw new Error(error.message);
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to complete appointment');
+      }
+
+      // Optimistic update
+      setAppointments(prev => 
+        prev.map(apt => 
+          apt.id === appointmentId 
+            ? { 
+                ...apt, 
+                status: 'completed',
+                notes: completionNotes || apt.notes,
+                updated_at: new Date().toISOString()
+              }
+            : apt
+        )
+      );
+
+      // Update stats
+      setStats(prev => ({
+        ...prev,
+        confirmed: Math.max(0, prev.confirmed - 1),
+        completed: prev.completed + 1
+      }));
+
+      return {
+        success: true,
+        message: data.message,
+        appointmentId: appointmentId
+      };
+
+    } catch (err) {
+      const errorMessage = err.message || 'Failed to complete appointment';
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Auto-fetch on mount
   useEffect(() => {
-    fetchAppointments({ refresh: true });
-  }, [filters.status, filters.dateFrom, filters.dateTo]);
+    if (isStaff()) {
+      fetchAppointments();
+    }
+  }, [isStaff, fetchAppointments]);
 
   return {
     // Data
-    appointments: getFilteredAppointments(),
-    allAppointments: appointments,
-    loading,
+    appointments,
+    isLoading,
     error,
-    filters,
-    pagination,
+    stats,
 
     // Actions
-    approveAppointment,
-    rejectAppointment,
-    completeAppointment,
-    updateFilters,
-    refresh,
-    loadMore,
+    fetchAppointments,    // Returns: { success, appointments, totalCount, pendingCount }
+    approveAppointment,   // Returns: { success, message, appointmentId, patientName }
+    rejectAppointment,    // Returns: { success, message, appointmentId, patientName }
+    completeAppointment,  // Returns: { success, message, appointmentId }
 
     // Computed
-    stats: getStats(),
-    isEmpty: appointments.length === 0,
-    hasMore: pagination.hasMore,
+    hasAppointments: appointments.length > 0,
+    pendingAppointments: appointments.filter(a => a.status === 'pending'),
+    todayAppointments: appointments.filter(a => {
+      const today = new Date().toISOString().split('T')[0];
+      return a.appointment_date === today;
+    }),
+    upcomingAppointments: appointments.filter(a => {
+      const today = new Date();
+      const appointmentDate = new Date(a.appointment_date);
+      return appointmentDate > today && a.status === 'confirmed';
+    }),
 
     // Utilities
-    canApprove: (appointment) => appointment.status === 'pending',
-    canReject: (appointment) => ['pending', 'confirmed'].includes(appointment.status),
-    canComplete: (appointment) => appointment.status === 'confirmed',
-    isPastDate: (date) => date < new Date().toISOString().split('T')[0]
+    getAppointmentById: (id) => appointments.find(a => a.id === id),
+    getAppointmentsByStatus: (status) => appointments.filter(a => a.status === status),
+    getAppointmentsByDate: (date) => appointments.filter(a => a.appointment_date === date)
   };
 };

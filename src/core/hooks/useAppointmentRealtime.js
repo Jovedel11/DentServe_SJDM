@@ -3,7 +3,7 @@ import { useAuth } from '../../auth/context/AuthProvider';
 import { supabase } from '../../lib/supabaseClient';
 
 export const useAppointmentRealtime = (options = {}) => {
-  const { user, profile, userRole } = useAuth();
+  const { user, profile } = useAuth();
   
   const {
     onAppointmentUpdate,
@@ -18,46 +18,61 @@ export const useAppointmentRealtime = (options = {}) => {
 
   const subscriptionsRef = useRef([]);
 
+  // Get user details from current context
+  const getUserDetails = useCallback(() => {
+    if (!user || !profile) return null;
+
+    return {
+      userId: profile.user_id || user.id,
+      userRole: profile.user_type,
+      clinicId: profile.role_specific_data?.clinic_id
+    };
+  }, [user, profile]);
+
   // Clean up subscriptions
   const cleanup = useCallback(() => {
     subscriptionsRef.current.forEach(subscription => {
-      subscription.unsubscribe();
+      try {
+        supabase.removeChannel(subscription);
+      } catch (error) {
+        console.error('Error removing channel:', error);
+      }
     });
     subscriptionsRef.current = [];
   }, []);
 
-  // Setup appointments real-time subscription
+  // FIXED: Setup appointments subscription with correct user ID
   const setupAppointmentSubscription = useCallback(() => {
-    if (!user || !enableAppointments) return;
+    const userDetails = getUserDetails();
+    if (!userDetails || !enableAppointments) return;
 
+    const { userId, userRole, clinicId } = userDetails;
     let appointmentSubscription;
 
-    // Different subscription filters based on user role
     switch (userRole) {
       case 'patient':
         appointmentSubscription = supabase
-          .channel('patient-appointments')
+          .channel(`patient-appointments-${userId}`)
           .on(
             'postgres_changes',
             {
-              event: '*', // INSERT, UPDATE, DELETE
+              event: '*',
               schema: 'public',
               table: 'appointments',
-              filter: `patient_id=eq.${profile?.user_id}` // Use profile user_id
+              filter: `patient_id=eq.${userId}` // FIXED: Use correct user ID
             },
             (payload) => {
               console.log('Patient appointment update:', payload);
               
-              // Call the appropriate callback
               if (onAppointmentUpdate) {
                 onAppointmentUpdate({
                   type: payload.eventType,
                   appointment: payload.new || payload.old,
-                  old: payload.old
+                  old: payload.old,
+                  isOwn: true
                 });
               }
 
-              // Specific status change callback
               if (payload.eventType === 'UPDATE' && onAppointmentStatusChange) {
                 const oldStatus = payload.old?.status;
                 const newStatus = payload.new?.status;
@@ -67,27 +82,29 @@ export const useAppointmentRealtime = (options = {}) => {
                     appointmentId: payload.new.id,
                     oldStatus,
                     newStatus,
-                    appointment: payload.new
+                    appointment: payload.new,
+                    userType: 'patient'
                   });
                 }
               }
             }
           )
-          .subscribe();
+          .subscribe((status) => {
+            console.log('Patient appointments subscription status:', status);
+          });
         break;
 
       case 'staff':
-        const clinicId = profile?.role_specific_data?.clinic_id;
         if (clinicId) {
           appointmentSubscription = supabase
-            .channel('staff-appointments')
+            .channel(`staff-appointments-${clinicId}`)
             .on(
               'postgres_changes',
               {
                 event: '*',
                 schema: 'public',
                 table: 'appointments',
-                filter: `clinic_id=eq.${clinicId}`
+                filter: `clinic_id=eq.${clinicId}` // FIXED: Use clinic ID from profile
               },
               (payload) => {
                 console.log('Staff appointment update:', payload);
@@ -96,7 +113,8 @@ export const useAppointmentRealtime = (options = {}) => {
                   onAppointmentUpdate({
                     type: payload.eventType,
                     appointment: payload.new || payload.old,
-                    old: payload.old
+                    old: payload.old,
+                    clinicId: clinicId
                   });
                 }
 
@@ -109,13 +127,17 @@ export const useAppointmentRealtime = (options = {}) => {
                       appointmentId: payload.new.id,
                       oldStatus,
                       newStatus,
-                      appointment: payload.new
+                      appointment: payload.new,
+                      userType: 'staff',
+                      clinicId: clinicId
                     });
                   }
                 }
               }
             )
-            .subscribe();
+            .subscribe((status) => {
+              console.log('Staff appointments subscription status:', status);
+            });
         }
         break;
 
@@ -136,33 +158,39 @@ export const useAppointmentRealtime = (options = {}) => {
                 onAppointmentUpdate({
                   type: payload.eventType,
                   appointment: payload.new || payload.old,
-                  old: payload.old
+                  old: payload.old,
+                  userType: 'admin'
                 });
               }
             }
           )
-          .subscribe();
+          .subscribe((status) => {
+            console.log('Admin appointments subscription status:', status);
+          });
         break;
     }
 
     if (appointmentSubscription) {
       subscriptionsRef.current.push(appointmentSubscription);
     }
-  }, [user, userRole, profile, enableAppointments, onAppointmentUpdate, onAppointmentStatusChange]);
+  }, [getUserDetails, enableAppointments, onAppointmentUpdate, onAppointmentStatusChange]);
 
-  // Setup notifications real-time subscription
+  // FIXED: Notifications subscription
   const setupNotificationSubscription = useCallback(() => {
-    if (!user || !enableNotifications) return;
+    const userDetails = getUserDetails();
+    if (!userDetails || !enableNotifications) return;
+
+    const { userId } = userDetails;
 
     const notificationSubscription = supabase
-      .channel('user-notifications')
+      .channel(`user-notifications-${userId}`)
       .on(
         'postgres_changes',
         {
-          event: 'INSERT', // Only listen for new notifications
+          event: 'INSERT',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${profile?.user_id}` // Use profile user_id
+          filter: `user_id=eq.${userId}` // FIXED: Use correct user ID
         },
         (payload) => {
           console.log('New notification received:', payload);
@@ -170,7 +198,8 @@ export const useAppointmentRealtime = (options = {}) => {
           if (onNotificationReceived) {
             onNotificationReceived({
               notification: payload.new,
-              isNew: true
+              isNew: true,
+              userId: userId
             });
           }
         }
@@ -181,7 +210,7 @@ export const useAppointmentRealtime = (options = {}) => {
           event: 'UPDATE',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${profile?.user_id}`
+          filter: `user_id=eq.${userId}`
         },
         (payload) => {
           console.log('Notification updated:', payload);
@@ -190,152 +219,46 @@ export const useAppointmentRealtime = (options = {}) => {
             onNotificationReceived({
               notification: payload.new,
               old: payload.old,
-              isNew: false
+              isNew: false,
+              userId: userId
             });
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Notifications subscription status:', status);
+      });
 
     subscriptionsRef.current.push(notificationSubscription);
-  }, [user, profile, enableNotifications, onNotificationReceived]);
+  }, [getUserDetails, enableNotifications, onNotificationReceived]);
 
-  // Setup analytics real-time subscription (for admin)
-  const setupAnalyticsSubscription = useCallback(() => {
-    if (!user || !enableAnalytics || userRole !== 'admin') return;
-
-    // Listen to clinic rating changes
-    const clinicSubscription = supabase
-      .channel('admin-analytics')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'clinics'
-        },
-        (payload) => {
-          console.log('Clinic updated:', payload);
-          
-          if (onClinicRatingUpdate && payload.old?.rating !== payload.new?.rating) {
-            onClinicRatingUpdate({
-              clinicId: payload.new.id,
-              oldRating: payload.old.rating,
-              newRating: payload.new.rating,
-              clinic: payload.new
-            });
-          }
-        }
-      )
-      .subscribe();
-
-    subscriptionsRef.current.push(clinicSubscription);
-  }, [user, userRole, enableAnalytics, onClinicRatingUpdate]);
-
-  // Setup feedback real-time subscription
-  const setupFeedbackSubscription = useCallback(() => {
-    if (!user || !enableFeedback) return;
-
-    let feedbackSubscription;
-
-    if (userRole === 'staff') {
-      const clinicId = profile?.role_specific_data?.clinic_id;
-      if (clinicId) {
-        feedbackSubscription = supabase
-          .channel('staff-feedback')
-          .on(
-            'postgres_changes',
-            {
-              event: 'INSERT',
-              schema: 'public',
-              table: 'feedback',
-              filter: `clinic_id=eq.${clinicId}`
-            },
-            (payload) => {
-              console.log('New feedback received:', payload);
-              
-              if (onNotificationReceived) {
-                onNotificationReceived({
-                  type: 'feedback_received',
-                  feedback: payload.new,
-                  isNew: true
-                });
-              }
-            }
-          )
-          .subscribe();
-      }
-    } else if (userRole === 'patient') {
-      feedbackSubscription = supabase
-        .channel('patient-feedback')
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'feedback',
-            filter: `patient_id=eq.${profile?.user_id}`
-          },
-          (payload) => {
-            console.log('Feedback response received:', payload);
-            
-            if (onNotificationReceived && payload.old?.response !== payload.new?.response) {
-              onNotificationReceived({
-                type: 'feedback_response',
-                feedback: payload.new,
-                isNew: true
-              });
-            }
-          }
-        )
-        .subscribe();
-    }
-
-    if (feedbackSubscription) {
-      subscriptionsRef.current.push(feedbackSubscription);
-    }
-  }, [user, userRole, profile, enableFeedback, onNotificationReceived]);
-
-  // Initialize all subscriptions
+  // Initialize subscriptions
   useEffect(() => {
-    if (!user || !profile) return;
+    const userDetails = getUserDetails();
+    if (!userDetails) return;
 
-    cleanup(); // Clean up any existing subscriptions
+    cleanup(); // Clean up existing subscriptions
 
-    // Setup subscriptions based on enabled options
     setupAppointmentSubscription();
     setupNotificationSubscription();
-    setupAnalyticsSubscription();
-    setupFeedbackSubscription();
 
-    // Cleanup on unmount or user change
     return cleanup;
-  }, [user, profile, userRole, setupAppointmentSubscription, setupNotificationSubscription, setupAnalyticsSubscription, setupFeedbackSubscription]);
-
-  // Manual subscription control
-  const enableRealtimeUpdates = useCallback(() => {
-    if (!user || !profile) return;
-    
-    cleanup();
-    setupAppointmentSubscription();
-    setupNotificationSubscription();
-    setupAnalyticsSubscription();
-    setupFeedbackSubscription();
-  }, [user, profile, setupAppointmentSubscription, setupNotificationSubscription, setupAnalyticsSubscription, setupFeedbackSubscription]);
-
-  const disableRealtimeUpdates = useCallback(() => {
-    cleanup();
-  }, [cleanup]);
+  }, [user, profile, setupAppointmentSubscription, setupNotificationSubscription, cleanup]);
 
   return {
     // Controls
-    enableRealtimeUpdates,
-    disableRealtimeUpdates,
-    cleanup,
+    enableRealtimeUpdates: useCallback(() => {
+      cleanup();
+      setupAppointmentSubscription();
+      setupNotificationSubscription();
+    }, [cleanup, setupAppointmentSubscription, setupNotificationSubscription]),
+    
+    disableRealtimeUpdates: cleanup,
 
     // State
     isConnected: subscriptionsRef.current.length > 0,
     activeSubscriptions: subscriptionsRef.current.length,
+    userDetails: getUserDetails(),
 
     // Utilities
     getSubscriptionStatus: () => ({
@@ -345,12 +268,7 @@ export const useAppointmentRealtime = (options = {}) => {
       notifications: subscriptionsRef.current.some(sub => 
         sub.topic.includes('notifications')
       ),
-      analytics: subscriptionsRef.current.some(sub => 
-        sub.topic.includes('analytics')
-      ),
-      feedback: subscriptionsRef.current.some(sub => 
-        sub.topic.includes('feedback')
-      )
+      total: subscriptionsRef.current.length
     })
   };
 };

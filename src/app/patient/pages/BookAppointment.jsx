@@ -27,10 +27,11 @@ import {
   timeSlots,
 } from "@/data/patient/real/mock-appointment";
 import { useAuth } from "@/auth/context/AuthProvider";
+import { useBookAppointment } from "@/core/hooks/useBookAppointment";
 
 const BookAppointment = () => {
   const { profile } = useAuth();
-  // Modal and UI State
+  const { bookAppointment, isLoading } = useBookAppointment();
   const [showWelcomeModal, setShowWelcomeModal] = useState(true);
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -43,7 +44,7 @@ const BookAppointment = () => {
     doctor: "",
     date: "",
     time: "",
-    notes: "",
+    symptoms: "",
   });
 
   // Filter State
@@ -113,24 +114,16 @@ const BookAppointment = () => {
   const handleSubmit = async () => {
     setLoading(true);
     setError(null);
-
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      const bookingData = {
-        ...formData,
-        userProfile,
-        timestamp: new Date().toISOString(),
+      const appointmentData = {
+        clinic_id: formData.clinic,
+        doctor_id: formData.doctor,
+        appointment_date: formData.date,
+        appointment_time: formData.time,
+        service_ids: [formData.service],
+        symptoms: formData.symptoms,
       };
-
-      console.log("Booking appointment:", bookingData);
-
-      // Success feedback
-      alert("Appointment booked successfully!");
-
-      // Reset form or redirect
-      // navigate('/appointments');
+      await bookAppointment(appointmentData);
     } catch (err) {
       setError(err.message || "Failed to book appointment. Please try again.");
     } finally {
@@ -557,12 +550,14 @@ const BookAppointment = () => {
       {/* Optional Notes */}
       <div className="max-w-2xl mx-auto">
         <label className="block text-sm font-medium text-foreground mb-2">
-          Additional Notes (Optional)
+          Please provide any symptoms you are experiencing. If none, please
+          state "No symptoms".
         </label>
         <textarea
           placeholder="Any specific requirements, concerns, or notes for your appointment..."
-          value={formData.notes}
-          onChange={(e) => handleInputChange("notes", e.target.value)}
+          required
+          value={formData.symptoms}
+          onChange={(e) => handleInputChange("symptoms", e.target.value)}
           rows="4"
           className="w-full rounded-xl border-2 border-border bg-background px-4 py-3 text-foreground transition-colors focus:border-primary focus:outline-none resize-none"
         />

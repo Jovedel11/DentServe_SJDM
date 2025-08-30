@@ -7,13 +7,13 @@ export const useAppointmentBooking = () => {
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [bookingStep, setBookingStep] = useState('clinic'); // clinic -> services -> doctor -> datetime -> confirm
+  const [bookingStep, setBookingStep] = useState('clinic');
   const [bookingData, setBookingData] = useState({
     clinic: null,
     doctor: null,
     date: null,
     time: null,
-    services: [],
+    services: [], // Array of service IDs
     symptoms: '',
   });
 
@@ -31,20 +31,31 @@ export const useAppointmentBooking = () => {
     setError(null);
   }, []);
 
-  // Update booking data
+  // Update booking data with validation
   const updateBookingData = useCallback((updates) => {
-    setBookingData(prev => ({ ...prev, ...updates }));
+    setBookingData(prev => {
+      const newData = { ...prev, ...updates };
+      
+      // Validate services selection (max 3)
+      if (updates.services && updates.services.length > 3) {
+        setError('Maximum 3 services can be selected');
+        return prev;
+      }
+      
+      return newData;
+    });
     setError(null);
   }, []);
 
-  // Get available doctors for selected clinic
+  // FIXED: Get available doctors with correct schema
   const getAvailableDoctors = useCallback(async (clinicId) => {
-    if (!clinicId) return [];
+    if (!clinicId) return { success: false, doctors: [], error: 'Clinic ID required' };
 
     try {
       setLoading(true);
       setError(null);
 
+      // FIXED: Correct schema - doctors don't have names, get from user_profiles
       const { data, error } = await supabase
         .from('doctor_clinics')
         .select(`
@@ -53,208 +64,214 @@ export const useAppointmentBooking = () => {
             specialization,
             consultation_fee,
             certifications,
-            award,
+            awards,
             experience_years,
             is_available,
             rating,
+            user_id,
+            first_name,
+            last_name,
+            users (
+              user_profiles (
+                first_name,
+                last_name
+              )
+            )
           )
         `)
         .eq('clinic_id', clinicId)
         .eq('is_active', true)
         .eq('doctors.is_available', true);
 
-      if (error) throw new Error(error.message || 'Failed to fetch doctors');
+      if (error) throw new Error(error.message);
 
-      const doctors = data?.map(item => ({
-        ...item.doctor,
-        name: `Dr. ${item.doctor.first_name} ${item.doctor.last_name}`,
-        specialization: `${item.doctor.specialization}`
-      })) || [];
+      const doctors = data?.map(item => {
+        const doctor = item.doctors;
+        const profile = doctor.users?.user_profiles;
+        
+        return {
+          id: doctor.id,
+          specialization: doctor.specialization,
+          consultation_fee: doctor.consultation_fee,
+          certifications: doctor.certifications,
+          awards: doctor.awards, // FIXED: Array field
+          experience_years: doctor.experience_years,
+          rating: doctor.rating,
+          // FIXED: Get name from user_profiles
+          name: profile ? `Dr. ${profile.first_name} ${profile.last_name}` : `Dr. ${doctor.specialization}`,
+          display_name: profile ? `${profile.first_name} ${profile.last_name}` : doctor.specialization
+        };
+      }) || [];
 
-      return doctors;
+      return { 
+        success: true, 
+        doctors, 
+        count: doctors.length,
+        error: null 
+      };
+
     } catch (err) {
       const errorMsg = err?.message || 'Failed to load available doctors';
       setError(errorMsg);
       console.error('Get available doctors error:', err);
-      return [];
+      return { 
+        success: false, 
+        doctors: [], 
+        error: errorMsg 
+      };
     } finally {
       setLoading(false);
     }
   }, []);
 
+  // ENHANCED: Get services with detailed info
   const getServices = useCallback(async (clinicId) => {
-    if (!clinicId) return [] 
+    if (!clinicId) return { success: false, services: [], error: 'Clinic ID required' };
+    
     try {
+      setLoading(true);
+      setError(null);
+
       const { data: clinicServices, error } = await supabase
         .from('services')
         .select('*')
         .eq('clinic_id', clinicId)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .order('priority', { ascending: true });
 
-      if (error) throw new Error(error.message || 'Failed to load services');
+      if (error) throw new Error(error.message);
 
-      return clinicServices;
-    } catch (error) {
-      const errorMsg = error?.message || 'Failed to load services';
+      return {
+        success: true,
+        services: clinicServices || [],
+        count: clinicServices?.length || 0,
+        error: null
+      };
+
+    } catch (err) {
+      const errorMsg = err?.message || 'Failed to load services';
       setError(errorMsg);
-      return [];
+      return {
+        success: false,
+        services: [],
+        error: errorMsg
+      };
     } finally {
       setLoading(false);
     }
-  });
+  }, []);
 
-  // Check appointment availability for specific slot
-  const checkSlotAvailability = useCallback(async (doctorId, date, time, duration = 60) => {
-    if (!doctorId || !date || !time) return false;
+  // FIXED: Proper availability check with multiple services
+  const checkSlotAvailability = useCallback(async (doctorId, date, time, serviceIds = []) => {
+    if (!doctorId || !date || !time) {
+      return { available: false, error: 'Missing required parameters' };
+    }
 
     try {
+      // Calculate total duration from selected services
+      let totalDuration = 60; // Default
+      
+      if (serviceIds.length > 0) {
+        const { data: services, error: servicesError } = await supabase
+          .from('services')
+          .select('duration_minutes')
+          .in('id', serviceIds);
+          
+        if (!servicesError && services) {
+          totalDuration = services.reduce((sum, service) => sum + service.duration_minutes, 0);
+        }
+      }
+
       const { data, error } = await supabase.rpc('check_appointment_availability', {
         p_doctor_id: doctorId,
         p_appointment_date: date,
         p_appointment_time: time,
-        p_duration_minutes: duration
+        p_duration_minutes: totalDuration
       });
 
       if (error) throw new Error(error.message);
-      return data || false;
+      
+      return { 
+        available: data || false, 
+        duration: totalDuration,
+        error: null 
+      };
+
     } catch (err) {
       console.error('Slot availability check error:', err);
-      return false;
+      return { 
+        available: false, 
+        error: err.message 
+      };
     }
   }, []);
 
-  // Get available time slots for a doctor on specific date
-  const getAvailableTimeSlots = useCallback(async (doctorId, date, clinicId) => {
-    if (!doctorId || !date || !clinicId) return [];
-
-    try {
-      setLoading(true);
-      
-      // Get clinic operating hours
-      const { data: clinic, error: clinicError } = await supabase
-        .from('clinics')
-        .select('operating_hours')
-        .eq('id', clinicId)
-        .single();
-
-      if (clinicError) throw new Error(clinicError.message);
-
-      // Get existing appointments for this doctor on this date
-      const { data: appointments, error: appointmentError } = await supabase
-        .from('appointments')
-        .select('appointment_time, duration_minutes')
-        .eq('doctor_id', doctorId)
-        .eq('appointment_date', date)
-        .not('status', 'in', '(cancelled,no_show)');
-
-      if (appointmentError) throw new Error(appointmentError.message);
-
-      // Generate available slots based on operating hours
-      const operatingHours = clinic?.operating_hours;
-      if (!operatingHours) return [];
-
-      const dayOfWeek = new Date(date).getDay();
-      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-      const dayName = dayNames[dayOfWeek]
-
-      let daySchedule;
-
-      if (['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].includes(dayName)) {
-        daySchedule = operatingHours.weekdays[dayName]
-      } else {
-        daySchedule = operatingHours.weekends[dayName]
-      }
-
-      if (!daySchedule || !daySchedule.open || !daySchedule.start || !daySchedule.end) {
-        return [];
-      }
-
-      // Generate time slots (30-minute intervals)
-      const slots = [];
-      const startTime = daySchedule.start;
-      const endTime = daySchedule.end;
-      
-      let currentTime = startTime;
-      while (currentTime < endTime) {
-        // Check if slot conflicts with existing appointments
-        const hasConflict = appointments?.some(apt => {
-          const aptStart = apt.appointment_time;
-          const aptEnd = addMinutes(aptStart, apt.duration_minutes);
-          const slotEnd = addMinutes(currentTime, 60); // Default 1-hour slots
-          
-          return (currentTime < aptEnd && slotEnd > aptStart);
-        });
-
-        if (!hasConflict) {
-          slots.push({
-            time: currentTime,
-            available: true,
-            label: formatTime(currentTime)
-          });
-        }
-
-        currentTime = addMinutes(currentTime, 30); // 30-minute intervals
-      }
-
-      return slots;
-    } catch (err) {
-      const errorMsg = err?.message || 'Failed to load time slots';
-      setError(errorMsg);
-      console.error('Get time slots error:', err);
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Book appointment using the enhanced function
+  // ENHANCED: Book appointment with comprehensive validation
   const bookAppointment = useCallback(async () => {
     if (!isPatient()) {
       setError('Only patients can book appointments');
-      return { success: false };
+      return { success: false, error: 'Access denied' };
     }
 
     const { clinic, doctor, date, time, services, symptoms } = bookingData;
 
-    // Validation
-    if (!clinic || !doctor || !date || !time || !services) {
+    // Enhanced validation
+    if (!clinic?.id || !doctor?.id || !date || !time) {
       setError('Please complete all booking details');
-      return { success: false };
+      return { success: false, error: 'Missing required fields' };
+    }
+
+    if (!services || services.length === 0) {
+      setError('Please select at least one service');
+      return { success: false, error: 'No services selected' };
+    }
+
+    if (services.length > 3) {
+      setError('Maximum 3 services can be selected');
+      return { success: false, error: 'Too many services' };
     }
 
     try {
       setLoading(true);
       setError(null);
 
+      // FIXED: Use correct parameter structure
       const { data, error } = await supabase.rpc('book_appointment', {
         p_clinic_id: clinic.id,
         p_doctor_id: doctor.id,
         p_appointment_date: date,
         p_appointment_time: time,
-        p_service_ids: services,
+        p_service_ids: services, // Array of UUIDs
         p_symptoms: symptoms || null,
       });
 
       if (error) throw new Error(error.message);
 
-      // Handle authentication errors
+      // Handle function response properly
       if (data?.authenticated === false) {
         setError('Please log in to continue');
-        return { success: false };
+        return { success: false, error: 'Authentication required' };
       }
 
-      // Handle function errors
       if (!data?.success) {
         setError(data?.error || 'Booking failed');
-        return { success: false };
+        return { success: false, error: data?.error };
       }
 
-      // Success
+      // Success - reset booking
       resetBooking();
+      
       return {
         success: true,
-        appointmentId: data.appointment_id,
-        details: data.appointment_details,
+        appointment: {
+          id: data.appointment_id,
+          details: data.appointment_details,
+          clinic_name: clinic.name,
+          doctor_name: doctor.name,
+          date: date,
+          time: time,
+          status: 'pending'
+        },
         message: data.message
       };
 
@@ -262,46 +279,55 @@ export const useAppointmentBooking = () => {
       const errorMsg = err?.message || 'Failed to book appointment';
       setError(errorMsg);
       console.error('Appointment booking error:', err);
-      return { success: false, error: errorMsg };
+      return { 
+        success: false, 
+        error: errorMsg 
+      };
     } finally {
       setLoading(false);
     }
   }, [bookingData, isPatient, resetBooking]);
 
-  // Validate current booking step
+  // ENHANCED: Step validation with detailed checks
   const validateStep = useCallback((step) => {
     switch (step) {
       case 'clinic':
-        return !!bookingData.clinic;
+        return bookingData.clinic?.id;
+      case 'services':
+        return bookingData.services?.length > 0;
       case 'doctor':
-        return !!bookingData.doctor;
+        return bookingData.doctor?.id;
       case 'datetime':
-        return !!bookingData.date && !!bookingData.time;
+        return bookingData.date && bookingData.time;
       case 'confirm':
-        return !!bookingData.services;
+        return bookingData.clinic && bookingData.doctor && 
+               bookingData.date && bookingData.time && 
+               bookingData.services?.length > 0;
       default:
         return false;
     }
   }, [bookingData]);
 
-  // Navigate booking steps
+  // ENHANCED: Navigation with better step flow
   const goToStep = useCallback((step) => {
     setBookingStep(step);
     setError(null);
   }, []);
 
   const nextStep = useCallback(() => {
-    const steps = ['clinic', 'doctor', 'datetime', 'confirm'];
+    const steps = ['clinic', 'services', 'doctor', 'datetime', 'confirm'];
     const currentIndex = steps.indexOf(bookingStep);
     
     if (currentIndex < steps.length - 1 && validateStep(bookingStep)) {
       setBookingStep(steps[currentIndex + 1]);
       setError(null);
+    } else if (!validateStep(bookingStep)) {
+      setError(`Please complete the ${bookingStep} selection`);
     }
   }, [bookingStep, validateStep]);
 
   const previousStep = useCallback(() => {
-    const steps = ['clinic', 'doctor', 'datetime', 'confirm'];
+    const steps = ['clinic', 'services', 'doctor', 'datetime', 'confirm'];
     const currentIndex = steps.indexOf(bookingStep);
     
     if (currentIndex > 0) {
@@ -309,6 +335,25 @@ export const useAppointmentBooking = () => {
       setError(null);
     }
   }, [bookingStep]);
+
+  // UTILITY: Get selected services details
+  const getSelectedServicesDetails = useCallback(async () => {
+    if (!bookingData.services?.length) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('services')
+        .select('*')
+        .in('id', bookingData.services);
+
+      if (error) throw error;
+
+      return data || [];
+    } catch (err) {
+      console.error('Error getting services details:', err);
+      return [];
+    }
+  }, [bookingData.services]);
 
   return {
     // State
@@ -332,28 +377,17 @@ export const useAppointmentBooking = () => {
     getAvailableDoctors,
     getServices,
     checkSlotAvailability,
-    getAvailableTimeSlots,
+    getSelectedServicesDetails,
 
-    // Computed
+    // Computed values
     canProceed: validateStep(bookingStep),
-    isComplete: Object.values(bookingData).every(val => 
-      val !== null && val !== '' && val !== undefined
-    )
+    isComplete: validateStep('confirm'),
+    totalServices: bookingData.services?.length || 0,
+    maxServicesReached: bookingData.services?.length >= 3,
+    
+    // Step info
+    currentStepIndex: ['clinic', 'services', 'doctor', 'datetime', 'confirm'].indexOf(bookingStep),
+    totalSteps: 5,
+    stepProgress: ((['clinic', 'services', 'doctor', 'datetime', 'confirm'].indexOf(bookingStep) + 1) / 5) * 100
   };
-};
-
-// Helper functions
-const addMinutes = (time, minutes) => {
-  const [hours, mins] = time.split(':').map(Number);
-  const totalMinutes = hours * 60 + mins + minutes;
-  const newHours = Math.floor(totalMinutes / 60);
-  const newMins = totalMinutes % 60;
-  return `${String(newHours).padStart(2, '0')}:${String(newMins).padStart(2, '0')}:00`;
-};
-
-const formatTime = (time) => {
-  const [hours, mins] = time.split(':');
-  const hour12 = hours % 12 || 12;
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  return `${hour12}:${mins} ${ampm}`;
 };
