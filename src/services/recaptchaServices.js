@@ -1,5 +1,4 @@
-// react and express communication
-const RECAPTCHA_SERVER_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_CUSTOM_SERVER_URL || 'http://localhost:3001'; 
+const RECAPTCHA_SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'; 
 
 export const recaptchaService = {
   async verifyToken(token, action, expectedAction = null) {

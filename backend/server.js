@@ -24,10 +24,9 @@ try {
 }
 
 const allowedOrigins = [
-  process.env.FRONTEND,  // default Vite
   process.env.FRONTEND2,  // incase other import
   process.env.FRONTEND3,  // last fallback
-  process.env.FRONTEND_URL, // deployed frontend
+  process.env.FRONTEND_URL, // deployed frontend || production
 ];
 
 app.use(cors({

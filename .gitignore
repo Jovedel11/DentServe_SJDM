@@ -18,6 +18,8 @@ dist-ssr
 /backend/.env
 backend/node_modules/
 backend.env
+backend.env.development
+backend.env.production
 
 # Editor directories and files
 .vscode/*
@@ -35,5 +37,6 @@ backend.env
 .env.test.local
 .env.production.local
 .env.development
+.env.production
 
 *.env

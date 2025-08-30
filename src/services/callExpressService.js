@@ -1,4 +1,4 @@
-const TWILIO_SERVER_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_CUSTOM_SERVER_URL || 'http://localhost:3001'; 
+const TWILIO_SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'; 
 
 export const callExpressService = {
   async callExpressApi (endpoint, data, token = null) {
