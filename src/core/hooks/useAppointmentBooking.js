@@ -55,22 +55,23 @@ export const useAppointmentBooking = () => {
       setLoading(true);
       setError(null);
 
-      // Correct schema - doctors don't have names, get from user_profiles
+      // get the doctor using join table
       const { data, error } = await supabase
         .from('doctor_clinics')
         .select(`
           doctors (
             id,
             specialization,
+            education,
             consultation_fee,
             certifications,
             awards,
             experience_years,
             is_available,
             rating,
-            user_id,
             first_name,
             last_name,
+            profile_image_url
           )
         `)
         .eq('clinic_id', clinicId)
@@ -97,7 +98,7 @@ export const useAppointmentBooking = () => {
         display_name: full_name || doctor?.specialization || 'Unknown'
         };
       }) || [];
-
+      
       return { 
         success: true, 
         doctors, 
@@ -131,9 +132,9 @@ export const useAppointmentBooking = () => {
         .from('services')
         .select('*')
         .eq('clinic_id', clinicId)
-        .eq('is_active', true)
-        .order('priority', { ascending: true });
+        .order('priority', { ascending: false })
 
+      console.log("clinicServices:", clinicServices, error);
       if (error) throw new Error(error.message);
 
       return {

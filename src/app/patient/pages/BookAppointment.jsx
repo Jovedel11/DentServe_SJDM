@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar,
@@ -17,69 +17,210 @@ import {
   Search,
   AlertCircle,
   Loader2,
+  X,
+  Plus,
+  Minus,
+  Info,
 } from "lucide-react";
 import WelcomeModal from "../components/welcome-modal";
-import {
-  clinics,
-  doctors,
-  services,
-  serviceCategories,
-  timeSlots,
-} from "@/data/patient/real/mock-appointment";
 import { useAuth } from "@/auth/context/AuthProvider";
+import { useAppointmentBooking } from "@/core/hooks/useAppointmentBooking";
+import { supabase } from "@/lib/supabaseClient";
 
 const BookAppointment = () => {
   const { profile } = useAuth();
+  const {
+    // State from hook
+    loading,
+    error,
+    bookingStep,
+    bookingData,
+
+    // Actions from hook
+    updateBookingData,
+    resetBooking,
+    bookAppointment,
+
+    // Step navigation from hook
+    goToStep,
+    nextStep,
+    previousStep,
+    validateStep,
+
+    // Data fetching from hook
+    getAvailableDoctors,
+    getServices,
+    checkSlotAvailability,
+    getSelectedServicesDetails,
+
+    // Computed values from hook
+    canProceed,
+    isComplete,
+    totalServices,
+    maxServicesReached,
+    currentStepIndex,
+    totalSteps,
+    stepProgress,
+  } = useAppointmentBooking();
+
+  // Local state for UI
   const [showWelcomeModal, setShowWelcomeModal] = useState(true);
-  const [currentStep, setCurrentStep] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  const [formData, setFormData] = useState({
-    clinic: "",
-    service: "",
-    doctor: "",
-    date: "",
-    time: "",
-    notes: "",
-  });
-
-  // Filter State
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [clinics, setClinics] = useState([]);
+  const [doctors, setDoctors] = useState([]);
+  const [services, setServices] = useState([]);
+  const [selectedServicesDetails, setSelectedServicesDetails] = useState([]);
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
+  console.log("clinics", bookingData.clinic);
+
+  // Step configuration aligned with hook
   const steps = [
-    { id: 1, title: "Select Clinic", icon: Building2 },
-    { id: 2, title: "Choose Service", icon: Stethoscope },
-    { id: 3, title: "Pick Doctor", icon: User },
-    { id: 4, title: "Date & Time", icon: Calendar },
-    { id: 5, title: "Review", icon: CheckCircle2 },
+    { id: "clinic", title: "Select Clinic", icon: Building2 },
+    { id: "services", title: "Choose Services", icon: Stethoscope },
+    { id: "doctor", title: "Pick Doctor", icon: User },
+    { id: "datetime", title: "Date & Time", icon: Calendar },
+    { id: "confirm", title: "Review", icon: CheckCircle2 },
   ];
 
-  // Computed Values
+  // Generate time slots for the day
+  const generateTimeSlots = useCallback(() => {
+    const slots = [];
+    const startHour = 9; // 9 AM
+    const endHour = 17; // 5 PM
+
+    for (let hour = startHour; hour < endHour; hour++) {
+      for (let minutes of [0, 30]) {
+        const time = `${hour.toString().padStart(2, "0")}:${minutes
+          .toString()
+          .padStart(2, "0")}`;
+        slots.push(time);
+      }
+    }
+    return slots;
+  }, []);
+
+  // Fetch clinics on component mount
+  useEffect(() => {
+    const fetchClinics = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("clinics")
+          .select(
+            `
+          id,
+          name,
+          description,
+          address,
+          location,
+          email,
+          website_url,
+          operating_hours,
+          services_offered,
+          rating,
+          total_reviews,
+          image_url,
+          is_active
+        `
+          )
+          .eq("is_active", true)
+          .order("rating", { ascending: false });
+
+        if (error) throw error;
+        setClinics(data || []);
+      } catch (err) {
+        console.error("Error fetching clinics:", err);
+      }
+    };
+
+    fetchClinics();
+  }, []);
+
+  // Fetch doctors when clinic is selected
+  useEffect(() => {
+    if (bookingData.clinic?.id) {
+      const fetchDoctors = async () => {
+        const result = await getAvailableDoctors(bookingData.clinic.id);
+        if (result.success) {
+          setDoctors(result.doctors);
+        }
+      };
+      fetchDoctors();
+    }
+  }, [bookingData.clinic?.id, getAvailableDoctors]);
+
+  // Fetch services when clinic is selected
+  useEffect(() => {
+    if (bookingData.clinic?.id) {
+      const fetchServices = async () => {
+        const result = await getServices(bookingData.clinic.id);
+        if (result.success) {
+          setServices(result.services);
+        }
+      };
+      fetchServices();
+    }
+  }, [bookingData.clinic?.id, getServices]);
+
+  // Get selected services details
+  useEffect(() => {
+    if (bookingData.services?.length > 0) {
+      const fetchSelectedServices = async () => {
+        const details = await getSelectedServicesDetails();
+        setSelectedServicesDetails(details);
+      };
+      fetchSelectedServices();
+    } else {
+      setSelectedServicesDetails([]);
+    }
+  }, [bookingData.services, getSelectedServicesDetails]);
+
+  // Check slot availability when date/time/services change
+  useEffect(() => {
+    if (
+      bookingData.doctor?.id &&
+      bookingData.date &&
+      bookingData.time &&
+      bookingData.services?.length > 0
+    ) {
+      const checkAvailability = async () => {
+        setLoadingSlots(true);
+        const result = await checkSlotAvailability(
+          bookingData.doctor.id,
+          bookingData.date,
+          bookingData.time,
+          bookingData.services
+        );
+        setLoadingSlots(false);
+
+        if (!result.available) {
+          // Clear the time if not available
+          updateBookingData({ time: null });
+        }
+      };
+      checkAvailability();
+    }
+  }, [
+    bookingData.doctor?.id,
+    bookingData.date,
+    bookingData.time,
+    bookingData.services,
+    checkSlotAvailability,
+    updateBookingData,
+  ]);
+
+  // Filtered clinics based on search
   const filteredClinics = clinics.filter(
     (clinic) =>
       clinic.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      clinic.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      clinic.specialties.some((specialty) =>
-        specialty.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+      clinic.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (clinic.specialties &&
+        clinic.specialties.some((specialty) =>
+          specialty.toLowerCase().includes(searchQuery.toLowerCase())
+        ))
   );
-
-  const conditions = profile?.role_specific_data?.medical_conditions?.forEach(
-    (condition) => condition
-  );
-
-  const filteredServices =
-    selectedCategory === "all"
-      ? services.slice(0, 5)
-      : services
-          .filter((service) => service.category === selectedCategory)
-          .slice(0, 5);
-
-  const availableDoctors = formData.clinic
-    ? doctors.filter((doctor) => doctor.clinicId === formData.clinic)
-    : doctors;
 
   // Event Handlers
   const handleWelcomeModalClose = (action) => {
@@ -92,62 +233,56 @@ const BookAppointment = () => {
   const handleSelectClinic = () => handleWelcomeModalClose("browse");
   const handleContinueBooking = () => handleWelcomeModalClose("continue");
 
-  const handleInputChange = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+  const handleClinicSelect = (clinic) => {
+    updateBookingData({
+      clinic,
+      doctor: null, // Reset dependent selections
+      services: [],
+      date: null,
+      time: null,
+    });
   };
 
-  const handleNext = () => {
-    if (currentStep < 5) {
-      setCurrentStep(currentStep + 1);
+  const handleServiceToggle = (serviceId) => {
+    const currentServices = bookingData.services || [];
+    let newServices;
+
+    if (currentServices.includes(serviceId)) {
+      newServices = currentServices.filter((id) => id !== serviceId);
+    } else {
+      if (currentServices.length >= 3) {
+        return; // Max services reached
+      }
+      newServices = [...currentServices, serviceId];
     }
+
+    updateBookingData({ services: newServices });
   };
 
-  const handlePrevious = () => {
-    if (currentStep > 1) {
-      setCurrentStep(currentStep - 1);
-    }
+  const handleDoctorSelect = (doctor) => {
+    updateBookingData({
+      doctor,
+      date: null, // Reset time-dependent selections
+      time: null,
+    });
   };
 
   const handleSubmit = async () => {
-    setLoading(true);
-    setError(null);
-
+    setSubmitting(true);
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const result = await bookAppointment();
 
-      const bookingData = {
-        ...formData,
-        userProfile,
-        timestamp: new Date().toISOString(),
-      };
-
-      console.log("Booking appointment:", bookingData);
-
-      // Success feedback
-      alert("Appointment booked successfully!");
-
-      // Reset form or redirect
-      // navigate('/appointments');
+      if (result.success) {
+        // Success feedback - you might want to navigate or show success modal
+        alert(
+          `Appointment booked successfully! Appointment ID: ${result.appointment.id}`
+        );
+        resetBooking();
+      }
     } catch (err) {
-      setError(err.message || "Failed to book appointment. Please try again.");
+      console.error("Booking submission error:", err);
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const isStepComplete = (step) => {
-    switch (step) {
-      case 1:
-        return formData.clinic !== "";
-      case 2:
-        return formData.service !== "";
-      case 3:
-        return formData.doctor !== "";
-      case 4:
-        return formData.date !== "" && formData.time !== "";
-      default:
-        return false;
+      setSubmitting(false);
     }
   };
 
@@ -183,11 +318,11 @@ const BookAppointment = () => {
           <motion.div
             key={clinic.id}
             className={`group cursor-pointer rounded-2xl border-2 p-6 transition-all duration-200 hover:shadow-xl ${
-              formData.clinic === clinic.id
+              bookingData.clinic?.id === clinic.id
                 ? "border-primary bg-primary/5 shadow-lg"
                 : "border-border bg-card hover:border-primary/50"
             }`}
-            onClick={() => handleInputChange("clinic", clinic.id)}
+            onClick={() => handleClinicSelect(clinic)}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
@@ -201,10 +336,10 @@ const BookAppointment = () => {
                   <div className="flex items-center gap-1">
                     <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                     <span className="font-semibold text-foreground">
-                      {clinic.rating}
+                      {clinic.rating || "N/A"}
                     </span>
                     <span className="text-sm text-muted-foreground">
-                      ({clinic.total_reviews} reviews)
+                      ({clinic.total_reviews || 0} reviews)
                     </span>
                   </div>
                 </div>
@@ -213,79 +348,55 @@ const BookAppointment = () => {
                   <span>{clinic.address}</span>
                 </div>
               </div>
-              <div className="aspect-square w-20 h-20 overflow-hidden rounded-xl border border-border flex-shrink-0">
-                <img
-                  src={clinic.image}
-                  alt={clinic.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                />
-              </div>
+              {clinic.image_url && (
+                <div className="aspect-square w-20 h-20 overflow-hidden rounded-xl border border-border flex-shrink-0">
+                  <img
+                    src={clinic.image_url}
+                    alt={clinic.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Clinic Info */}
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                {clinic.description}
-              </p>
+              {clinic.description && (
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {clinic.description}
+                </p>
+              )}
 
               {/* Specialties */}
-              <div className="flex flex-wrap gap-2">
-                {clinic.specialties.slice(0, 3).map((specialty, index) => (
-                  <span
-                    key={index}
-                    className="px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full"
-                  >
-                    {specialty}
-                  </span>
-                ))}
-                {clinic.specialties.length > 3 && (
-                  <span className="px-3 py-1 bg-muted text-muted-foreground text-xs rounded-full">
-                    +{clinic.specialties.length - 3} more
-                  </span>
-                )}
-              </div>
+              {clinic.specialties && clinic.specialties.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {clinic.specialties.slice(0, 3).map((specialty, index) => (
+                    <span
+                      key={index}
+                      className="px-3 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full"
+                    >
+                      {specialty}
+                    </span>
+                  ))}
+                  {clinic.specialties.length > 3 && (
+                    <span className="px-3 py-1 bg-muted text-muted-foreground text-xs rounded-full">
+                      +{clinic.specialties.length - 3} more
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* Features */}
-              <div className="flex flex-wrap gap-2">
-                {clinic.features.slice(0, 2).map((feature, index) => (
-                  <span
-                    key={index}
-                    className="px-2 py-1 bg-muted/50 text-muted-foreground text-xs rounded"
-                  >
-                    {feature}
-                  </span>
-                ))}
-              </div>
-
-              {/* Recent Reviews */}
-              {clinic.recentReviews && clinic.recentReviews.length > 0 && (
-                <div className="pt-3 border-t border-border">
-                  <div className="flex items-center gap-2 mb-2">
-                    <MessageSquare className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm font-medium text-foreground">
-                      Recent Review
+              {clinic.features && clinic.features.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {clinic.features.slice(0, 2).map((feature, index) => (
+                    <span
+                      key={index}
+                      className="px-2 py-1 bg-muted/50 text-muted-foreground text-xs rounded"
+                    >
+                      {feature}
                     </span>
-                  </div>
-                  <div className="bg-muted/30 rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="flex">
-                        {[...Array(clinic.recentReviews[0].rating)].map(
-                          (_, i) => (
-                            <Star
-                              key={i}
-                              className="w-3 h-3 fill-yellow-400 text-yellow-400"
-                            />
-                          )
-                        )}
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        by {clinic.recentReviews[0].patient}
-                      </span>
-                    </div>
-                    <p className="text-sm text-foreground italic">
-                      "{clinic.recentReviews[0].comment}"
-                    </p>
-                  </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -308,64 +419,56 @@ const BookAppointment = () => {
     </div>
   );
 
-  const renderServiceStep = () => (
+  const renderServicesStep = () => (
     <div className="space-y-6">
       <div className="text-center">
         <h2 className="text-3xl font-bold text-foreground mb-2">
-          Select a Service
+          Select Services
         </h2>
         <p className="text-muted-foreground">
-          Choose from our most popular dental services
-        </p>
-      </div>
-
-      {/* Service Categories */}
-      <div className="flex flex-wrap justify-center gap-2">
-        {serviceCategories.map((category) => (
-          <button
-            key={category.id}
-            onClick={() => setSelectedCategory(category.id)}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-              selectedCategory === category.id
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:bg-muted/80"
-            }`}
-          >
-            {category.name}
-          </button>
-        ))}
-      </div>
-
-      {/* Services Note */}
-      <div className="text-center">
-        <p className="text-sm text-muted-foreground bg-muted/30 rounded-lg p-3 inline-block">
-          Showing our top 5 most requested services. Need a specific treatment?
-          <span className="text-primary font-medium ml-1">
-            Contact us directly.
-          </span>
+          Choose up to 3 services for your appointment ({totalServices}/3
+          selected)
         </p>
       </div>
 
       {/* Services Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1 max-w-4xl mx-auto">
-        {filteredServices.map((service) => {
-          const Icon = service.icon;
+      <div className="grid gap-4 md:grid-cols-2 max-w-4xl mx-auto">
+        {services.map((service) => {
+          const isSelected = bookingData.services?.includes(service.id);
+
           return (
             <motion.div
               key={service.id}
               className={`cursor-pointer rounded-2xl border-2 p-6 transition-all duration-200 hover:shadow-lg ${
-                formData.service === service.name
+                isSelected
                   ? "border-primary bg-primary/5 shadow-lg"
                   : "border-border bg-card hover:border-primary/50"
+              } ${
+                maxServicesReached && !isSelected
+                  ? "opacity-50 cursor-not-allowed"
+                  : ""
               }`}
-              onClick={() => handleInputChange("service", service.name)}
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
+              onClick={() =>
+                !maxServicesReached || isSelected
+                  ? handleServiceToggle(service.id)
+                  : null
+              }
+              whileHover={
+                !maxServicesReached || isSelected ? { scale: 1.01 } : {}
+              }
+              whileTap={
+                !maxServicesReached || isSelected ? { scale: 0.99 } : {}
+              }
             >
               <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-4 flex-1">
-                  <div className="p-3 rounded-xl bg-primary/10 flex-shrink-0">
-                    <Icon className="w-6 h-6 text-primary" />
+                <div className="flex items-start gap-4 flex-1">
+                  <div className="p-3 rounded-xl bg-primary/10 flex-shrink-0 relative">
+                    <Stethoscope className="w-6 h-6 text-primary" />
+                    {isSelected && (
+                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-primary rounded-full flex items-center justify-center">
+                        <CheckCircle2 className="w-4 h-4 text-primary-foreground" />
+                      </div>
+                    )}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
@@ -377,26 +480,26 @@ const BookAppointment = () => {
                           Popular
                         </span>
                       )}
-                      {service.priority <= 3 && (
-                        <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 text-xs font-medium rounded-full">
-                          Recommended
-                        </span>
-                      )}
                     </div>
-                    <span className="text-xs text-muted-foreground px-2 py-1 bg-muted/50 rounded-full">
-                      {service.category}
-                    </span>
-                    <p className="text-sm text-muted-foreground leading-relaxed mt-2">
-                      {service.description}
-                    </p>
+                    {service.description && (
+                      <p className="text-sm text-muted-foreground leading-relaxed mb-2">
+                        {service.description}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-4 h-4" />
+                        <span>{service.duration_minutes} min</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0 ml-4">
-                  <div className="text-sm text-muted-foreground mb-1">
-                    {service.duration}
-                  </div>
                   <div className="font-bold text-primary text-xl">
-                    {service.price}
+                    ₱{service.price}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    per session
                   </div>
                 </div>
               </div>
@@ -405,20 +508,84 @@ const BookAppointment = () => {
         })}
       </div>
 
-      {/* Additional Services CTA */}
-      <div className="text-center">
-        <div className="bg-muted/20 rounded-xl p-6 max-w-md mx-auto">
-          <h4 className="font-semibold text-foreground mb-2">
-            Need a different service?
+      {/* Selected Services Summary */}
+      {selectedServicesDetails.length > 0 && (
+        <div className="bg-muted/20 rounded-xl p-6 max-w-2xl mx-auto">
+          <h4 className="font-semibold text-foreground mb-4 flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-primary" />
+            Selected Services ({selectedServicesDetails.length})
           </h4>
-          <p className="text-sm text-muted-foreground mb-4">
-            We offer comprehensive dental care beyond these popular services.
-          </p>
-          <button className="text-primary font-medium hover:underline text-sm">
-            View All Services & Treatments
-          </button>
+          <div className="space-y-2">
+            {selectedServicesDetails.map((service) => (
+              <div
+                key={service.id}
+                className="flex items-center justify-between py-2 border-b border-border last:border-0"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="font-medium text-foreground">
+                    {service.name}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    {service.duration_minutes} min
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-primary">
+                    ₱{service.price}
+                  </span>
+                  <button
+                    onClick={() => handleServiceToggle(service.id)}
+                    className="text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+            <div className="pt-2 border-t border-border">
+              <div className="flex items-center justify-between font-bold">
+                <span>Total Duration:</span>
+                <span>
+                  {selectedServicesDetails.reduce(
+                    (sum, s) => sum + s.duration_minutes,
+                    0
+                  )}{" "}
+                  min
+                </span>
+              </div>
+              <div className="flex items-center justify-between font-bold text-primary">
+                <span>Total Cost:</span>
+                <span>
+                  {selectedServicesDetails
+                    .reduce(
+                      (sum, s) =>
+                        sum +
+                        (parseFloat(s.min_price) + parseFloat(s.max_price)) / 2,
+                      0
+                    )
+                    .toLocaleString("en-PH", {
+                      style: "currency",
+                      currency: "PHP",
+                    })}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Empty State */}
+      {services.length === 0 && (
+        <div className="text-center py-12">
+          <Stethoscope className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-foreground mb-2">
+            No services available
+          </h3>
+          <p className="text-muted-foreground">
+            Please select a clinic first to see available services
+          </p>
+        </div>
+      )}
     </div>
   );
 
@@ -429,63 +596,54 @@ const BookAppointment = () => {
           Choose Your Doctor
         </h2>
         <p className="text-muted-foreground">
-          Select your preferred dentist for this service
+          Select your preferred dentist for your services
         </p>
       </div>
+
       <div className="grid gap-6 md:grid-cols-2">
-        {availableDoctors.map((doctor) => (
+        {doctors.map((doctor) => (
           <motion.div
             key={doctor.id}
             className={`cursor-pointer rounded-2xl border-2 p-6 transition-all duration-200 hover:shadow-lg ${
-              formData.doctor === doctor.name
+              bookingData.doctor?.id === doctor.id
                 ? "border-primary bg-primary/5 shadow-lg"
                 : "border-border bg-card hover:border-primary/50"
             }`}
-            onClick={() => handleInputChange("doctor", doctor.name)}
+            onClick={() => handleDoctorSelect(doctor)}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
           >
             <div className="flex items-start gap-4">
-              <div className="w-16 h-16 overflow-hidden rounded-xl border-2 border-primary/20 flex-shrink-0">
-                <img
-                  src={doctor.image}
-                  alt={doctor.name}
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-16 h-16 overflow-hidden rounded-xl border-2 border-primary/20 flex-shrink-0 bg-primary/10 flex items-center justify-center">
+                <User className="w-8 h-8 text-primary" />
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-foreground text-lg mb-1">
-                  {doctor.name}
+                  {doctor.display_name}
                 </h3>
                 <p className="text-primary font-medium mb-2">
-                  {doctor.specialty}
+                  {doctor.specialization}
                 </p>
                 <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
                   <div className="flex items-center gap-1">
                     <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                    <span>{doctor.rating}</span>
+                    <span>{doctor.rating || "N/A"}</span>
                   </div>
-                  <span>{doctor.experience}</span>
+                  <span>{doctor.experience_years} years exp.</span>
                 </div>
-                <p className="text-sm text-muted-foreground mb-3">
-                  {doctor.education.split(",")[0]}
-                </p>
-                <div className="space-y-2">
+                <div className="text-sm text-muted-foreground mb-2">
+                  Consultation Fee: ₱{doctor.consultation_fee}
+                </div>
+                {doctor.certifications && doctor.certifications.length > 0 && (
                   <div className="flex flex-wrap gap-1">
-                    {doctor.specializations.slice(0, 2).map((spec, index) => (
-                      <span
-                        key={index}
-                        className="px-2 py-1 bg-primary/10 text-primary text-xs rounded"
-                      >
-                        {spec}
-                      </span>
-                    ))}
+                    <p className="px-2 py-1 bg-primary/10 text-primary text-xs rounded">
+                      Certifications:{" "}
+                      {doctor.certifications
+                        ? JSON.stringify(doctor.certifications)
+                        : "None"}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Clock className="w-3 h-3" />
-                    <span>{doctor.availability}</span>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           </motion.div>
@@ -493,7 +651,7 @@ const BookAppointment = () => {
       </div>
 
       {/* Empty State */}
-      {availableDoctors.length === 0 && (
+      {doctors.length === 0 && (
         <div className="text-center py-12">
           <User className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-foreground mb-2">
@@ -517,6 +675,7 @@ const BookAppointment = () => {
           Choose your preferred appointment date and time
         </p>
       </div>
+
       <div className="grid gap-8 lg:grid-cols-2">
         <div className="space-y-4">
           <label className="block text-sm font-medium text-foreground">
@@ -524,43 +683,57 @@ const BookAppointment = () => {
           </label>
           <input
             type="date"
-            value={formData.date}
-            onChange={(e) => handleInputChange("date", e.target.value)}
+            value={bookingData.date || ""}
+            onChange={(e) =>
+              updateBookingData({ date: e.target.value, time: null })
+            }
             min={new Date().toISOString().split("T")[0]}
             className="w-full rounded-xl border-2 border-border bg-background px-4 py-3 text-foreground transition-colors focus:border-primary focus:outline-none"
           />
         </div>
+
         <div className="space-y-4">
           <label className="block text-sm font-medium text-foreground">
             Available Time Slots
           </label>
-          <div className="grid grid-cols-3 gap-3">
-            {timeSlots.map((time) => (
-              <button
-                key={time}
-                className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all duration-200 ${
-                  formData.time === time
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-card text-foreground hover:border-primary/50 hover:bg-primary/5"
-                }`}
-                onClick={() => handleInputChange("time", time)}
-              >
-                {time}
-              </button>
-            ))}
-          </div>
+          {bookingData.date ? (
+            <div className="grid grid-cols-3 gap-3">
+              {generateTimeSlots().map((time) => (
+                <button
+                  key={time}
+                  className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-all duration-200 ${
+                    bookingData.time === time
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card text-foreground hover:border-primary/50 hover:bg-primary/5"
+                  }`}
+                  onClick={() => updateBookingData({ time })}
+                  disabled={loadingSlots}
+                >
+                  {loadingSlots ? (
+                    <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                  ) : (
+                    time
+                  )}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              Please select a date first
+            </div>
+          )}
         </div>
       </div>
 
       {/* Optional Notes */}
       <div className="max-w-2xl mx-auto">
         <label className="block text-sm font-medium text-foreground mb-2">
-          Additional Notes (Optional)
+          Symptoms or Additional Notes (Optional)
         </label>
         <textarea
-          placeholder="Any specific requirements, concerns, or notes for your appointment..."
-          value={formData.notes}
-          onChange={(e) => handleInputChange("notes", e.target.value)}
+          placeholder="Any specific symptoms, concerns, or notes for your appointment..."
+          value={bookingData.symptoms || ""}
+          onChange={(e) => updateBookingData({ symptoms: e.target.value })}
           rows="4"
           className="w-full rounded-xl border-2 border-border bg-background px-4 py-3 text-foreground transition-colors focus:border-primary focus:outline-none resize-none"
         />
@@ -568,187 +741,185 @@ const BookAppointment = () => {
     </div>
   );
 
-  const renderReviewStep = () => {
-    const selectedClinic = clinics.find((c) => c.id === formData.clinic);
-    const selectedDoctor = doctors.find((d) => d.name === formData.doctor);
-    const selectedService = services.find((s) => s.name === formData.service);
+  const renderConfirmStep = () => (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h2 className="text-3xl font-bold text-foreground mb-2">
+          Review & Confirm
+        </h2>
+        <p className="text-muted-foreground">
+          Please review your appointment details before confirming
+        </p>
+      </div>
 
-    return (
-      <div className="space-y-6">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold text-foreground mb-2">
-            Review & Confirm
-          </h2>
-          <p className="text-muted-foreground">
-            Please review your appointment details before confirming
-          </p>
-        </div>
-        <div className="max-w-3xl mx-auto">
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Appointment Details */}
-            <div className="rounded-2xl border-2 border-border bg-card p-6 space-y-4">
-              <h3 className="font-semibold text-foreground text-lg mb-4 flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-primary" />
-                Appointment Details
-              </h3>
+      <div className="max-w-3xl mx-auto">
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Appointment Details */}
+          <div className="rounded-2xl border-2 border-border bg-card p-6 space-y-4">
+            <h3 className="font-semibold text-foreground text-lg mb-4 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-primary" />
+              Appointment Details
+            </h3>
 
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <Building2 className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
-                  <div className="flex-1">
-                    <div className="font-medium text-foreground">Clinic</div>
-                    <div className="text-muted-foreground">
-                      {selectedClinic?.name}
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <Building2 className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="font-medium text-foreground">Clinic</div>
+                  <div className="text-muted-foreground">
+                    {bookingData.clinic?.name}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {bookingData.clinic?.address}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <Stethoscope className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="font-medium text-foreground">Services</div>
+                  {selectedServicesDetails.map((service) => (
+                    <div key={service.id} className="text-muted-foreground">
+                      {service.name} - {service.duration_minutes}min - ₱
+                      {service.price}
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      {selectedClinic?.address}
+                  ))}
+                  <div className="text-sm text-primary font-semibold mt-1">
+                    Total: 
+                    {selectedServicesDetails
+                      .reduce(
+                        (sum, s) =>
+                          sum +
+                          (parseFloat(s.min_price) + parseFloat(s.max_price)) /
+                            2,
+                        0
+                      )
+                      .toLocaleString("en-PH", {
+                        style: "currency",
+                        currency: "PHP",
+                      })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <User className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="font-medium text-foreground">Doctor</div>
+                  <div className="text-muted-foreground">
+                    {bookingData.doctor?.name}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {bookingData.doctor?.specialization}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <Calendar className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="font-medium text-foreground">Date & Time</div>
+                  <div className="text-muted-foreground">
+                    {bookingData.date &&
+                      new Date(bookingData.date).toLocaleDateString("en-US", {
+                        weekday: "long",
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {bookingData.time}
+                  </div>
+                </div>
+              </div>
+
+              {bookingData.symptoms && (
+                <div className="flex items-start gap-3">
+                  <MessageSquare className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
+                  <div className="flex-1">
+                    <div className="font-medium text-foreground">Notes</div>
+                    <div className="text-muted-foreground text-sm leading-relaxed">
+                      {bookingData.symptoms}
                     </div>
                   </div>
                 </div>
+              )}
+            </div>
+          </div>
 
-                <div className="flex items-start gap-3">
-                  <Stethoscope className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
-                  <div className="flex-1">
-                    <div className="font-medium text-foreground">Service</div>
-                    <div className="text-muted-foreground">
-                      {formData.service}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {selectedService?.duration} • {selectedService?.price}
-                    </div>
+          {/* Patient Information */}
+          <div className="rounded-2xl border-2 border-border bg-card p-6 space-y-4">
+            <h3 className="font-semibold text-foreground text-lg mb-4 flex items-center gap-2">
+              <User className="w-5 h-5 text-primary" />
+              Your Information
+            </h3>
+
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <User className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="font-medium text-foreground">
+                    Patient Name
+                  </div>
+                  <div className="text-muted-foreground">
+                    {profile?.first_name} {profile?.last_name}
                   </div>
                 </div>
+              </div>
 
-                <div className="flex items-start gap-3">
-                  <User className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
-                  <div className="flex-1">
-                    <div className="font-medium text-foreground">Doctor</div>
-                    <div className="text-muted-foreground">
-                      {formData.doctor}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {selectedDoctor?.specialty}
-                    </div>
+              <div className="flex items-start gap-3">
+                <Phone className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="font-medium text-foreground">Phone</div>
+                  <div className="text-muted-foreground">
+                    {profile?.phone || "Not provided"}
                   </div>
                 </div>
+              </div>
 
-                <div className="flex items-start gap-3">
-                  <Calendar className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
-                  <div className="flex-1">
-                    <div className="font-medium text-foreground">
-                      Date & Time
-                    </div>
-                    <div className="text-muted-foreground">
-                      {formData.date &&
-                        new Date(formData.date).toLocaleDateString("en-US", {
-                          weekday: "long",
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                        })}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {formData.time}
-                    </div>
-                  </div>
+              <div className="flex items-start gap-3">
+                <Mail className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="font-medium text-foreground">Email</div>
+                  <div className="text-muted-foreground">{profile?.email}</div>
                 </div>
-
-                {formData.notes && (
-                  <div className="flex items-start gap-3">
-                    <MessageSquare className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
-                    <div className="flex-1">
-                      <div className="font-medium text-foreground">Notes</div>
-                      <div className="text-muted-foreground text-sm leading-relaxed">
-                        {formData.notes}
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
-            {/* Contact Information */}
-            <div className="rounded-2xl border-2 border-border bg-card p-6 space-y-4">
-              <h3 className="font-semibold text-foreground text-lg mb-4 flex items-center gap-2">
-                <User className="w-5 h-5 text-primary" />
-                Your Information
-              </h3>
-
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <User className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
-                  <div className="flex-1">
-                    <div className="font-medium text-foreground">
-                      Patient Name
-                    </div>
-                    <div className="text-muted-foreground">
-                      {profile?.profile?.first_name}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <Phone className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
-                  <div className="flex-1">
-                    <div className="font-medium text-foreground">Phone</div>
-                    <div className="text-muted-foreground">
-                      {profile?.phone}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <Mail className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
-                  <div className="flex-1">
-                    <div className="font-medium text-foreground">Email</div>
-                    <div className="text-muted-foreground">
-                      {profile?.email}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <MapPin className="h-5 w-5 text-primary mt-1 flex-shrink-0" />
-                  <div className="flex-1">
-                    <div className="font-medium text-foreground">
-                      Medical Conditions
-                    </div>
-                    <div className="text-muted-foreground text-sm">
-                      {conditions || []}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 p-4 bg-muted/30 rounded-lg">
-                <p className="text-sm text-muted-foreground">
-                  <strong>Note:</strong> Your contact information is taken from
-                  your profile. You can update it in your account settings if
-                  needed.
-                </p>
-              </div>
+            <div className="mt-6 p-4 bg-muted/30 rounded-lg">
+              <p className="text-sm text-muted-foreground">
+                <strong>Note:</strong> Your contact information is taken from
+                your profile. You can update it in your account settings if
+                needed.
+              </p>
             </div>
           </div>
         </div>
       </div>
-    );
-  };
+    </div>
+  );
 
   const renderStepContent = () => {
-    switch (currentStep) {
-      case 1:
+    switch (bookingStep) {
+      case "clinic":
         return renderClinicStep();
-      case 2:
-        return renderServiceStep();
-      case 3:
+      case "services":
+        return renderServicesStep();
+      case "doctor":
         return renderDoctorStep();
-      case 4:
+      case "datetime":
         return renderDateTimeStep();
-      case 5:
-        return renderReviewStep();
+      case "confirm":
+        return renderConfirmStep();
       default:
         return null;
     }
+  };
+
+  const getCurrentStepConfig = () => {
+    return steps.find((step) => step.id === bookingStep) || steps[0];
   };
 
   return (
@@ -784,9 +955,9 @@ const BookAppointment = () => {
             <div className="flex items-center justify-between overflow-x-auto pb-4">
               {steps.map((step, index) => {
                 const Icon = step.icon;
-                const isActive = step.id === currentStep;
-                const isCompleted = step.id < currentStep;
-                const isAccessible = step.id <= currentStep;
+                const isActive = step.id === bookingStep;
+                const isCompleted = currentStepIndex > index;
+                const isAccessible = currentStepIndex >= index;
 
                 return (
                   <div
@@ -795,15 +966,16 @@ const BookAppointment = () => {
                   >
                     <div className="flex flex-col items-center gap-3">
                       <div
-                        className={`flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-200 ${
+                        className={`flex h-12 w-12 items-center justify-center rounded-full border-2 transition-all duration-200 cursor-pointer ${
                           isCompleted
                             ? "border-primary bg-primary text-primary-foreground"
                             : isActive
                             ? "border-primary bg-primary/10 text-primary"
                             : isAccessible
-                            ? "border-muted-foreground bg-background text-muted-foreground"
-                            : "border-muted bg-muted text-muted-foreground/50"
+                            ? "border-muted-foreground bg-background text-muted-foreground hover:border-primary hover:text-primary"
+                            : "border-muted bg-muted text-muted-foreground/50 cursor-not-allowed"
                         }`}
+                        onClick={() => isAccessible && goToStep(step.id)}
                       >
                         {isCompleted ? (
                           <CheckCircle2 className="h-6 w-6" />
@@ -834,6 +1006,16 @@ const BookAppointment = () => {
                 );
               })}
             </div>
+
+            {/* Progress Bar */}
+            <div className="mt-4 bg-muted rounded-full h-2 overflow-hidden">
+              <motion.div
+                className="h-full bg-primary rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${stepProgress}%` }}
+                transition={{ duration: 0.3 }}
+              />
+            </div>
           </motion.div>
 
           {/* Error Message */}
@@ -855,14 +1037,23 @@ const BookAppointment = () => {
           {/* Step Content */}
           <AnimatePresence mode="wait">
             <motion.div
-              key={currentStep}
+              key={bookingStep}
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               className="mb-12"
             >
               <div className="rounded-2xl border bg-card p-8 shadow-lg">
-                {renderStepContent()}
+                {loading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                    <span className="ml-3 text-muted-foreground">
+                      Loading...
+                    </span>
+                  </div>
+                ) : (
+                  renderStepContent()
+                )}
               </div>
             </motion.div>
           </AnimatePresence>
@@ -874,10 +1065,10 @@ const BookAppointment = () => {
             animate={{ opacity: 1, y: 0 }}
           >
             <div>
-              {currentStep > 1 && (
+              {currentStepIndex > 0 && (
                 <button
-                  onClick={handlePrevious}
-                  disabled={loading}
+                  onClick={previousStep}
+                  disabled={loading || submitting}
                   className="flex items-center gap-2 rounded-xl border-2 border-border bg-background px-6 py-3 font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ArrowLeft className="h-4 w-4" />
@@ -887,12 +1078,12 @@ const BookAppointment = () => {
             </div>
 
             <div>
-              {currentStep < 5 ? (
+              {bookingStep !== "confirm" ? (
                 <button
-                  onClick={handleNext}
-                  disabled={!isStepComplete(currentStep) || loading}
+                  onClick={nextStep}
+                  disabled={!canProceed || loading}
                   className={`flex items-center gap-2 rounded-xl px-6 py-3 font-medium transition-all duration-200 ${
-                    isStepComplete(currentStep) && !loading
+                    canProceed && !loading
                       ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-lg"
                       : "cursor-not-allowed bg-muted text-muted-foreground"
                   }`}
@@ -903,10 +1094,10 @@ const BookAppointment = () => {
               ) : (
                 <button
                   onClick={handleSubmit}
-                  disabled={loading}
+                  disabled={!isComplete || submitting}
                   className="flex items-center gap-2 rounded-xl bg-primary px-8 py-3 font-medium text-primary-foreground transition-all duration-200 hover:bg-primary/90 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? (
+                  {submitting ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin" />
                       Booking...
