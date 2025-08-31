@@ -3,7 +3,7 @@ import { useAuth } from '../../auth/context/AuthProvider';
 import { supabase } from '../../lib/supabaseClient';
 
 export const usePatientAppointments = () => {
-  const { user, profile, isPatient } = useAuth();
+  const { isPatient } = useAuth();
   
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -16,7 +16,7 @@ export const usePatientAppointments = () => {
     hasMore: false
   });
 
-  // FIXED: Enhanced fetch with proper user ID extraction
+  // fetch with proper user ID extraction
   const fetchAppointments = useCallback(async (options = {}) => {
     if (!isPatient()) {
       return { success: false, error: 'Access denied: Patient only' };
@@ -33,7 +33,7 @@ export const usePatientAppointments = () => {
         refresh = false
       } = options;
 
-      // ENHANCED: Better status and date filtering
+      // Better status and date filtering
       let statusFilter = null;
       let dateFrom = null;
       let dateTo = null;
@@ -81,15 +81,15 @@ export const usePatientAppointments = () => {
       const appointmentData = data.data;
       const newAppointments = appointmentData.appointments || [];
 
-      // ENHANCED: Add computed fields to appointments
+      // computed fields to appointments
       const enrichedAppointments = newAppointments.map(apt => ({
         ...apt,
         canCancel: ['pending', 'confirmed'].includes(apt.status) &&
                   apt.appointment_date >= today,
         isUpcoming: ['pending', 'confirmed'].includes(apt.status) &&
-                   apt.appointment_date >= today,
+                  apt.appointment_date >= today,
         isPast: ['completed', 'cancelled', 'no_show'].includes(apt.status) ||
-               apt.appointment_date < today,
+              apt.appointment_date < today,
         appointmentDateTime: new Date(`${apt.appointment_date}T${apt.appointment_time}`),
         statusColor: {
           pending: 'yellow',
@@ -129,7 +129,7 @@ export const usePatientAppointments = () => {
     }
   }, [isPatient, activeTab, pagination.limit, pagination.offset]);
 
-  // ENHANCED: Cancel appointment with proper validation
+  // Cancel appointment with proper validation
   const cancelAppointment = useCallback(async (appointmentId, reason) => {
     if (!isPatient()) {
       return { success: false, error: 'Access denied: Patient only' };
@@ -204,7 +204,7 @@ export const usePatientAppointments = () => {
     }
   }, [isPatient]);
 
-  // ENHANCED: Check cancellation eligibility
+  // Check cancellation eligibility
   const canCancelAppointment = useCallback(async (appointmentId) => {
     if (!appointmentId) return { canCancel: false, error: 'Invalid appointment ID' };
 
@@ -222,13 +222,13 @@ export const usePatientAppointments = () => {
     }
   }, []);
 
-  // ENHANCED: Get appointment details with computed fields
+  //  Get appointment details with computed fields
   const getAppointmentDetails = useCallback((appointmentId) => {
     const appointment = appointments.find(apt => apt.id === appointmentId);
     
     if (!appointment) return null;
 
-    // Add additional computed fields for detailed view
+    // computed fields for detailed view
     return {
       ...appointment,
       timeUntilAppointment: (() => {
@@ -257,7 +257,7 @@ export const usePatientAppointments = () => {
     };
   }, [appointments]);
 
-  // ENHANCED: Change tab with validation
+  // Change tab with validation
   const changeTab = useCallback((tab) => {
     const validTabs = ['upcoming', 'past', 'pending', 'confirmed', 'all'];
     
@@ -283,7 +283,7 @@ export const usePatientAppointments = () => {
     fetchAppointments({ refresh: true });
   }, [fetchAppointments]);
 
-  // ENHANCED: Statistics with more detailed metrics
+  //Statistics with more detailed metrics
   const getStats = useCallback(() => {
     const today = new Date().toISOString().split('T')[0];
     const nextWeek = new Date();
@@ -297,7 +297,7 @@ export const usePatientAppointments = () => {
 
     const nextAppointment = upcomingAppointments
       .sort((a, b) => new Date(`${a.appointment_date}T${a.appointment_time}`) - 
-                     new Date(`${b.appointment_date}T${b.appointment_time}`))[0] || null;
+      new Date(`${b.appointment_date}T${b.appointment_time}`))[0] || null;
 
     return {
       total: appointments.length,
@@ -319,7 +319,7 @@ export const usePatientAppointments = () => {
         );
         if (completedWithRating.length === 0) return null;
         return completedWithRating.reduce((sum, apt) => sum + apt.rating, 0) / 
-               completedWithRating.length;
+              completedWithRating.length;
       })()
     };
   }, [appointments]);

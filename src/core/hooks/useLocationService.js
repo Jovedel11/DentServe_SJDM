@@ -9,7 +9,7 @@ export const useLocationService = () => {
   const [locationError, setLocationError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // ENHANCED: Get current location with better error handling
+  // Get current location with better error handling
   const getCurrentLocation = useCallback(async (options = {}) => {
     const defaultOptions = {
       enableHighAccuracy: true,
@@ -70,7 +70,7 @@ export const useLocationService = () => {
     });
   }, []);
 
-  // FIXED: Update user location with proper error handling
+  // Update user location with proper error handling
   const updateUserLocation = useCallback(async (latitude, longitude) => {
     if (!isPatient()) {
       return { success: false, error: 'Only patients can update location preferences' };
@@ -127,7 +127,7 @@ export const useLocationService = () => {
     }
   }, [isPatient, user, profile]);
 
-  // ENHANCED: Request location access with comprehensive handling
+  // Request location access with comprehensive handling
   const requestLocationAccess = useCallback(async (saveToProfile = true) => {
     try {
       setLoading(true);
@@ -166,7 +166,7 @@ export const useLocationService = () => {
     }
   }, [getCurrentLocation, updateUserLocation, isPatient]);
 
-  // ENHANCED: Check if location is available and fresh
+  // Check if location is available and fresh
   const isLocationAvailable = useCallback(() => {
     if (!userLocation || !userLocation.timestamp) return false;
     
@@ -176,7 +176,7 @@ export const useLocationService = () => {
     return isRecent && userLocation.latitude != null && userLocation.longitude != null;
   }, [userLocation]);
 
-  // NEW: Get distance between two points (Haversine formula)
+  // Get distance between two points (Haversine formula)
   const calculateDistance = useCallback((lat1, lon1, lat2, lon2) => {
     const R = 6371; // Radius of the Earth in kilometers
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -191,7 +191,7 @@ export const useLocationService = () => {
     return distance; // Distance in kilometers
   }, []);
 
-  // NEW: Load saved location from user profile
+  // Load saved location from user profile
   const loadSavedLocation = useCallback(async () => {
     if (!isPatient() || !profile?.role_specific_data?.preferred_location) {
       return { success: false, error: 'No saved location found' };

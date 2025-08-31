@@ -3,7 +3,7 @@ import { useAuth } from '../../auth/context/AuthProvider';
 import { supabase } from '../../lib/supabaseClient';
 
 export const useStaffAppointments = () => {
-  const { user, profile, isStaff } = useAuth();
+  const { isStaff } = useAuth();
   
   const [appointments, setAppointments] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -16,7 +16,7 @@ export const useStaffAppointments = () => {
     cancelled: 0
   });
 
-  // ENHANCED: Fetch appointments with comprehensive filtering
+  // Fetch appointments with comprehensive filtering
   const fetchAppointments = useCallback(async (filters = {}) => {
     if (!isStaff()) {
       return { success: false, error: 'Access denied: Staff only' };
@@ -80,7 +80,7 @@ export const useStaffAppointments = () => {
     }
   }, [isStaff]);
 
-  // ENHANCED: Approve with optimistic updates
+  // Approve with optimistic updates
   const approveAppointment = useCallback(async (appointmentId, staffNotes = '') => {
     if (!appointmentId) {
       return { success: false, error: 'Appointment ID required' };
@@ -138,7 +138,7 @@ export const useStaffAppointments = () => {
     }
   }, []);
 
-  // ENHANCED: Reject with validation
+  // Reject with validation
   const rejectAppointment = useCallback(async (appointmentId, rejectionReason) => {
     if (!appointmentId || !rejectionReason?.trim()) {
       return { success: false, error: 'Appointment ID and rejection reason are required' };
@@ -197,7 +197,7 @@ export const useStaffAppointments = () => {
     }
   }, []);
 
-  // ENHANCED: Complete appointment
+  // Complete appointment
   const completeAppointment = useCallback(async (appointmentId, completionNotes = '') => {
     if (!appointmentId) {
       return { success: false, error: 'Appointment ID required' };

@@ -384,7 +384,7 @@ const ApplicationErrorComponent = ({
           Go Home
         </button>
       </div>
-      {process.env.NODE_ENV === "development" && error && (
+      {import.meta.env.VITE_NODE_ENV === "development" && error && (
         <details className="mt-6 text-left">
           <summary className="cursor-pointer text-red-600 font-medium">
             Error Details (Development)

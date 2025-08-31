@@ -21,7 +21,7 @@ export const useClinicDiscovery = () => {
     searchQuery: ""
   });
 
-  // FIXED: Rate limiting with proper user identification
+  // Rate limiting with proper user identification
   const rateLimitSearch = useCallback(async () => {
     if (!user?.email) return true;
 
@@ -47,7 +47,7 @@ export const useClinicDiscovery = () => {
     }
   }, [user?.email]);
 
-  // FIXED: Proper location handling and clinic discovery
+  // Proper location handling and clinic discovery
   const discoverClinics = useCallback(async (location = null, options = {}) => {
     try {
       setLoading(true);
@@ -60,7 +60,7 @@ export const useClinicDiscovery = () => {
       const searchLocation = location || userLocation;
       const searchOptions = { ...searchFilter, ...options };
 
-      // FIXED: Proper PostGIS point creation - let the function handle it
+      //Proper PostGIS point creation - let the function handle it
       let locationParam = null;
       if (searchLocation?.latitude && searchLocation?.longitude) {
         // Pass coordinates separately, let the database function create the geography
@@ -84,7 +84,7 @@ export const useClinicDiscovery = () => {
         return { success: true, clinics: [], count: 0 };
       }
 
-      // FIXED: Proper doctor data fetching with correct relationships
+      // Proper doctor data fetching with correct relationships
       const clinicIds = nearbyClinicData.map(clinic => clinic.id);
       
       // Get doctors for each clinic with proper joins
@@ -129,7 +129,7 @@ export const useClinicDiscovery = () => {
         }
         
         const doctor = dc.doctors;
-        // FIXED: Proper name extraction from user_profiles or fallback
+        // Proper name extraction from user_profiles or fallback
         const profile = doctor.users?.user_profiles;
         const doctorName = profile?.first_name && profile?.last_name
           ? `Dr. ${profile.first_name} ${profile.last_name}`
@@ -184,7 +184,7 @@ export const useClinicDiscovery = () => {
     }
   }, [userLocation, searchFilter, rateLimitSearch]);
 
-  // ENHANCED: Clinic details with proper relationship handling
+  // Clinic details with proper relationship handling
   const getClinicDetails = useCallback(async (clinicId) => {
     if (!clinicId) return { success: false, clinic: null, error: 'Clinic ID required' };
 
@@ -271,7 +271,6 @@ export const useClinicDiscovery = () => {
     }
   }, []);
 
-  // Rest of the functions remain the same but with enhanced return values...
   const applyFilters = useCallback((clinicsToFilter, filters) => {
     return clinicsToFilter.filter(clinic => {
       // Service filter - check services_offered array
@@ -339,7 +338,7 @@ export const useClinicDiscovery = () => {
     }
   }, []);
 
-  // Update search filters with validation
+  // search filters with validation
   const updateSearchFilter = useCallback((newFilters) => {
     setSearchFilter(prevFilter => {
       const updated = { ...prevFilter, ...newFilters };
@@ -382,7 +381,7 @@ export const useClinicDiscovery = () => {
     }
   }, [userLocation?.latitude, userLocation?.longitude]);
 
-  // Enhanced available services and badges
+  // available services and badges
   const availableServices = useMemo(() => {
     const servicesSet = new Set();
     clinics.forEach(clinic => {
@@ -424,7 +423,7 @@ export const useClinicDiscovery = () => {
     totalResults: filteredClinics.length,
     isEmpty: filteredClinics.length === 0,
     
-    // Enhanced utilities
+    //utilities
     formatDistance: (distance) => {
       if (!distance) return 'Unknown';
       return distance < 1 ? `${Math.round(distance * 1000)}m` : `${distance.toFixed(1)}km`;

@@ -41,7 +41,7 @@ export const useAppointmentRealtime = (options = {}) => {
     subscriptionsRef.current = [];
   }, []);
 
-  // FIXED: Setup appointments subscription with correct user ID
+  // Setup appointments subscription with correct user ID
   const setupAppointmentSubscription = useCallback(() => {
     const userDetails = getUserDetails();
     if (!userDetails || !enableAppointments) return;
@@ -59,7 +59,7 @@ export const useAppointmentRealtime = (options = {}) => {
               event: '*',
               schema: 'public',
               table: 'appointments',
-              filter: `patient_id=eq.${userId}` // FIXED: Use correct user ID
+              filter: `patient_id=eq.${userId}` // Use correct user ID
             },
             (payload) => {
               console.log('Patient appointment update:', payload);
@@ -104,7 +104,7 @@ export const useAppointmentRealtime = (options = {}) => {
                 event: '*',
                 schema: 'public',
                 table: 'appointments',
-                filter: `clinic_id=eq.${clinicId}` // FIXED: Use clinic ID from profile
+                filter: `clinic_id=eq.${clinicId}` // Use clinic ID from profile
               },
               (payload) => {
                 console.log('Staff appointment update:', payload);
@@ -175,7 +175,7 @@ export const useAppointmentRealtime = (options = {}) => {
     }
   }, [getUserDetails, enableAppointments, onAppointmentUpdate, onAppointmentStatusChange]);
 
-  // FIXED: Notifications subscription
+  // Notifications subscription
   const setupNotificationSubscription = useCallback(() => {
     const userDetails = getUserDetails();
     if (!userDetails || !enableNotifications) return;
@@ -190,7 +190,7 @@ export const useAppointmentRealtime = (options = {}) => {
           event: 'INSERT',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${userId}` // FIXED: Use correct user ID
+          filter: `user_id=eq.${userId}` // Use correct user ID
         },
         (payload) => {
           console.log('New notification received:', payload);

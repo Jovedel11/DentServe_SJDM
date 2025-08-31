@@ -9,10 +9,10 @@ import "./core/styles/global.css";
 Sentry.init({
   dsn: "https://e9b018cf8a2b73e64f6b93e0d35a048c@o4509898883727360.ingest.us.sentry.io/4509898884775936",
   tracesSampleRate: 1.0,
-  environment: process.env.NODE_ENV,
+  environment: import.meta.env.VITE_NODE_ENV || "development",
   beforeSend(event) {
     // Filter out development errors in production
-    if (process.env.NODE_ENV === "development") {
+    if (import.meta.env.VITE_NODE_ENV === "development") {
       return event;
     }
 

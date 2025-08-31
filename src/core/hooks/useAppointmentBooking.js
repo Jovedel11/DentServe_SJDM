@@ -47,7 +47,7 @@ export const useAppointmentBooking = () => {
     setError(null);
   }, []);
 
-  // FIXED: Get available doctors with correct schema
+  // Get available doctors with correct schema
   const getAvailableDoctors = useCallback(async (clinicId) => {
     if (!clinicId) return { success: false, doctors: [], error: 'Clinic ID required' };
 
@@ -55,7 +55,7 @@ export const useAppointmentBooking = () => {
       setLoading(true);
       setError(null);
 
-      // FIXED: Correct schema - doctors don't have names, get from user_profiles
+      // Correct schema - doctors don't have names, get from user_profiles
       const { data, error } = await supabase
         .from('doctor_clinics')
         .select(`
@@ -71,12 +71,6 @@ export const useAppointmentBooking = () => {
             user_id,
             first_name,
             last_name,
-            users (
-              user_profiles (
-                first_name,
-                last_name
-              )
-            )
           )
         `)
         .eq('clinic_id', clinicId)
@@ -87,19 +81,20 @@ export const useAppointmentBooking = () => {
 
       const doctors = data?.map(item => {
         const doctor = item.doctors;
-        const profile = doctor.users?.user_profiles;
-        
+        const first_name = doctor?.first_name;
+        const last_name = doctor?.last_name;
+        const full_name = first_name && last_name ? `${first_name} ${last_name}` : '';
+
         return {
-          id: doctor.id,
-          specialization: doctor.specialization,
-          consultation_fee: doctor.consultation_fee,
-          certifications: doctor.certifications,
-          awards: doctor.awards, // FIXED: Array field
-          experience_years: doctor.experience_years,
-          rating: doctor.rating,
-          // FIXED: Get name from user_profiles
-          name: profile ? `Dr. ${profile.first_name} ${profile.last_name}` : `Dr. ${doctor.specialization}`,
-          display_name: profile ? `${profile.first_name} ${profile.last_name}` : doctor.specialization
+        id: doctor?.id,
+        specialization: doctor?.specialization,
+        consultation_fee: doctor?.consultation_fee,
+        certifications: doctor?.certifications,
+        awards: doctor?.awards,
+        experience_years: doctor?.experience_years,
+        rating: doctor?.rating,
+        name: doctor ? `Dr. ${first_name} ${last_name}` : 'Unknown Doctor',
+        display_name: full_name || doctor?.specialization || 'Unknown'
         };
       }) || [];
 
@@ -124,7 +119,7 @@ export const useAppointmentBooking = () => {
     }
   }, []);
 
-  // ENHANCED: Get services with detailed info
+  // Get services with detailed info
   const getServices = useCallback(async (clinicId) => {
     if (!clinicId) return { success: false, services: [], error: 'Clinic ID required' };
     
@@ -161,7 +156,7 @@ export const useAppointmentBooking = () => {
     }
   }, []);
 
-  // FIXED: Proper availability check with multiple services
+  // Proper availability check with multiple services
   const checkSlotAvailability = useCallback(async (doctorId, date, time, serviceIds = []) => {
     if (!doctorId || !date || !time) {
       return { available: false, error: 'Missing required parameters' };
@@ -206,7 +201,7 @@ export const useAppointmentBooking = () => {
     }
   }, []);
 
-  // ENHANCED: Book appointment with comprehensive validation
+  // Book appointment with comprehensive validation
   const bookAppointment = useCallback(async () => {
     if (!isPatient()) {
       setError('Only patients can book appointments');
@@ -235,7 +230,7 @@ export const useAppointmentBooking = () => {
       setLoading(true);
       setError(null);
 
-      // FIXED: Use correct parameter structure
+      // Use correct parameter structure
       const { data, error } = await supabase.rpc('book_appointment', {
         p_clinic_id: clinic.id,
         p_doctor_id: doctor.id,
@@ -288,7 +283,7 @@ export const useAppointmentBooking = () => {
     }
   }, [bookingData, isPatient, resetBooking]);
 
-  // ENHANCED: Step validation with detailed checks
+  // Step validation with detailed checks
   const validateStep = useCallback((step) => {
     switch (step) {
       case 'clinic':
@@ -301,14 +296,14 @@ export const useAppointmentBooking = () => {
         return bookingData.date && bookingData.time;
       case 'confirm':
         return bookingData.clinic && bookingData.doctor && 
-               bookingData.date && bookingData.time && 
-               bookingData.services?.length > 0;
+              bookingData.date && bookingData.time && 
+              bookingData.services?.length > 0;
       default:
         return false;
     }
   }, [bookingData]);
 
-  // ENHANCED: Navigation with better step flow
+  //Navigation with better step flow
   const goToStep = useCallback((step) => {
     setBookingStep(step);
     setError(null);
@@ -336,7 +331,7 @@ export const useAppointmentBooking = () => {
     }
   }, [bookingStep]);
 
-  // UTILITY: Get selected services details
+  // Get selected services details
   const getSelectedServicesDetails = useCallback(async () => {
     if (!bookingData.services?.length) return [];
 
