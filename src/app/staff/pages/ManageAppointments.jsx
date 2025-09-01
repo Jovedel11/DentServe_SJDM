@@ -20,23 +20,31 @@ import {
   UserCheck,
   Activity,
 } from "lucide-react";
-import {
-  mockAppointments,
-  mockCurrentStaff,
-} from "@/data/patient/real/mock-manage-appointment";
+import { useStaffAppointments } from "@/core/hooks/useStaffAppointment";
 
 const ManageAppointments = () => {
+  // Custom Hook Integration
+  const {
+    appointments,
+    isLoading,
+    error,
+    stats,
+    fetchAppointments,
+    approveAppointment,
+    rejectAppointment,
+    completeAppointment,
+    hasAppointments,
+  } = useStaffAppointments();
+
   // State Management
-  const [appointments, setAppointments] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFilter, setDateFilter] = useState("all");
   const [showConditionModal, setShowConditionModal] = useState(false);
-  const [sendingReport, setSendingReport] = useState(false);
-  const [error, setError] = useState(null);
+  const [processingAction, setProcessingAction] = useState(false);
+  const [actionError, setActionError] = useState(null);
 
   const [conditionReport, setConditionReport] = useState({
     appointmentId: "",
@@ -45,49 +53,121 @@ const ManageAppointments = () => {
     reportType: "completion", // 'completion' or 'cancellation'
   });
 
-  // Load appointments on component mount
-  useEffect(() => {
-    loadAppointments();
-  }, []);
-
-  const loadAppointments = async () => {
-    setLoading(true);
-    setError(null);
+  // Handle appointment approval
+  const handleApproveAppointment = async (appointmentId) => {
+    setProcessingAction(true);
+    setActionError(null);
 
     try {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const result = await approveAppointment(
+        appointmentId,
+        "Approved by staff"
+      );
 
-      // TODO: Replace with actual Supabase call
-      // const { data, error } = await supabase
-      //   .from('appointments')
-      //   .select(`
-      //     *,
-      //     patient:users!patient_id(
-      //       id, email, user_type,
-      //       user_profile:user_profiles(first_name, last_name, phone, address, date_of_birth, gender),
-      //       patient_profile:patient_profiles(emergency_contact_name, emergency_contact_phone, insurance_provider, medical_conditions, allergies)
-      //     ),
-      //     doctor:doctors(
-      //       id, license_number, specialization, rating, total_reviews,
-      //       user:users(
-      //         user_profile:user_profiles(first_name, last_name, phone)
-      //       )
-      //     ),
-      //     clinic:clinics(id, name, address, city, phone, email)
-      //   `)
-      //   .eq('clinic_id', mockCurrentStaff.staff_profile.clinic_id)
-      //   .order('created_at', { ascending: false });
-
-      // if (error) throw error;
-
-      setAppointments(mockAppointments);
+      if (result.success) {
+        console.log(`Appointment approved: ${result.message}`);
+        // Optional: Show success toast
+      } else {
+        throw new Error(result.error || "Failed to approve appointment");
+      }
     } catch (err) {
-      setError(err.message || "Failed to load appointments");
-      console.error("Error loading appointments:", err);
+      setActionError(err.message);
+      console.error("Error approving appointment:", err);
     } finally {
-      setLoading(false);
+      setProcessingAction(false);
     }
+  };
+
+  // Handle appointment rejection with condition report
+  const handleRejectAppointment = async () => {
+    if (!conditionReport.conditions.trim()) {
+      setActionError("Rejection reason is required");
+      return;
+    }
+
+    setProcessingAction(true);
+    setActionError(null);
+
+    try {
+      const result = await rejectAppointment(
+        conditionReport.appointmentId,
+        conditionReport.conditions.trim()
+      );
+
+      if (result.success) {
+        console.log(`Appointment rejected: ${result.message}`);
+        setShowConditionModal(false);
+        resetConditionReport();
+        // Optional: Show success toast
+      } else {
+        throw new Error(result.error || "Failed to reject appointment");
+      }
+    } catch (err) {
+      setActionError(err.message);
+      console.error("Error rejecting appointment:", err);
+    } finally {
+      setProcessingAction(false);
+    }
+  };
+
+  // Handle appointment completion with report
+  const handleCompleteAppointment = async () => {
+    if (!conditionReport.conditions.trim()) {
+      setActionError("Treatment summary is required");
+      return;
+    }
+
+    setProcessingAction(true);
+    setActionError(null);
+
+    try {
+      const completionNotes = `${conditionReport.conditions}${
+        conditionReport.symptoms
+          ? `\n\nFollow-up: ${conditionReport.symptoms}`
+          : ""
+      }`;
+
+      const result = await completeAppointment(
+        conditionReport.appointmentId,
+        completionNotes
+      );
+
+      if (result.success) {
+        console.log(`Appointment completed: ${result.message}`);
+        setShowConditionModal(false);
+        resetConditionReport();
+        // Optional: Show success toast
+      } else {
+        throw new Error(result.error || "Failed to complete appointment");
+      }
+    } catch (err) {
+      setActionError(err.message);
+      console.error("Error completing appointment:", err);
+    } finally {
+      setProcessingAction(false);
+    }
+  };
+
+  // Reset condition report modal
+  const resetConditionReport = () => {
+    setConditionReport({
+      appointmentId: "",
+      conditions: "",
+      symptoms: "",
+      reportType: "completion",
+    });
+  };
+
+  // Open condition report modal
+  const openConditionModal = (appointment, type) => {
+    setConditionReport({
+      appointmentId: appointment.id,
+      conditions: "",
+      symptoms: "",
+      reportType: type,
+    });
+    setActionError(null);
+    setShowConditionModal(true);
   };
 
   // Status badge component with enhanced styling
@@ -138,151 +218,24 @@ const ManageAppointments = () => {
     );
   };
 
-  // Handle status update with proper error handling
-  const handleStatusUpdate = async (appointmentId, newStatus) => {
-    try {
-      setError(null);
-
-      // TODO: Replace with actual Supabase call
-      // const { error } = await supabase
-      //   .from('appointments')
-      //   .update({
-      //     status: newStatus,
-      //     updated_at: new Date().toISOString()
-      //   })
-      //   .eq('id', appointmentId);
-
-      // if (error) throw error;
-
-      // Update local state
-      setAppointments((prev) =>
-        prev.map((apt) =>
-          apt.id === appointmentId
-            ? {
-                ...apt,
-                status: newStatus,
-                updated_at: new Date().toISOString(),
-              }
-            : apt
-        )
-      );
-
-      // If cancelling, also update the cancelled fields
-      if (newStatus === "cancelled") {
-        setAppointments((prev) =>
-          prev.map((apt) =>
-            apt.id === appointmentId
-              ? {
-                  ...apt,
-                  cancelled_by: mockCurrentStaff.id,
-                  cancelled_at: new Date().toISOString(),
-                  cancellation_reason: "Cancelled by clinic staff",
-                }
-              : apt
-          )
-        );
-      }
-
-      console.log(
-        `Appointment ${appointmentId} status updated to ${newStatus}`
-      );
-    } catch (err) {
-      setError(err.message || "Failed to update appointment status");
-      console.error("Error updating appointment status:", err);
-    }
-  };
-
-  // Handle sending condition report with email integration
-  const handleSendConditionReport = async () => {
-    setSendingReport(true);
-    setError(null);
-
-    try {
-      const appointment = appointments.find(
-        (apt) => apt.id === conditionReport.appointmentId
-      );
-      if (!appointment) throw new Error("Appointment not found");
-
-      // TODO: Replace with actual Supabase call
-      // const { error } = await supabase
-      //   .from('email_communications')
-      //   .insert({
-      //     from_user_id: mockCurrentStaff.id,
-      //     to_user_id: appointment.patient_id,
-      //     appointment_id: conditionReport.appointmentId,
-      //     subject: `${conditionReport.reportType === 'completion' ? 'Treatment Report' : 'Appointment Update'} - ${appointment.clinic.name}`,
-      //     message_body: `
-      //       Dear ${appointment.patient.user_profile.first_name},
-      //
-      //       ${conditionReport.reportType === 'completion' ? 'Treatment Summary:' : 'Appointment Update:'}
-      //       ${conditionReport.conditions}
-      //
-      //       ${conditionReport.symptoms ? `Additional Notes:\n${conditionReport.symptoms}` : ''}
-      //
-      //       Best regards,
-      //       ${appointment.clinic.name}
-      //     `,
-      //     email_type: conditionReport.reportType === 'completion' ? 'treatment_report' : 'appointment_update'
-      //   });
-
-      // if (error) throw error;
-
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      console.log("Condition report sent:", {
-        appointmentId: conditionReport.appointmentId,
-        patientEmail: appointment.patient.email,
-        reportType: conditionReport.reportType,
-        conditions: conditionReport.conditions,
-        symptoms: conditionReport.symptoms,
-      });
-
-      // Reset modal
-      setShowConditionModal(false);
-      setConditionReport({
-        appointmentId: "",
-        conditions: "",
-        symptoms: "",
-        reportType: "completion",
-      });
-
-      alert("Report sent successfully to patient's email!");
-    } catch (err) {
-      setError(err.message || "Failed to send condition report");
-      console.error("Error sending condition report:", err);
-    } finally {
-      setSendingReport(false);
-    }
-  };
-
-  // Open condition report modal
-  const openConditionModal = (appointment, type) => {
-    setConditionReport({
-      appointmentId: appointment.id,
-      conditions: "",
-      symptoms: "",
-      reportType: type,
-    });
-    setShowConditionModal(true);
-  };
-
   // Enhanced filtering logic
   const filteredAppointments = appointments.filter((appointment) => {
     const matchesStatus =
       filterStatus === "all" || appointment.status === filterStatus;
 
     const searchLower = searchTerm.toLowerCase();
+    const patientName = `${appointment.patient?.name || ""}`.toLowerCase();
+    const doctorName = `${appointment.doctor?.name || ""}`.toLowerCase();
+    const patientEmail = `${appointment.patient?.email || ""}`.toLowerCase();
+
     const matchesSearch =
       searchTerm === "" ||
-      `${appointment.patient.user_profile.first_name} ${appointment.patient.user_profile.last_name}`
-        .toLowerCase()
-        .includes(searchLower) ||
-      `${appointment.doctor.user.user_profile.first_name} ${appointment.doctor.user.user_profile.last_name}`
-        .toLowerCase()
-        .includes(searchLower) ||
-      appointment.service_type.toLowerCase().includes(searchLower) ||
-      appointment.patient.email.toLowerCase().includes(searchLower);
+      patientName.includes(searchLower) ||
+      doctorName.includes(searchLower) ||
+      patientEmail.includes(searchLower) ||
+      (appointment.services || []).some((service) =>
+        service.name.toLowerCase().includes(searchLower)
+      );
 
     const appointmentDate = new Date(appointment.appointment_date);
     const today = new Date();
@@ -319,7 +272,7 @@ const ManageAppointments = () => {
   };
 
   // Loading state
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="p-6">
         <div className="animate-pulse space-y-6">
@@ -344,22 +297,22 @@ const ManageAppointments = () => {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Enhanced Header */}
+      {/* Enhanced Header with Stats */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-foreground mb-1">
             Manage Appointments
           </h1>
           <p className="text-muted-foreground">
-            {mockCurrentStaff.staff_profile.clinic_id
-              ? "Bright Smile Dental Clinic"
-              : "All Clinics"}
+            Healthcare Management Dashboard
           </p>
         </div>
         <div className="flex items-center gap-4">
           <div className="text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-lg">
-            <span className="font-medium">{appointments.length}</span> total
-            appointments
+            <span className="font-medium">{stats.total}</span> total
+          </div>
+          <div className="text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-lg">
+            <span className="font-medium">{stats.pending}</span> pending
           </div>
           <div className="text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-lg">
             <span className="font-medium">{filteredAppointments.length}</span>{" "}
@@ -368,8 +321,8 @@ const ManageAppointments = () => {
         </div>
       </div>
 
-      {/* Error Message */}
-      {error && (
+      {/* Error Messages */}
+      {(error || actionError) && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -377,7 +330,7 @@ const ManageAppointments = () => {
         >
           <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0" />
           <div className="flex-1">
-            <p className="text-sm text-destructive">{error}</p>
+            <p className="text-sm text-destructive">{error || actionError}</p>
           </div>
         </motion.div>
       )}
@@ -431,11 +384,11 @@ const ManageAppointments = () => {
         {/* Quick Actions */}
         <div className="flex items-center justify-center">
           <button
-            onClick={loadAppointments}
-            disabled={loading}
+            onClick={() => fetchAppointments()}
+            disabled={isLoading}
             className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
-            {loading ? (
+            {isLoading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <>
@@ -449,7 +402,7 @@ const ManageAppointments = () => {
 
       {/* Appointments List */}
       <div className="space-y-4">
-        {filteredAppointments.length === 0 ? (
+        {!hasAppointments ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -485,6 +438,12 @@ const ManageAppointments = () => {
                 appointment.appointment_time
               );
 
+              // Get service information
+              const primaryService = appointment.services?.[0];
+              const serviceName =
+                primaryService?.name || "General Consultation";
+              const serviceDuration = primaryService?.duration_minutes || 30;
+
               return (
                 <motion.div
                   key={appointment.id}
@@ -505,8 +464,7 @@ const ManageAppointments = () => {
                     <div className="flex-1 space-y-4">
                       <div className="flex flex-wrap items-center gap-3">
                         <h3 className="text-xl font-bold text-card-foreground">
-                          {appointment.patient.user_profile.first_name}{" "}
-                          {appointment.patient.user_profile.last_name}
+                          {appointment.patient?.name || "Unknown Patient"}
                         </h3>
                         <StatusBadge status={appointment.status} />
                         {isToday && (
@@ -524,31 +482,29 @@ const ManageAppointments = () => {
                         <div className="flex items-center text-muted-foreground">
                           <Clock className="w-4 h-4 mr-2 flex-shrink-0" />
                           <span>
-                            {time} ({appointment.duration_minutes}m)
+                            {time} ({serviceDuration}m)
                           </span>
                         </div>
                         <div className="flex items-center text-muted-foreground">
                           <User className="w-4 h-4 mr-2 flex-shrink-0" />
                           <span>
-                            Dr.{" "}
-                            {appointment.doctor.user.user_profile.first_name}{" "}
-                            {appointment.doctor.user.user_profile.last_name}
+                            {appointment.doctor?.name || "Unassigned"}
                           </span>
                         </div>
                         <div className="flex items-center text-muted-foreground">
                           <FileText className="w-4 h-4 mr-2 flex-shrink-0" />
-                          <span>{appointment.service_type}</span>
+                          <span>{serviceName}</span>
                         </div>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                         <div className="flex items-center text-muted-foreground">
                           <Phone className="w-4 h-4 mr-2 flex-shrink-0" />
-                          <span>{appointment.patient.user_profile.phone}</span>
+                          <span>{appointment.patient?.phone || "N/A"}</span>
                         </div>
                         <div className="flex items-center text-muted-foreground">
                           <Mail className="w-4 h-4 mr-2 flex-shrink-0" />
-                          <span>{appointment.patient.email}</span>
+                          <span>{appointment.patient?.email || "N/A"}</span>
                         </div>
                       </div>
                     </div>
@@ -559,18 +515,24 @@ const ManageAppointments = () => {
                         <>
                           <button
                             onClick={() =>
-                              handleStatusUpdate(appointment.id, "confirmed")
+                              handleApproveAppointment(appointment.id)
                             }
-                            className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50 transition-colors"
+                            disabled={processingAction}
+                            className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50 transition-colors disabled:opacity-50"
                           >
-                            <Check className="w-4 h-4 mr-2" />
+                            {processingAction ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Check className="w-4 h-4 mr-2" />
+                            )}
                             Confirm
                           </button>
                           <button
                             onClick={() =>
                               openConditionModal(appointment, "cancellation")
                             }
-                            className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors"
+                            disabled={processingAction}
+                            className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50"
                           >
                             <X className="w-4 h-4 mr-2" />
                             Cancel & Report
@@ -580,11 +542,11 @@ const ManageAppointments = () => {
 
                       {appointment.status === "confirmed" && (
                         <button
-                          onClick={() => {
-                            handleStatusUpdate(appointment.id, "completed");
-                            openConditionModal(appointment, "completion");
-                          }}
-                          className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 transition-colors"
+                          onClick={() =>
+                            openConditionModal(appointment, "completion")
+                          }
+                          disabled={processingAction}
+                          className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 transition-colors disabled:opacity-50"
                         >
                           <Check className="w-4 h-4 mr-2" />
                           Complete & Report
@@ -599,7 +561,7 @@ const ManageAppointments = () => {
                           className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50 transition-colors"
                         >
                           <Send className="w-4 h-4 mr-2" />
-                          Send Report
+                          View Report
                         </button>
                       )}
 
@@ -639,11 +601,17 @@ const ManageAppointments = () => {
                     : "Cancellation Report"}
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                  This report will be sent to the patient's email
+                  {conditionReport.reportType === "completion"
+                    ? "Document treatment summary and follow-up instructions"
+                    : "Provide reason for appointment cancellation"}
                 </p>
               </div>
               <button
-                onClick={() => setShowConditionModal(false)}
+                onClick={() => {
+                  setShowConditionModal(false);
+                  resetConditionReport();
+                  setActionError(null);
+                }}
                 className="p-2 hover:bg-muted rounded-full transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -652,6 +620,13 @@ const ManageAppointments = () => {
 
             {/* Modal Content */}
             <div className="p-6 space-y-6">
+              {actionError && (
+                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0" />
+                  <p className="text-sm text-destructive">{actionError}</p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-semibold text-card-foreground mb-2">
                   {conditionReport.reportType === "completion"
@@ -704,26 +679,39 @@ const ManageAppointments = () => {
             {/* Modal Actions */}
             <div className="flex justify-end gap-3 p-6 border-t border-border">
               <button
-                onClick={() => setShowConditionModal(false)}
-                disabled={sendingReport}
+                onClick={() => {
+                  setShowConditionModal(false);
+                  resetConditionReport();
+                  setActionError(null);
+                }}
+                disabled={processingAction}
                 className="px-6 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
-                onClick={handleSendConditionReport}
-                disabled={!conditionReport.conditions.trim() || sendingReport}
+                onClick={
+                  conditionReport.reportType === "completion"
+                    ? handleCompleteAppointment
+                    : handleRejectAppointment
+                }
+                disabled={
+                  !conditionReport.conditions.trim() || processingAction
+                }
                 className="inline-flex items-center gap-2 px-6 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {sendingReport ? (
+                {processingAction ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Sending...
+                    Processing...
                   </>
                 ) : (
                   <>
                     <Send className="w-4 h-4" />
-                    Send Report
+                    {conditionReport.reportType === "completion"
+                      ? "Complete"
+                      : "Cancel"}{" "}
+                    Appointment
                   </>
                 )}
               </button>
@@ -765,15 +753,14 @@ const ManageAppointments = () => {
                 <div>
                   <div className="flex items-center gap-3 mb-2">
                     <h3 className="text-xl font-semibold text-card-foreground">
-                      {selectedAppointment.patient.user_profile.first_name}{" "}
-                      {selectedAppointment.patient.user_profile.last_name}
+                      {selectedAppointment.patient?.name || "Unknown Patient"}
                     </h3>
                     <StatusBadge status={selectedAppointment.status} />
                   </div>
                   <p className="text-sm text-muted-foreground">
                     Created{" "}
                     {new Date(
-                      selectedAppointment.created_at
+                      selectedAppointment.created_at || Date.now()
                     ).toLocaleDateString("en-US", {
                       weekday: "long",
                       year: "numeric",
@@ -792,24 +779,13 @@ const ManageAppointments = () => {
                     Patient Information
                   </h4>
                   <div className="space-y-4 text-sm">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 gap-4">
                       <div>
                         <span className="text-muted-foreground font-medium">
                           Full Name:
                         </span>
                         <p className="font-semibold">
-                          {selectedAppointment.patient.user_profile.first_name}{" "}
-                          {selectedAppointment.patient.user_profile.last_name}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground font-medium">
-                          Date of Birth:
-                        </span>
-                        <p className="font-semibold">
-                          {new Date(
-                            selectedAppointment.patient.user_profile.date_of_birth
-                          ).toLocaleDateString()}
+                          {selectedAppointment.patient?.name || "N/A"}
                         </p>
                       </div>
                       <div>
@@ -818,7 +794,7 @@ const ManageAppointments = () => {
                         </span>
                         <p className="font-semibold flex items-center">
                           <Mail className="w-4 h-4 mr-2 text-primary" />
-                          {selectedAppointment.patient.email}
+                          {selectedAppointment.patient?.email || "N/A"}
                         </p>
                       </div>
                       <div>
@@ -827,41 +803,10 @@ const ManageAppointments = () => {
                         </span>
                         <p className="font-semibold flex items-center">
                           <Phone className="w-4 h-4 mr-2 text-primary" />
-                          {selectedAppointment.patient.user_profile.phone}
+                          {selectedAppointment.patient?.phone || "N/A"}
                         </p>
                       </div>
                     </div>
-
-                    <div>
-                      <span className="text-muted-foreground font-medium">
-                        Address:
-                      </span>
-                      <p className="font-semibold flex items-start mt-1">
-                        <MapPin className="w-4 h-4 mr-2 mt-0.5 text-primary flex-shrink-0" />
-                        {selectedAppointment.patient.user_profile.address}
-                      </p>
-                    </div>
-
-                    {selectedAppointment.patient.patient_profile
-                      ?.emergency_contact_name && (
-                      <div className="pt-3 border-t border-border">
-                        <span className="text-muted-foreground font-medium">
-                          Emergency Contact:
-                        </span>
-                        <p className="font-semibold">
-                          {
-                            selectedAppointment.patient.patient_profile
-                              .emergency_contact_name
-                          }
-                        </p>
-                        <p className="text-muted-foreground">
-                          {
-                            selectedAppointment.patient.patient_profile
-                              .emergency_contact_phone
-                          }
-                        </p>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -877,48 +822,19 @@ const ManageAppointments = () => {
                         Doctor:
                       </span>
                       <p className="font-semibold">
-                        Dr.{" "}
-                        {
-                          selectedAppointment.doctor.user.user_profile
-                            .first_name
-                        }{" "}
-                        {selectedAppointment.doctor.user.user_profile.last_name}
+                        {selectedAppointment.doctor?.name || "Unassigned"}
                       </p>
                     </div>
-                    <div>
-                      <span className="text-muted-foreground font-medium">
-                        Specialization:
-                      </span>
-                      <p className="font-semibold">
-                        {selectedAppointment.doctor.specialization}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground font-medium">
-                        License Number:
-                      </span>
-                      <p className="font-semibold">
-                        {selectedAppointment.doctor.license_number}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-4">
+                    {selectedAppointment.doctor?.specialization && (
                       <div>
                         <span className="text-muted-foreground font-medium">
-                          Rating:
+                          Specialization:
                         </span>
                         <p className="font-semibold">
-                          {selectedAppointment.doctor.rating}/5.0
+                          {selectedAppointment.doctor.specialization}
                         </p>
                       </div>
-                      <div>
-                        <span className="text-muted-foreground font-medium">
-                          Reviews:
-                        </span>
-                        <p className="font-semibold">
-                          {selectedAppointment.doctor.total_reviews}
-                        </p>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -957,7 +873,9 @@ const ManageAppointments = () => {
                         Duration:
                       </span>
                       <p className="font-semibold">
-                        {selectedAppointment.duration_minutes} minutes
+                        {selectedAppointment.services?.[0]?.duration_minutes ||
+                          30}{" "}
+                        minutes
                       </p>
                     </div>
                     <div>
@@ -965,26 +883,16 @@ const ManageAppointments = () => {
                         Service Type:
                       </span>
                       <p className="font-semibold">
-                        {selectedAppointment.service_type}
+                        {selectedAppointment.services?.[0]?.name ||
+                          "General Consultation"}
                       </p>
                     </div>
                   </div>
 
-                  {selectedAppointment.symptoms && (
-                    <div>
-                      <span className="text-muted-foreground font-medium">
-                        Symptoms/Concern:
-                      </span>
-                      <p className="font-semibold mt-1 leading-relaxed">
-                        {selectedAppointment.symptoms}
-                      </p>
-                    </div>
-                  )}
-
                   {selectedAppointment.notes && (
                     <div>
                       <span className="text-muted-foreground font-medium">
-                        Patient Notes:
+                        Notes:
                       </span>
                       <p className="font-semibold mt-1 leading-relaxed">
                         {selectedAppointment.notes}
@@ -1000,44 +908,8 @@ const ManageAppointments = () => {
                       <p className="font-semibold mt-1 text-red-700 dark:text-red-300">
                         {selectedAppointment.cancellation_reason}
                       </p>
-                      {selectedAppointment.cancelled_at && (
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Cancelled on{" "}
-                          {new Date(
-                            selectedAppointment.cancelled_at
-                          ).toLocaleString()}
-                        </p>
-                      )}
                     </div>
                   )}
-                </div>
-              </div>
-
-              {/* Clinic Information */}
-              <div className="bg-muted/30 rounded-xl p-6">
-                <h4 className="font-bold text-card-foreground mb-4 flex items-center">
-                  <Building2 className="w-5 h-5 mr-2 text-primary" />
-                  Clinic Information
-                </h4>
-                <div className="text-sm space-y-2">
-                  <p className="font-semibold text-lg">
-                    {selectedAppointment.clinic.name}
-                  </p>
-                  <p className="text-muted-foreground flex items-start">
-                    <MapPin className="w-4 h-4 mr-2 mt-0.5 text-primary flex-shrink-0" />
-                    {selectedAppointment.clinic.address},{" "}
-                    {selectedAppointment.clinic.city}
-                  </p>
-                  <div className="flex items-center gap-4 pt-2">
-                    <p className="text-muted-foreground flex items-center">
-                      <Phone className="w-4 h-4 mr-2 text-primary" />
-                      {selectedAppointment.clinic.phone}
-                    </p>
-                    <p className="text-muted-foreground flex items-center">
-                      <Mail className="w-4 h-4 mr-2 text-primary" />
-                      {selectedAppointment.clinic.email}
-                    </p>
-                  </div>
                 </div>
               </div>
             </div>
@@ -1055,10 +927,11 @@ const ManageAppointments = () => {
                 <>
                   <button
                     onClick={() => {
-                      handleStatusUpdate(selectedAppointment.id, "confirmed");
+                      handleApproveAppointment(selectedAppointment.id);
                       setIsModalOpen(false);
                     }}
-                    className="px-6 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    disabled={processingAction}
+                    className="px-6 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                   >
                     Confirm Appointment
                   </button>
@@ -1067,7 +940,8 @@ const ManageAppointments = () => {
                       setIsModalOpen(false);
                       openConditionModal(selectedAppointment, "cancellation");
                     }}
-                    className="px-6 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                    disabled={processingAction}
+                    className="px-6 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
                   >
                     Cancel & Report
                   </button>
@@ -1077,11 +951,11 @@ const ManageAppointments = () => {
               {selectedAppointment.status === "confirmed" && (
                 <button
                   onClick={() => {
-                    handleStatusUpdate(selectedAppointment.id, "completed");
                     setIsModalOpen(false);
                     openConditionModal(selectedAppointment, "completion");
                   }}
-                  className="px-6 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  disabled={processingAction}
+                  className="px-6 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
                   Mark Completed & Send Report
                 </button>

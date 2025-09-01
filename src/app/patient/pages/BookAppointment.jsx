@@ -74,8 +74,6 @@ const BookAppointment = () => {
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  console.log("clinics", bookingData.clinic);
-
   // Step configuration aligned with hook
   const steps = [
     { id: "clinic", title: "Select Clinic", icon: Building2 },

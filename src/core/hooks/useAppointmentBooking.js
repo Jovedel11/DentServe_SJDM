@@ -97,8 +97,8 @@ export const useAppointmentBooking = () => {
         name: doctor ? `Dr. ${first_name} ${last_name}` : 'Unknown Doctor',
         display_name: full_name || doctor?.specialization || 'Unknown'
         };
-      }) || [];
-      
+      }).filter(Boolean);
+
       return { 
         success: true, 
         doctors, 
@@ -171,6 +171,7 @@ export const useAppointmentBooking = () => {
         const { data: services, error: servicesError } = await supabase
           .from('services')
           .select('duration_minutes')
+          .eq('is_active', true)
           .in('id', serviceIds);
           
         if (!servicesError && services) {

@@ -5,7 +5,7 @@ import { supabase } from "../../lib/supabaseClient";
 
 export const useClinicDiscovery = () => {
   const { userLocation } = useLocationService();
-  const { user, profile, isPatient } = useAuth();
+  const { user } = useAuth();
 
   const [clinics, setClinics] = useState([]);
   const [filteredClinics, setFilteredClinics] = useState([]);
@@ -48,101 +48,94 @@ export const useClinicDiscovery = () => {
   }, [user?.email]);
 
   // Proper location handling and clinic discovery
-  const discoverClinics = useCallback(async (location = null, options = {}) => {
-    try {
-      setLoading(true);
-      setError(null);
+const discoverClinics = useCallback(async (location = null, options = {}) => {
+  try {
+    setLoading(true);
+    setError(null);
 
-      // Rate limiting check
-      const canProceed = await rateLimitSearch();
-      if (!canProceed) return { success: false, clinics: [], error: 'Rate limited' };
+    // Rate limiting check
+    const canProceed = await rateLimitSearch();
+    if (!canProceed) return { success: false, clinics: [], error: 'Rate limited' };
 
-      const searchLocation = location || userLocation;
-      const searchOptions = { ...searchFilter, ...options };
+    const searchLocation = location || userLocation;
+    const searchOptions = { ...searchFilter, ...options };
 
-      //Proper PostGIS point creation - let the function handle it
-      let locationParam = null;
-      if (searchLocation?.latitude && searchLocation?.longitude) {
-        // Pass coordinates separately, let the database function create the geography
-        locationParam = `POINT(${searchLocation.longitude} ${searchLocation.latitude})`;
+    // ✅ FIXED: Let the database function handle PostGIS conversion
+    let locationParam = null;
+    if (searchLocation?.latitude && searchLocation?.longitude) {
+      // ✅ CORRECTED: Pass as text string, let database convert to geography
+      locationParam = `POINT(${searchLocation.longitude} ${searchLocation.latitude})`;
+    }
+
+    // Call the corrected function
+    const { data: nearbyClinicData, error: clinicError } = await supabase.rpc('find_nearest_clinics', {
+      user_location: locationParam,
+      max_distance_km: searchOptions.maxDistance,
+      limit_count: 50
+    });
+
+    if (clinicError) {
+      throw new Error(clinicError.message || 'Failed to fetch nearby clinics');
+    }
+
+    if (!nearbyClinicData || nearbyClinicData.length === 0) {
+      setClinics([]);
+      setFilteredClinics([]);
+      return { success: true, clinics: [], count: 0 };
+    }
+
+    const clinicIds = nearbyClinicData.map(clinic => clinic.id);
+    
+    const { data: clinicDoctors, error: doctorError } = await supabase
+      .from('doctor_clinics')
+      .select(`
+        clinic_id,
+        is_active,
+        schedule,
+        doctors (
+          id,
+          specialization,
+          consultation_fee,
+          experience_years,
+          is_available,
+          rating,
+          first_name,
+          last_name
+        )
+      `)
+      .in('clinic_id', clinicIds)
+      .eq('is_active', true)
+      .eq('doctors.is_available', true);
+
+    if (doctorError) {
+      console.warn('Doctor fetch error:', doctorError);
+    }
+
+    // ✅ FIXED: Better doctor name construction
+    const doctorsByClinic = {};
+    clinicDoctors?.forEach(dc => {
+      if (!doctorsByClinic[dc.clinic_id]) {
+        doctorsByClinic[dc.clinic_id] = [];
       }
-
-      // Call the corrected function
-      const { data: nearbyClinicData, error: clinicError } = await supabase.rpc('find_nearest_clinics', {
-        user_location: locationParam,
-        max_distance_km: searchOptions.maxDistance,
-        limit_count: 50
-      });
-
-      if (clinicError) {
-        throw new Error(clinicError.message || 'Failed to fetch nearby clinics');
-      }
-
-      if (!nearbyClinicData || nearbyClinicData.length === 0) {
-        setClinics([]);
-        setFilteredClinics([]);
-        return { success: true, clinics: [], count: 0 };
-      }
-
-      // Proper doctor data fetching with correct relationships
-      const clinicIds = nearbyClinicData.map(clinic => clinic.id);
       
-      // Get doctors for each clinic with proper joins
-      const { data: clinicDoctors, error: doctorError } = await supabase
-        .from('doctor_clinics')
-        .select(`
-          clinic_id,
-          is_active,
-          schedule,
-          doctors (
-            id,
-            specialization,
-            consultation_fee,
-            experience_years,
-            is_available,
-            rating,
-            first_name,
-            last_name,
-            user_id,
-            users (
-              user_profiles (
-                first_name,
-                last_name
-              )
-            )
-          )
-        `)
-        .in('clinic_id', clinicIds)
-        .eq('is_active', true)
-        .eq('doctors.is_available', true);
+      const doctor = dc.doctors;
+      if (!doctor) return;
 
-      if (doctorError) {
-        console.warn('Doctor fetch error:', doctorError);
-        // Continue without doctor data
-      }
+      // ✅ IMPROVED: Consistent doctor name logic
+      const hasFullName = doctor.first_name && doctor.last_name;
+      const doctorName = hasFullName 
+        ? `Dr. ${doctor.first_name} ${doctor.last_name}`
+        : `Dr. ${doctor.specialization}`;
 
-      // Group doctors by clinic
-      const doctorsByClinic = {};
-      clinicDoctors?.forEach(dc => {
-        if (!doctorsByClinic[dc.clinic_id]) {
-          doctorsByClinic[dc.clinic_id] = [];
-        }
-        
-        const doctor = dc.doctors;
-        // Proper name extraction from user_profiles or fallback
-        const profile = doctor.users?.user_profiles;
-        const doctorName = profile?.first_name && profile?.last_name
-          ? `Dr. ${profile.first_name} ${profile.last_name}`
-          : doctor.first_name && doctor.last_name
-          ? `Dr. ${doctor.first_name} ${doctor.last_name}`
-          : `Dr. ${doctor.specialization}`;
-
-        doctorsByClinic[dc.clinic_id].push({
-          ...doctor,
-          name: doctorName,
-          schedule: dc.schedule
-        });
+      doctorsByClinic[dc.clinic_id].push({
+        ...doctor,
+        name: doctorName,
+        display_name: hasFullName 
+          ? `${doctor.first_name} ${doctor.last_name}` 
+          : doctor.specialization,
+        schedule: dc.schedule
       });
+    });
 
       // Merge clinic data with doctor information
       const enrichedClinics = nearbyClinicData.map(nearbyClinic => {
@@ -150,7 +143,6 @@ export const useClinicDiscovery = () => {
         const availableDoctors = doctors.filter(doc => doc.is_available);
         const specializations = [...new Set(doctors.map(doc => doc.specialization))];
         
-        // Calculate fee range
         const fees = doctors.map(doc => doc.consultation_fee).filter(fee => fee != null);
         const feeRange = fees.length > 0 ? {
           min: Math.min(...fees),
@@ -158,7 +150,7 @@ export const useClinicDiscovery = () => {
         } : { min: 0, max: 0 };
 
         return {
-          ...nearbyClinic, // Includes distance_km and badges from function
+          ...nearbyClinic,
           doctors,
           availableDoctors: availableDoctors.length,
           specializations,
@@ -174,102 +166,105 @@ export const useClinicDiscovery = () => {
         count: enrichedClinics.length 
       };
 
-    } catch (error) {
-      console.error('Clinic discovery error:', error);
-      const errorMsg = error?.message || 'Clinic discovery failed';
-      setError(errorMsg);
-      return { success: false, clinics: [], error: errorMsg };
-    } finally {
-      setLoading(false);
-    }
-  }, [userLocation, searchFilter, rateLimitSearch]);
+      } catch (error) {
+        console.error('Clinic discovery error:', error);
+        const errorMsg = error?.message || 'Clinic discovery failed';
+        setError(errorMsg);
+        return { success: false, clinics: [], error: errorMsg };
+      } finally {
+        setLoading(false);
+      }
+    }, [userLocation, searchFilter, rateLimitSearch]);
 
   // Clinic details with proper relationship handling
-  const getClinicDetails = useCallback(async (clinicId) => {
-    if (!clinicId) return { success: false, clinic: null, error: 'Clinic ID required' };
+    const getClinicDetails = useCallback(async (clinicId) => {
+      if (!clinicId) return { success: false, clinic: null, error: 'Clinic ID required' };
 
-    try {
-      setLoading(true);
-      setError(null);
+      try {
+        setLoading(true);
+        setError(null);
 
-      // Get clinic basic info
-      const { data: clinic, error: clinicError } = await supabase
-        .from('clinics')
-        .select('*')
-        .eq('id', clinicId)
-        .eq('is_active', true)
-        .single();
+        // Get clinic basic info
+        const { data: clinic, error: clinicError } = await supabase
+          .from('clinics')
+          .select('*')
+          .eq('id', clinicId)
+          .eq('is_active', true)
+          .single();
 
-      if (clinicError) throw new Error(clinicError.message);
+        if (clinicError) throw new Error(clinicError.message);
 
-      // Get clinic's doctors separately
-      const { data: clinicDoctors, error: doctorError } = await supabase
-        .from('doctor_clinics')
-        .select(`
-          is_active,
-          schedule,
-          doctors (
-            id,
-            specialization,
-            consultation_fee,
-            experience_years,
-            is_available,
-            rating,
-            first_name,
-            last_name,
-            user_id,
-            users (
-              user_profiles (
-                first_name,
-                last_name
-              )
+        //  No user_profiles join - use doctors' direct fields
+        const { data: clinicDoctors, error: doctorError } = await supabase
+          .from('doctor_clinics')
+          .select(`
+            is_active,
+            schedule,
+            doctors (
+              id,
+              specialization,
+              consultation_fee,
+              experience_years,
+              is_available,
+              rating,
+              first_name,
+              last_name,
+              profile_image_url,
+              bio,
+              education,
+              certifications,
+              awards
             )
-          )
-        `)
-        .eq('clinic_id', clinicId)
-        .eq('is_active', true)
-        .eq('doctors.is_available', true);
+          `)
+          .eq('clinic_id', clinicId)
+          .eq('is_active', true)
+          .eq('doctors.is_available', true);
 
-      if (doctorError) {
-        console.warn('Doctor fetch error:', doctorError);
-      }
-
-      // Process doctors
-      const doctors = clinicDoctors?.map(dc => {
-        const doctor = dc.doctors;
-        const profile = doctor.users?.user_profiles;
-        
-        return {
-          ...doctor,
-          schedule: dc.schedule,
-          name: profile?.first_name && profile?.last_name
-            ? `Dr. ${profile.first_name} ${profile.last_name}`
-            : doctor.first_name && doctor.last_name
-            ? `Dr. ${doctor.first_name} ${doctor.last_name}`
-            : `Dr. ${doctor.specialization}`,
-          isActive: dc.is_active
-        };
-      }) || [];
-
-      return {
-        success: true,
-        clinic: {
-          ...clinic,
-          doctors: doctors.filter(doc => doc.is_available && doc.isActive),
-          totalDoctors: doctors.length,
-          availableDoctors: doctors.filter(doc => doc.is_available).length
+        if (doctorError) {
+          console.warn('Doctor fetch error:', doctorError);
         }
-      };
 
-    } catch (error) {
-      console.error('Get clinic details error:', error);
-      const errorMsg = error.message || 'Failed to load clinic details';
-      setError(errorMsg);
-      return { success: false, clinic: null, error: errorMsg };
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        //  Use direct doctor fields
+        const doctors = clinicDoctors?.map(dc => {
+          const doctor = dc.doctors;
+          if (!doctor) return null;
+          
+          //Use doctors' own name fields
+          const hasFullName = doctor.first_name && doctor.last_name;
+          const doctorName = hasFullName 
+            ? `Dr. ${doctor.first_name} ${doctor.last_name}`
+            : `Dr. ${doctor.specialization}`;
+
+          return {
+            ...doctor,
+            schedule: dc.schedule,
+            name: doctorName,
+            display_name: hasFullName 
+              ? `${doctor.first_name} ${doctor.last_name}` 
+              : doctor.specialization,
+            isActive: dc.is_active
+          };
+        }).filter(Boolean) || [];
+
+        return {
+          success: true,
+          clinic: {
+            ...clinic,
+            doctors: doctors.filter(doc => doc.is_available && doc.isActive),
+            totalDoctors: doctors.length,
+            availableDoctors: doctors.filter(doc => doc.is_available).length
+          }
+        };
+
+      } catch (error) {
+        console.error('Get clinic details error:', error);
+        const errorMsg = error.message || 'Failed to load clinic details';
+        setError(errorMsg);
+        return { success: false, clinic: null, error: errorMsg };
+      } finally {
+        setLoading(false);
+      }
+    }, []);
 
   const applyFilters = useCallback((clinicsToFilter, filters) => {
     return clinicsToFilter.filter(clinic => {

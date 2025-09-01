@@ -47,6 +47,7 @@ export const usePatientAppointments = () => {
           break;
         case 'past':
           statusFilter = ['completed', 'cancelled', 'no_show'];
+          dateFrom = today;
           break;
         case 'pending':
           statusFilter = ['pending'];

@@ -198,27 +198,37 @@ export const useLocationService = () => {
     }
 
     try {
-      const locationString = profile.role_specific_data.preferred_location;
-      // Parse PostGIS POINT format: "POINT(longitude latitude)"
-      const match = locationString.match(/POINT\(([^)]+)\)/);
+      const locationData = profile.role_specific_data.preferred_location;
       
-      if (match) {
-        const coords = match[1].split(' ');
-        const longitude = parseFloat(coords[0]);
-        const latitude = parseFloat(coords[1]);
-        
-        if (!isNaN(latitude) && !isNaN(longitude)) {
-          const savedLocation = {
-            latitude,
-            longitude,
-            accuracy: null,
-            timestamp: Date.now(),
-            source: 'saved'
-          };
-          
-          setUserLocation(savedLocation);
-          return { success: true, location: savedLocation };
+      // ✅ ENHANCED: Handle multiple PostGIS formats
+      let latitude, longitude;
+      
+      if (typeof locationData === 'string') {
+        // Handle WKT format: "POINT(longitude latitude)"
+        const pointMatch = locationData.match(/POINT\s*\(\s*([^\s]+)\s+([^\s]+)\s*\)/i);
+        if (pointMatch) {
+          longitude = parseFloat(pointMatch[1]);
+          latitude = parseFloat(pointMatch[2]);
         }
+      } else if (locationData && typeof locationData === 'object') {
+        // Handle GeoJSON or geography object
+        if (locationData.coordinates && Array.isArray(locationData.coordinates)) {
+          longitude = locationData.coordinates[0];
+          latitude = locationData.coordinates[1];
+        }
+      }
+      
+      if (!isNaN(latitude) && !isNaN(longitude)) {
+        const savedLocation = {
+          latitude,
+          longitude,
+          accuracy: null,
+          timestamp: Date.now(),
+          source: 'saved'
+        };
+        
+        setUserLocation(savedLocation);
+        return { success: true, location: savedLocation };
       }
       
       return { success: false, error: 'Invalid saved location format' };
