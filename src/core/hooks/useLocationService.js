@@ -103,8 +103,8 @@ export const useLocationService = () => {
       });
 
       if (error) throw new Error(error.message || 'Location update failed');
+      if (data !== true) throw new Error('Failed to update location');
 
-      if (!data) throw new Error('Failed to update location');
 
       // Update local state
       setUserLocation(prev => ({

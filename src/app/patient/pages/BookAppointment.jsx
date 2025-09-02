@@ -784,7 +784,7 @@ const BookAppointment = () => {
                     </div>
                   ))}
                   <div className="text-sm text-primary font-semibold mt-1">
-                    Total: 
+                    Total:
                     {selectedServicesDetails
                       .reduce(
                         (sum, s) =>

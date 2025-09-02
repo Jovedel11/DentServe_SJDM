@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../auth/context/AuthProvider";
 import { useLocationService } from "./useLocationService";
 import { supabase } from "../../lib/supabaseClient";
+import { useRateLimit } from "@/auth/hooks/useRateLimit";
 
 export const useClinicDiscovery = () => {
   const { userLocation } = useLocationService();
   const { user } = useAuth();
+  const { checkRateLimit } = useRateLimit();
 
   const [clinics, setClinics] = useState([]);
   const [filteredClinics, setFilteredClinics] = useState([]);
@@ -21,32 +23,6 @@ export const useClinicDiscovery = () => {
     searchQuery: ""
   });
 
-  // Rate limiting with proper user identification
-  const rateLimitSearch = useCallback(async () => {
-    if (!user?.email) return true;
-
-    try {
-      const { data: canSearch, error } = await supabase.rpc('check_rate_limit', {
-        p_user_identifier: user.email,
-        p_action_type: 'clinic_search',
-        p_max_attempts: 10,
-        p_time_window_minutes: 5
-      });
-
-      if (error) throw new Error(error.message);
-
-      if (!canSearch) {
-        throw new Error('Too many search requests. Please wait a moment.');
-      }
-
-      return true;
-    } catch (error) {
-      const errorMsg = error?.message || 'Search rate limit error';
-      setError(errorMsg);
-      return false;
-    }
-  }, [user?.email]);
-
   // Proper location handling and clinic discovery
 const discoverClinics = useCallback(async (location = null, options = {}) => {
   try {
@@ -54,7 +30,7 @@ const discoverClinics = useCallback(async (location = null, options = {}) => {
     setError(null);
 
     // Rate limiting check
-    const canProceed = await rateLimitSearch();
+    const canProceed = await checkRateLimit(user.email, 'clinic_search', 10, 5);
     if (!canProceed) return { success: false, clinics: [], error: 'Rate limited' };
 
     const searchLocation = location || userLocation;
@@ -174,7 +150,7 @@ const discoverClinics = useCallback(async (location = null, options = {}) => {
       } finally {
         setLoading(false);
       }
-    }, [userLocation, searchFilter, rateLimitSearch]);
+    }, [userLocation, searchFilter, checkRateLimit]);
 
   // Clinic details with proper relationship handling
     const getClinicDetails = useCallback(async (clinicId) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar,
@@ -28,13 +28,60 @@ import {
 } from "lucide-react";
 import CancelAppointmentModal from "../components/cancel-modal";
 import NotificationToast from "@/core/components/notification-toast";
+import { usePatientAppointments } from "@/core/hooks/usePatientAppointment";
+import { useAppointmentRealtime } from "@/core/hooks/useAppointmentRealtime";
+import { useAuth } from "@/auth/context/AuthProvider";
 
 const UpcomingAppointments = () => {
-  const [appointments, setAppointments] = useState([]);
-  const [ongoingTreatments, setOngoingTreatments] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // ✅ INTEGRATION: Use real hooks instead of mock data
+  const { user, profile, isPatient, canAccessApp } = useAuth();
+
+  const {
+    appointments,
+    loading,
+    error,
+    activeTab,
+    pagination,
+    fetchAppointments,
+    cancelAppointment,
+    canCancelAppointment,
+    changeTab,
+    refresh,
+    loadMore,
+    stats,
+    upcomingAppointments,
+    pastAppointments,
+    isEmpty,
+    hasMore,
+    getAppointmentDetails,
+    searchAppointments,
+  } = usePatientAppointments();
+
+  // ✅ REAL-TIME: Setup real-time updates
+  const { enableRealtimeUpdates, disableRealtimeUpdates, isConnected } =
+    useAppointmentRealtime({
+      onAppointmentUpdate: (update) => {
+        console.log("Real-time appointment update:", update);
+        // Refresh appointments when updates occur
+        refresh();
+      },
+      onAppointmentStatusChange: (statusUpdate) => {
+        console.log("Appointment status changed:", statusUpdate);
+        // Show notification for status changes
+        showToast(
+          "info",
+          "Appointment Updated",
+          `Your appointment status has been changed to ${statusUpdate.newStatus}`
+        );
+        refresh();
+      },
+      enableAppointments: true,
+      enableNotifications: true,
+    });
+
+  // ✅ LOCAL STATE: Keep only UI-specific state
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState("all");
+  const [filterType, setFilterType] = useState("upcoming"); // Default to upcoming
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [cancelModal, setCancelModal] = useState({
     isOpen: false,
@@ -44,171 +91,113 @@ const UpcomingAppointments = () => {
   });
   const [toast, setToast] = useState({
     isVisible: false,
-    type: "success", // success, error, warning, info
+    type: "success",
     title: "",
     message: "",
   });
 
-  // Mock data - replace with API calls
+  // ✅ AUTHENTICATION: Check access
   useEffect(() => {
-    const fetchAppointments = async () => {
-      setLoading(true);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+    if (!user || !canAccessApp || !isPatient()) {
+      console.warn("Access denied: Not a patient or not authenticated");
+      return;
+    }
 
-      const mockAppointments = [
-        {
-          id: 1,
-          type: "regular",
-          service: "Regular Checkup",
-          doctor: "Dr. Sarah Martinez",
-          clinic: "Downtown Dental Center",
-          clinicAddress: "123 Main St, Downtown",
-          date: "2025-08-19", // Today
-          time: "15:00",
-          duration: "60 min",
-          status: "confirmed",
-          notes: "Routine examination and cleaning",
-          contactInfo: {
-            phone: "+1 (555) 123-4567",
-            email: "appointments@downtown-dental.com",
-          },
-          reminder: "today",
-          cancellable: false, // Same day - cannot cancel
-        },
-        {
-          id: 2,
-          type: "regular",
-          service: "Teeth Whitening",
-          doctor: "Dr. Emily Smith",
-          clinic: "Smile Care Clinic",
-          clinicAddress: "456 Oak Ave, Midtown",
-          date: "2025-08-20", // Tomorrow
-          time: "10:00",
-          duration: "120 min",
-          status: "confirmed",
-          notes: "Professional whitening treatment",
-          contactInfo: {
-            phone: "+1 (555) 987-6543",
-            email: "info@smilecare.com",
-          },
-          reminder: "tomorrow",
-          cancellable: false, // Less than 2 days - cannot cancel
-        },
-        {
-          id: 3,
-          type: "regular",
-          service: "Cavity Filling",
-          doctor: "Dr. Michael Johnson",
-          clinic: "Advanced Dental Solutions",
-          clinicAddress: "789 Pine St, Uptown",
-          date: "2025-08-25",
-          time: "14:30",
-          duration: "90 min",
-          status: "confirmed",
-          notes: "Composite filling for upper molar",
-          contactInfo: {
-            phone: "+1 (555) 456-7890",
-            email: "contact@advanceddental.com",
-          },
-          reminder: "upcoming",
-          cancellable: true, // More than 2 days - can cancel
-        },
-        {
-          id: 4,
-          type: "regular",
-          service: "Root Canal - Follow-up",
-          doctor: "Dr. James Brown",
-          clinic: "Downtown Dental Center",
-          clinicAddress: "123 Main St, Downtown",
-          date: "2025-09-02",
-          time: "09:00",
-          duration: "90 min",
-          status: "confirmed",
-          notes: "Final check-up after root canal treatment",
-          contactInfo: {
-            phone: "+1 (555) 123-4567",
-            email: "appointments@downtown-dental.com",
-          },
-          reminder: "upcoming",
-          cancellable: true, // More than 2 days - can cancel
-        },
-      ];
+    // Enable real-time updates
+    enableRealtimeUpdates();
 
-      const mockOngoingTreatments = [
-        {
-          id: 101,
-          type: "ongoing",
-          treatment: "Orthodontic Braces",
-          doctor: "Dr. Michael Johnson",
-          clinic: "Advanced Dental Solutions",
-          clinicAddress: "789 Pine St, Uptown",
-          startDate: "2025-06-15",
-          estimatedEndDate: "2025-12-15",
-          progress: 65,
-          nextAppointment: {
-            date: "2025-08-22",
-            time: "11:00",
-            service: "Braces Adjustment",
-            duration: "45 min",
-            cancellable: true,
-          },
-          totalSessions: 12,
-          completedSessions: 8,
-          contactInfo: {
-            phone: "+1 (555) 456-7890",
-            email: "contact@advanceddental.com",
-          },
-        },
-        {
-          id: 102,
-          type: "ongoing",
-          treatment: "Implant Procedure",
-          doctor: "Dr. Sarah Martinez",
-          clinic: "Downtown Dental Center",
-          clinicAddress: "123 Main St, Downtown",
-          startDate: "2025-07-01",
-          estimatedEndDate: "2025-10-01",
-          progress: 40,
-          nextAppointment: {
-            date: "2025-08-28",
-            time: "13:30",
-            service: "Implant Check & Crown Fitting",
-            duration: "75 min",
-            cancellable: true,
-          },
-          totalSessions: 5,
-          completedSessions: 2,
-          contactInfo: {
-            phone: "+1 (555) 123-4567",
-            email: "appointments@downtown-dental.com",
-          },
-        },
-      ];
-
-      setAppointments(mockAppointments);
-      setOngoingTreatments(mockOngoingTreatments);
-      setLoading(false);
+    return () => {
+      disableRealtimeUpdates();
     };
+  }, [
+    user,
+    canAccessApp,
+    isPatient,
+    enableRealtimeUpdates,
+    disableRealtimeUpdates,
+  ]);
 
-    fetchAppointments();
-  }, []);
+  // ✅ DATA PROCESSING: Filter appointments with search
+  const filteredAppointments = useMemo(() => {
+    let filtered = appointments;
 
-  // Check if appointment can be cancelled (more than 48 hours before)
-  const checkCancellationEligibility = (appointmentDate) => {
-    const appointment = new Date(appointmentDate);
-    const now = new Date();
-    const diffHours = (appointment.getTime() - now.getTime()) / (1000 * 3600);
-    return diffHours > 48; // More than 48 hours
-  };
+    // Apply search filter
+    if (searchTerm.trim()) {
+      filtered = searchAppointments(searchTerm);
+    }
 
-  // Calculate days remaining until appointment
-  const getDaysUntilAppointment = (appointmentDate) => {
-    const appointment = new Date(appointmentDate);
-    const now = new Date();
-    const diffTime = appointment.getTime() - now.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 3600 * 24));
-    return diffDays;
-  };
+    // Apply date/status filter
+    const today = new Date().toISOString().split("T")[0];
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split("T")[0];
+
+    switch (filterType) {
+      case "upcoming":
+        filtered = filtered.filter(
+          (apt) =>
+            ["pending", "confirmed"].includes(apt.status) &&
+            apt.appointment_date >= today
+        );
+        break;
+      case "today":
+        filtered = filtered.filter((apt) => apt.appointment_date === today);
+        break;
+      case "tomorrow":
+        filtered = filtered.filter(
+          (apt) => apt.appointment_date === tomorrowStr
+        );
+        break;
+      case "thisWeek":
+        const nextWeek = new Date();
+        nextWeek.setDate(nextWeek.getDate() + 7);
+        const nextWeekStr = nextWeek.toISOString().split("T")[0];
+        filtered = filtered.filter(
+          (apt) =>
+            apt.appointment_date >= today && apt.appointment_date <= nextWeekStr
+        );
+        break;
+      case "all":
+      default:
+        // Keep all appointments
+        break;
+    }
+
+    return filtered;
+  }, [appointments, searchTerm, filterType, searchAppointments]);
+
+  // ✅ COMPUTED VALUES: Get today's and tomorrow's appointments for reminders
+  const urgentAppointments = useMemo(() => {
+    const today = new Date().toISOString().split("T")[0];
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split("T")[0];
+
+    return appointments.filter(
+      (apt) =>
+        (apt.appointment_date === today ||
+          apt.appointment_date === tomorrowStr) &&
+        ["pending", "confirmed"].includes(apt.status)
+    );
+  }, [appointments]);
+
+  // ✅ ONGOING TREATMENTS: Extract from appointments with services
+  const ongoingTreatments = useMemo(() => {
+    // Filter appointments that are part of ongoing treatments
+    // This could be based on service types or recurring appointment patterns
+    return appointments.filter((apt) => {
+      // Check if appointment has multiple related services or is recurring
+      const isOngoingTreatment = apt.services?.some(
+        (service) =>
+          service.name?.toLowerCase().includes("orthodontic") ||
+          service.name?.toLowerCase().includes("implant") ||
+          service.name?.toLowerCase().includes("braces") ||
+          service.name?.toLowerCase().includes("treatment plan")
+      );
+
+      return isOngoingTreatment && apt.status !== "cancelled";
+    });
+  }, [appointments]);
 
   const showToast = (type, title, message) => {
     setToast({
@@ -218,153 +207,105 @@ const UpcomingAppointments = () => {
       message,
     });
 
-    // Auto-hide toast after 5 seconds
     setTimeout(() => {
       setToast((prev) => ({ ...prev, isVisible: false }));
     }, 5000);
   };
 
-  const handleCancelAppointment = (appointment) => {
-    const daysUntil = getDaysUntilAppointment(appointment.date);
-    const canCancel = daysUntil > 2;
+  // ✅ REAL CANCELLATION: Use hook function
+  const handleCancelAppointment = async (appointment) => {
+    try {
+      // Check if appointment can be cancelled using real function
+      const { canCancel, error: checkError } = await canCancelAppointment(
+        appointment.id
+      );
 
-    if (!canCancel) {
-      let reason = "";
-      if (daysUntil === 0) {
-        reason = "Appointments cannot be cancelled on the same day.";
-      } else if (daysUntil === 1) {
-        reason =
-          "Appointments cannot be cancelled with less than 24 hours notice.";
-      } else if (daysUntil === 2) {
-        reason =
-          "Appointments cannot be cancelled with less than 48 hours notice.";
+      if (checkError) {
+        showToast("error", "Error", checkError);
+        return;
       }
 
-      setCancelModal({
-        isOpen: true,
-        appointment,
-        canCancel: false,
-        reason,
-      });
-    } else {
-      setCancelModal({
-        isOpen: true,
-        appointment,
-        canCancel: true,
-        reason: "",
-      });
+      if (!canCancel) {
+        setCancelModal({
+          isOpen: true,
+          appointment,
+          canCancel: false,
+          reason:
+            "Appointments cannot be cancelled within the clinic's policy timeframe.",
+        });
+      } else {
+        setCancelModal({
+          isOpen: true,
+          appointment,
+          canCancel: true,
+          reason: "",
+        });
+      }
+    } catch (err) {
+      console.error("Error checking cancellation eligibility:", err);
+      showToast("error", "Error", "Failed to check cancellation eligibility");
     }
   };
 
+  // ✅ REAL CANCELLATION: Execute cancellation
   const confirmCancelAppointment = async (
     appointmentId,
     cancellationReason
   ) => {
     try {
-      // Here you would call your API to cancel the appointment
-      // await cancelAppointmentAPI(appointmentId, cancellationReason);
+      const result = await cancelAppointment(appointmentId, cancellationReason);
 
-      // Update local state
-      setAppointments((prev) =>
-        prev.map((apt) =>
-          apt.id === appointmentId
-            ? { ...apt, status: "cancelled", cancellationReason }
-            : apt
-        )
-      );
+      if (result.success) {
+        setCancelModal({
+          isOpen: false,
+          appointment: null,
+          canCancel: true,
+          reason: "",
+        });
 
-      setOngoingTreatments((prev) =>
-        prev.map((treatment) =>
-          treatment.id === appointmentId
-            ? {
-                ...treatment,
-                nextAppointment: {
-                  ...treatment.nextAppointment,
-                  status: "cancelled",
-                  cancellationReason,
-                },
-              }
-            : treatment
-        )
-      );
-
-      setCancelModal({
-        isOpen: false,
-        appointment: null,
-        canCancel: true,
-        reason: "",
-      });
-
-      showToast(
-        "success",
-        "Appointment Cancelled",
-        "Your appointment has been successfully cancelled. You'll receive a confirmation email shortly."
-      );
+        showToast(
+          "success",
+          "Appointment Cancelled",
+          result.message || "Your appointment has been successfully cancelled."
+        );
+      } else {
+        showToast(
+          "error",
+          "Cancellation Failed",
+          result.error || "Failed to cancel appointment. Please try again."
+        );
+      }
     } catch (error) {
       console.error("Error cancelling appointment:", error);
       showToast(
         "error",
         "Cancellation Failed",
-        "There was an error cancelling your appointment. Please try again or contact support."
+        "An unexpected error occurred. Please try again or contact support."
       );
     }
   };
 
-  // Filter appointments based on search and filter type
-  const filteredAppointments = appointments.filter((appointment) => {
-    const matchesSearch =
-      appointment.service.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      appointment.doctor.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      appointment.clinic.toLowerCase().includes(searchTerm.toLowerCase());
-
-    if (!matchesSearch) return false;
-
-    if (filterType === "all") return true;
-
-    const appointmentDate = new Date(appointment.date);
+  // ✅ ENHANCED UTILITIES: Use real appointment data
+  const getReminderMessage = (appointment) => {
+    const appointmentDate = new Date(appointment.appointment_date);
     const today = new Date();
+    const todayStr = today.toISOString().split("T")[0];
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split("T")[0];
 
-    switch (filterType) {
-      case "today":
-        return appointmentDate.toDateString() === today.toDateString();
-      case "tomorrow":
-        return appointmentDate.toDateString() === tomorrow.toDateString();
-      case "thisWeek":
-        const nextWeek = new Date(today);
-        nextWeek.setDate(today.getDate() + 7);
-        return appointmentDate >= today && appointmentDate <= nextWeek;
-      default:
-        return true;
-    }
-  });
-
-  const getReminderMessage = (appointment) => {
-    const appointmentDate = new Date(`${appointment.date}T${appointment.time}`);
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const appointmentDay = new Date(
-      appointmentDate.getFullYear(),
-      appointmentDate.getMonth(),
-      appointmentDate.getDate()
-    );
-
-    const diffTime = appointmentDay.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-    if (diffDays === 0) {
+    if (appointment.appointment_date === todayStr) {
       return {
         message: `You have an appointment today at ${formatTime(
-          appointment.time
+          appointment.appointment_time
         )}`,
         type: "today",
         urgent: true,
       };
-    } else if (diffDays === 1) {
+    } else if (appointment.appointment_date === tomorrowStr) {
       return {
         message: `You have an appointment tomorrow at ${formatTime(
-          appointment.time
+          appointment.appointment_time
         )}`,
         type: "tomorrow",
         urgent: true,
@@ -372,8 +313,8 @@ const UpcomingAppointments = () => {
     } else {
       return {
         message: `You have an upcoming appointment on ${formatDate(
-          appointment.date
-        )} at ${formatTime(appointment.time)}`,
+          appointment.appointment_date
+        )} at ${formatTime(appointment.appointment_time)}`,
         type: "upcoming",
         urgent: false,
       };
@@ -398,27 +339,32 @@ const UpcomingAppointments = () => {
   };
 
   const handleViewDetails = (appointment) => {
-    setSelectedAppointment(appointment);
+    const details = getAppointmentDetails(appointment.id);
+    setSelectedAppointment(details || appointment);
   };
 
   const handleDownloadDetails = (appointment) => {
     const details = `
 APPOINTMENT DETAILS
 ==================
-Service: ${appointment.service}
-Doctor: ${appointment.doctor}
-Clinic: ${appointment.clinic}
-Address: ${appointment.clinicAddress}
-Date: ${formatDate(appointment.date)}
-Time: ${formatTime(appointment.time)}
-Duration: ${appointment.duration}
+Service: ${appointment.services?.map((s) => s.name).join(", ") || "N/A"}
+Doctor: ${appointment.doctor?.name || "N/A"}
+Clinic: ${appointment.clinic?.name || "N/A"}
+Address: ${appointment.clinic?.address || "N/A"}
+Date: ${formatDate(appointment.appointment_date)}
+Time: ${formatTime(appointment.appointment_time)}
+Duration: ${
+      appointment.duration_minutes
+        ? `${appointment.duration_minutes} minutes`
+        : "N/A"
+    }
 Status: ${appointment.status}
-Notes: ${appointment.notes}
+Notes: ${appointment.notes || "None"}
 
 CONTACT INFORMATION
 ==================
-Phone: ${appointment.contactInfo.phone}
-Email: ${appointment.contactInfo.email}
+Phone: ${appointment.clinic?.phone || "N/A"}
+Email: ${appointment.clinic?.email || "N/A"}
     `;
 
     const blob = new Blob([details], { type: "text/plain" });
@@ -431,6 +377,51 @@ Email: ${appointment.contactInfo.email}
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  const handleRefresh = async () => {
+    try {
+      await refresh();
+      showToast("success", "Refreshed", "Appointments updated successfully");
+    } catch (err) {
+      showToast("error", "Refresh Failed", "Failed to refresh appointments");
+    }
+  };
+
+  // ✅ ACCESS CONTROL: Early return for unauthorized users
+  if (!user || !canAccessApp || !isPatient()) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center space-y-4">
+          <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto" />
+          <h3 className="text-lg font-medium text-foreground">Access Denied</h3>
+          <p className="text-muted-foreground">
+            You need to be a verified patient to view appointments.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ ERROR HANDLING: Show error state
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center space-y-4">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
+          <h3 className="text-lg font-medium text-foreground">
+            Error Loading Appointments
+          </h3>
+          <p className="text-muted-foreground">{error}</p>
+          <button
+            onClick={handleRefresh}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const EmptyState = () => (
     <motion.div
@@ -494,13 +485,24 @@ Email: ${appointment.contactInfo.email}
           </h1>
           <p className="text-muted-foreground">
             Manage and track your scheduled appointments
+            {stats.upcoming > 0 && ` • ${stats.upcoming} upcoming`}
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted/50 transition-colors">
-            <RefreshCw className="w-4 h-4" />
+          <button
+            onClick={handleRefresh}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted/50 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </button>
+          {isConnected && (
+            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              Live Updates
+            </div>
+          )}
         </div>
       </div>
 
@@ -523,6 +525,7 @@ Email: ${appointment.contactInfo.email}
             onChange={(e) => setFilterType(e.target.value)}
             className="px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
           >
+            <option value="upcoming">Upcoming</option>
             <option value="all">All Appointments</option>
             <option value="today">Today</option>
             <option value="tomorrow">Tomorrow</option>
@@ -532,9 +535,7 @@ Email: ${appointment.contactInfo.email}
       </div>
 
       {/* Today's Reminders */}
-      {filteredAppointments.some(
-        (apt) => apt.reminder === "today" || apt.reminder === "tomorrow"
-      ) && (
+      {urgentAppointments.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -546,22 +547,17 @@ Email: ${appointment.contactInfo.email}
               <h3 className="font-semibold text-foreground">
                 Appointment Reminders
               </h3>
-              {filteredAppointments
-                .filter(
-                  (apt) =>
-                    apt.reminder === "today" || apt.reminder === "tomorrow"
-                )
-                .map((appointment) => {
-                  const reminder = getReminderMessage(appointment);
-                  return (
-                    <div
-                      key={appointment.id}
-                      className="text-sm text-muted-foreground"
-                    >
-                      {reminder.message}
-                    </div>
-                  );
-                })}
+              {urgentAppointments.map((appointment) => {
+                const reminder = getReminderMessage(appointment);
+                return (
+                  <div
+                    key={appointment.id}
+                    className="text-sm text-muted-foreground"
+                  >
+                    {reminder.message}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </motion.div>
@@ -572,82 +568,35 @@ Email: ${appointment.contactInfo.email}
         <div className="space-y-4">
           <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
             <Timer className="w-5 h-5 text-primary" />
-            Ongoing Treatments
+            Ongoing Treatments ({ongoingTreatments.length})
           </h2>
           <div className="grid gap-4 md:grid-cols-2">
-            {ongoingTreatments.map((treatment) => (
+            {ongoingTreatments.map((treatment, index) => (
               <motion.div
                 key={treatment.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
                 className="p-6 bg-card border border-border rounded-lg hover:shadow-md transition-shadow"
               >
                 <div className="space-y-4">
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
                       <h3 className="font-semibold text-foreground">
-                        {treatment.treatment}
+                        {treatment.services?.[0]?.name || "Ongoing Treatment"}
                       </h3>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <User className="w-4 h-4" />
-                        {treatment.doctor}
+                        {treatment.doctor?.name || "N/A"}
                       </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Building2 className="w-4 h-4" />
-                        {treatment.clinic}
+                        {treatment.clinic?.name || "N/A"}
                       </div>
                     </div>
                     <span className="px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">
                       In Progress
                     </span>
-                  </div>
-
-                  {/* Progress Bar */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Progress</span>
-                      <span className="font-medium text-foreground">
-                        {treatment.progress}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-muted rounded-full h-2">
-                      <div
-                        className="bg-primary h-2 rounded-full transition-all duration-500"
-                        style={{ width: `${treatment.progress}%` }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>
-                        {treatment.completedSessions} of{" "}
-                        {treatment.totalSessions} sessions
-                      </span>
-                      <span>
-                        Est. completion:{" "}
-                        {formatDate(treatment.estimatedEndDate)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Next Appointment */}
-                  <div className="p-3 bg-muted/30 rounded-lg">
-                    <div className="text-sm font-medium text-foreground mb-2">
-                      Next Appointment
-                    </div>
-                    <div className="space-y-1 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-3 h-3" />
-                        {formatDate(treatment.nextAppointment.date)}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-3 h-3" />
-                        {formatTime(treatment.nextAppointment.time)} (
-                        {treatment.nextAppointment.duration})
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Stethoscope className="w-3 h-3" />
-                        {treatment.nextAppointment.service}
-                      </div>
-                    </div>
                   </div>
 
                   {/* Actions */}
@@ -677,7 +626,7 @@ Email: ${appointment.contactInfo.email}
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
           <CalendarDays className="w-5 h-5 text-primary" />
-          Scheduled Appointments
+          Scheduled Appointments ({filteredAppointments.length})
         </h2>
 
         {filteredAppointments.length === 0 ? (
@@ -686,10 +635,6 @@ Email: ${appointment.contactInfo.email}
           <div className="space-y-4">
             {filteredAppointments.map((appointment, index) => {
               const reminder = getReminderMessage(appointment);
-              const daysUntil = getDaysUntilAppointment(appointment.date);
-              const canCancel =
-                checkCancellationEligibility(appointment.date) &&
-                appointment.status === "confirmed";
 
               return (
                 <motion.div
@@ -709,7 +654,9 @@ Email: ${appointment.contactInfo.email}
                       <div className="space-y-2">
                         <div className="flex items-center gap-3">
                           <h3 className="text-lg font-semibold text-foreground">
-                            {appointment.service}
+                            {appointment.services
+                              ?.map((s) => s.name)
+                              .join(", ") || "Appointment"}
                           </h3>
                           {reminder.urgent && (
                             <span
@@ -733,32 +680,19 @@ Email: ${appointment.contactInfo.email}
                             Cancelled
                           </span>
                         ) : (
-                          <span className="px-3 py-1 bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400 text-sm font-medium rounded-full">
-                            Confirmed
+                          <span
+                            className={`px-3 py-1 text-sm font-medium rounded-full ${
+                              appointment.status === "confirmed"
+                                ? "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400"
+                                : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400"
+                            }`}
+                          >
+                            {appointment.status.charAt(0).toUpperCase() +
+                              appointment.status.slice(1)}
                           </span>
                         )}
                       </div>
                     </div>
-
-                    {/* Cancellation Warning */}
-                    {!canCancel && appointment.status === "confirmed" && (
-                      <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-lg">
-                        <AlertTriangle className="w-4 h-4 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
-                        <div className="text-sm">
-                          <span className="font-medium text-orange-800 dark:text-orange-300">
-                            Cannot be cancelled
-                          </span>
-                          <div className="text-orange-700 dark:text-orange-400">
-                            {daysUntil === 0 &&
-                              "Same-day appointments cannot be cancelled"}
-                            {daysUntil === 1 &&
-                              "Less than 24 hours notice required"}
-                            {daysUntil === 2 &&
-                              "Less than 48 hours notice required"}
-                          </div>
-                        </div>
-                      </div>
-                    )}
 
                     {/* Details Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -766,17 +700,17 @@ Email: ${appointment.contactInfo.email}
                         <div className="flex items-center gap-3 text-sm">
                           <User className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                           <span className="text-foreground font-medium">
-                            {appointment.doctor}
+                            {appointment.doctor?.name || "N/A"}
                           </span>
                         </div>
                         <div className="flex items-center gap-3 text-sm">
                           <Building2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                           <div>
                             <div className="text-foreground font-medium">
-                              {appointment.clinic}
+                              {appointment.clinic?.name || "N/A"}
                             </div>
                             <div className="text-muted-foreground">
-                              {appointment.clinicAddress}
+                              {appointment.clinic?.address || "N/A"}
                             </div>
                           </div>
                         </div>
@@ -785,14 +719,15 @@ Email: ${appointment.contactInfo.email}
                         <div className="flex items-center gap-3 text-sm">
                           <CalendarIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                           <span className="text-foreground font-medium">
-                            {formatDate(appointment.date)}
+                            {formatDate(appointment.appointment_date)}
                           </span>
                         </div>
                         <div className="flex items-center gap-3 text-sm">
                           <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                           <span className="text-foreground font-medium">
-                            {formatTime(appointment.time)} (
-                            {appointment.duration})
+                            {formatTime(appointment.appointment_time)}
+                            {appointment.duration_minutes &&
+                              ` (${appointment.duration_minutes} min)`}
                           </span>
                         </div>
                       </div>
@@ -812,13 +747,13 @@ Email: ${appointment.contactInfo.email}
 
                     {/* Cancellation Reason */}
                     {appointment.status === "cancelled" &&
-                      appointment.cancellationReason && (
+                      appointment.cancellation_reason && (
                         <div className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg">
                           <div className="text-sm font-medium text-red-800 dark:text-red-300 mb-1">
                             Cancellation Reason
                           </div>
                           <div className="text-sm text-red-700 dark:text-red-400">
-                            {appointment.cancellationReason}
+                            {appointment.cancellation_reason}
                           </div>
                         </div>
                       )}
@@ -841,25 +776,21 @@ Email: ${appointment.contactInfo.email}
                       </button>
 
                       {/* Cancel Button */}
-                      {appointment.status === "confirmed" && (
-                        <button
-                          onClick={() => handleCancelAppointment(appointment)}
-                          disabled={!canCancel}
-                          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                            canCancel
-                              ? "text-red-700 bg-red-100 hover:bg-red-200 dark:text-red-400 dark:bg-red-900/20 dark:hover:bg-red-900/30"
-                              : "text-muted-foreground bg-muted cursor-not-allowed opacity-50"
-                          }`}
-                        >
-                          <XCircle className="w-4 h-4" />
-                          Cancel
-                        </button>
-                      )}
+                      {appointment.status === "confirmed" &&
+                        appointment.canCancel && (
+                          <button
+                            onClick={() => handleCancelAppointment(appointment)}
+                            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-700 bg-red-100 hover:bg-red-200 dark:text-red-400 dark:bg-red-900/20 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                          >
+                            <XCircle className="w-4 h-4" />
+                            Cancel
+                          </button>
+                        )}
 
                       <div className="ml-auto flex items-center gap-2">
                         <Phone className="w-4 h-4 text-muted-foreground" />
                         <span className="text-sm text-muted-foreground">
-                          {appointment.contactInfo.phone}
+                          {appointment.clinic?.phone || "N/A"}
                         </span>
                       </div>
                     </div>
@@ -867,6 +798,19 @@ Email: ${appointment.contactInfo.email}
                 </motion.div>
               );
             })}
+
+            {/* Load More Button */}
+            {hasMore && (
+              <div className="text-center pt-4">
+                <button
+                  onClick={loadMore}
+                  disabled={loading}
+                  className="px-6 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {loading ? "Loading..." : "Load More"}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -926,8 +870,9 @@ Email: ${appointment.contactInfo.email}
                           Service
                         </label>
                         <div className="text-foreground">
-                          {selectedAppointment.service ||
-                            selectedAppointment.treatment}
+                          {selectedAppointment.services
+                            ?.map((s) => s.name)
+                            .join(", ") || "N/A"}
                         </div>
                       </div>
                       <div>
@@ -935,7 +880,7 @@ Email: ${appointment.contactInfo.email}
                           Doctor
                         </label>
                         <div className="text-foreground">
-                          {selectedAppointment.doctor}
+                          {selectedAppointment.doctor?.name || "N/A"}
                         </div>
                       </div>
                       <div>
@@ -943,10 +888,10 @@ Email: ${appointment.contactInfo.email}
                           Clinic
                         </label>
                         <div className="text-foreground">
-                          {selectedAppointment.clinic}
+                          {selectedAppointment.clinic?.name || "N/A"}
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {selectedAppointment.clinicAddress}
+                          {selectedAppointment.clinic?.address || "N/A"}
                         </div>
                       </div>
                     </div>
@@ -956,16 +901,16 @@ Email: ${appointment.contactInfo.email}
                           Date & Time
                         </label>
                         <div className="text-foreground">
-                          {selectedAppointment.date
-                            ? formatDate(selectedAppointment.date)
+                          {selectedAppointment.appointment_date
+                            ? formatDate(selectedAppointment.appointment_date)
                             : "N/A"}
                         </div>
                         <div className="text-foreground">
-                          {selectedAppointment.time
-                            ? formatTime(selectedAppointment.time)
+                          {selectedAppointment.appointment_time
+                            ? formatTime(selectedAppointment.appointment_time)
                             : "N/A"}
-                          {selectedAppointment.duration &&
-                            ` (${selectedAppointment.duration})`}
+                          {selectedAppointment.duration_minutes &&
+                            ` (${selectedAppointment.duration_minutes} min)`}
                         </div>
                       </div>
                       <div>
@@ -981,10 +926,10 @@ Email: ${appointment.contactInfo.email}
                           Contact
                         </label>
                         <div className="text-foreground">
-                          {selectedAppointment.contactInfo?.phone}
+                          {selectedAppointment.clinic?.phone || "N/A"}
                         </div>
                         <div className="text-foreground">
-                          {selectedAppointment.contactInfo?.email}
+                          {selectedAppointment.clinic?.email || "N/A"}
                         </div>
                       </div>
                     </div>
@@ -997,48 +942,6 @@ Email: ${appointment.contactInfo.email}
                       </label>
                       <div className="text-foreground">
                         {selectedAppointment.notes}
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedAppointment.type === "ongoing" && (
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">
-                          Progress
-                        </label>
-                        <div className="flex items-center gap-4 mt-2">
-                          <div className="flex-1 bg-muted rounded-full h-2">
-                            <div
-                              className="bg-primary h-2 rounded-full transition-all duration-500"
-                              style={{
-                                width: `${selectedAppointment.progress}%`,
-                              }}
-                            />
-                          </div>
-                          <span className="text-sm font-medium text-foreground">
-                            {selectedAppointment.progress}%
-                          </span>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-sm font-medium text-muted-foreground">
-                            Sessions Completed
-                          </label>
-                          <div className="text-foreground">
-                            {selectedAppointment.completedSessions} of{" "}
-                            {selectedAppointment.totalSessions}
-                          </div>
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium text-muted-foreground">
-                            Estimated Completion
-                          </label>
-                          <div className="text-foreground">
-                            {formatDate(selectedAppointment.estimatedEndDate)}
-                          </div>
-                        </div>
                       </div>
                     </div>
                   )}
