@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useAuth } from "../../auth/context/AuthProvider";
 import { useLocationService } from "./useLocationService";
 import { supabase } from "../../lib/supabaseClient";
@@ -14,237 +14,448 @@ export const useClinicDiscovery = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchFilter, setSearchFilter] = useState({
-    maxDistance: 25,
+    maxDistance: 50,
     services: [],
     minRating: 0,
     badges: [],
     availableToday: false,
-    sortBy: "distance",
+    sortBy: "name",
     searchQuery: ""
   });
 
-  // Proper location handling and clinic discovery
-const discoverClinics = useCallback(async (location = null, options = {}) => {
-  try {
-    setLoading(true);
-    setError(null);
+  // ✅ FIXED: Prevent concurrent calls and rate limit persistence
+  const isDiscoveringRef = useRef(false);
+  const abortControllerRef = useRef(null);
+  const lastCallTimeRef = useRef(0);
+  const hasLoadedInitialClinics = useRef(false);
+  const sessionId = useRef(`session_${Date.now()}_${Math.random()}`);
 
-    // Rate limiting check
-    const canProceed = await checkRateLimit(user.email, 'clinic_search', 10, 5);
-    if (!canProceed) return { success: false, clinics: [], error: 'Rate limited' };
+  // ✅ FIXED: Get all clinics with proper badge relationship
+  const getAllClinics = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-    const searchLocation = location || userLocation;
-    const searchOptions = { ...searchFilter, ...options };
-
-    // ✅ FIXED: Let the database function handle PostGIS conversion
-    let locationParam = null;
-    if (searchLocation?.latitude && searchLocation?.longitude) {
-      // ✅ CORRECTED: Pass as text string, let database convert to geography
-      locationParam = `POINT(${searchLocation.longitude} ${searchLocation.latitude})`;
-    }
-
-    // Call the corrected function
-    const { data: nearbyClinicData, error: clinicError } = await supabase.rpc('find_nearest_clinics', {
-      user_location: locationParam,
-      max_distance_km: searchOptions.maxDistance,
-      limit_count: 50
-    });
-
-    if (clinicError) {
-      throw new Error(clinicError.message || 'Failed to fetch nearby clinics');
-    }
-
-    if (!nearbyClinicData || nearbyClinicData.length === 0) {
-      setClinics([]);
-      setFilteredClinics([]);
-      return { success: true, clinics: [], count: 0 };
-    }
-
-    const clinicIds = nearbyClinicData.map(clinic => clinic.id);
-    
-    const { data: clinicDoctors, error: doctorError } = await supabase
-      .from('doctor_clinics')
-      .select(`
-        clinic_id,
-        is_active,
-        schedule,
-        doctors (
-          id,
-          specialization,
-          consultation_fee,
-          experience_years,
-          is_available,
-          rating,
-          first_name,
-          last_name
-        )
-      `)
-      .in('clinic_id', clinicIds)
-      .eq('is_active', true)
-      .eq('doctors.is_available', true);
-
-    if (doctorError) {
-      console.warn('Doctor fetch error:', doctorError);
-    }
-
-    // ✅ FIXED: Better doctor name construction
-    const doctorsByClinic = {};
-    clinicDoctors?.forEach(dc => {
-      if (!doctorsByClinic[dc.clinic_id]) {
-        doctorsByClinic[dc.clinic_id] = [];
+      // Cancel previous request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
+      abortControllerRef.current = new AbortController();
+
+      // ✅ FIXED: Use session-based rate limiting to avoid persistence across refreshes
+      const userIdentifier = `${user?.email || 'anonymous'}_${sessionId.current}`;
       
-      const doctor = dc.doctors;
-      if (!doctor) return;
+      try {
+        const canProceed = await checkRateLimit(userIdentifier, 'clinic_search', 15, 10);
+        if (!canProceed) {
+          return { success: false, clinics: [], error: 'Too many search requests. Please wait a moment.' };
+        }
+      } catch (rateLimitError) {
+        console.warn('Rate limit check failed, proceeding anyway:', rateLimitError);
+      }
 
-      // ✅ IMPROVED: Consistent doctor name logic
-      const hasFullName = doctor.first_name && doctor.last_name;
-      const doctorName = hasFullName 
-        ? `Dr. ${doctor.first_name} ${doctor.last_name}`
-        : `Dr. ${doctor.specialization}`;
+      // ✅ FIXED: Get all active clinics with proper badge relationship
+      const { data: allClinicsData, error: clinicError } = await supabase
+        .from('clinics')
+        .select(`
+          *,
+          clinic_badge_awards!inner (
+            id,
+            is_current,
+            award_date,
+            clinic_badges (
+              id,
+              badge_name,
+              badge_description,
+              badge_icon_url,
+              badge_color
+            )
+          )
+        `)
+        .eq('is_active', true)
+        .eq('clinic_badge_awards.is_current', true)
+        .order('name')
+        .limit(100)
+        .abortSignal(abortControllerRef.current.signal);
 
-      doctorsByClinic[dc.clinic_id].push({
-        ...doctor,
-        name: doctorName,
-        display_name: hasFullName 
-          ? `${doctor.first_name} ${doctor.last_name}` 
-          : doctor.specialization,
-        schedule: dc.schedule
-      });
-    });
+      // ✅ Also get clinics without badges
+      const { data: clinicsWithoutBadges, error: noBadgeError } = await supabase
+        .from('clinics')
+        .select('*')
+        .eq('is_active', true)
+        .not('id', 'in', `(${allClinicsData?.map(c => `'${c.id}'`).join(',') || "''"})`)
+        .order('name')
+        .limit(50)
+        .abortSignal(abortControllerRef.current.signal);
 
-      // Merge clinic data with doctor information
-      const enrichedClinics = nearbyClinicData.map(nearbyClinic => {
-        const doctors = doctorsByClinic[nearbyClinic.id] || [];
-        const availableDoctors = doctors.filter(doc => doc.is_available);
-        const specializations = [...new Set(doctors.map(doc => doc.specialization))];
+      if (clinicError && noBadgeError) {
+        throw new Error('Failed to fetch clinics');
+      }
+
+      // ✅ FIXED: Combine and process clinic data
+      const combinedClinics = [
+        ...(allClinicsData || []),
+        ...(clinicsWithoutBadges || []).map(clinic => ({
+          ...clinic,
+          clinic_badge_awards: []
+        }))
+      ];
+
+      if (combinedClinics.length === 0) {
+        setClinics([]);
+        setFilteredClinics([]);
+        return { success: true, clinics: [], count: 0 };
+      }
+
+      // ✅ Calculate distances if user has location
+      let clinicsWithDistance = combinedClinics.map(clinic => ({
+        ...clinic,
+        // ✅ FIXED: Extract latitude and longitude from location geography
+        latitude: clinic.location ? extractLatFromLocation(clinic.location) : null,
+        longitude: clinic.location ? extractLngFromLocation(clinic.location) : null,
+        distance_km: userLocation && clinic.location ? calculateDistance(
+          userLocation.latitude,
+          userLocation.longitude,
+          extractLatFromLocation(clinic.location),
+          extractLngFromLocation(clinic.location)
+        ) : null,
+        // ✅ FIXED: Process badges properly
+        badges: clinic.clinic_badge_awards?.map(award => ({
+          id: award.clinic_badges?.id,
+          badge_name: award.clinic_badges?.badge_name,
+          description: award.clinic_badges?.badge_description,
+          icon_url: award.clinic_badges?.badge_icon_url,
+          color: award.clinic_badges?.badge_color,
+          award_date: award.award_date
+        })).filter(badge => badge.badge_name) || []
+      }));
+
+      // ✅ Get clinic IDs for doctor data
+      const clinicIds = clinicsWithDistance.map(clinic => clinic.id);
+      
+      const { data: clinicDoctors, error: doctorError } = await supabase
+        .from('doctor_clinics')
+        .select(`
+          clinic_id,
+          is_active,
+          schedule,
+          doctors (
+            id,
+            specialization,
+            consultation_fee,
+            experience_years,
+            is_available,
+            rating,
+            first_name,
+            last_name
+          )
+        `)
+        .in('clinic_id', clinicIds)
+        .eq('is_active', true)
+        .eq('doctors.is_available', true)
+        .abortSignal(abortControllerRef.current.signal);
+
+      if (doctorError && doctorError.name !== 'AbortError') {
+        console.warn('Doctor fetch error:', doctorError);
+      }
+
+      // ✅ Process doctor data
+      const doctorsByClinic = {};
+      clinicDoctors?.forEach(dc => {
+        if (!doctorsByClinic[dc.clinic_id]) {
+          doctorsByClinic[dc.clinic_id] = [];
+        }
         
-        const fees = doctors.map(doc => doc.consultation_fee).filter(fee => fee != null);
-        const feeRange = fees.length > 0 ? {
-          min: Math.min(...fees),
-          max: Math.max(...fees)
-        } : { min: 0, max: 0 };
+        const doctor = dc.doctors;
+        if (!doctor) return;
 
+        const hasFullName = doctor.first_name && doctor.last_name;
+        const doctorName = hasFullName 
+          ? `Dr. ${doctor.first_name} ${doctor.last_name}`
+          : `Dr. ${doctor.specialization}`;
+
+        doctorsByClinic[dc.clinic_id].push({
+          ...doctor,
+          name: doctorName,
+          display_name: hasFullName 
+            ? `${doctor.first_name} ${doctor.last_name}` 
+            : doctor.specialization,
+          schedule: dc.schedule
+        });
+      });
+
+      // ✅ Enrich clinics with doctor data
+      const enrichedClinics = clinicsWithDistance.map(clinic => {
+        const doctors = doctorsByClinic[clinic.id] || [];
+        const availableDoctors = doctors.filter(doc => doc.is_available);
+        
         return {
-          ...nearbyClinic,
+          ...clinic,
           doctors,
           availableDoctors: availableDoctors.length,
-          specializations,
-          consultationFeeRange: feeRange,
-          badges: nearbyClinic.badges || []
+          total_doctors: doctors.length
         };
       });
 
       setClinics(enrichedClinics);
+      hasLoadedInitialClinics.current = true;
+      
       return { 
         success: true, 
         clinics: enrichedClinics, 
         count: enrichedClinics.length 
       };
 
-      } catch (error) {
-        console.error('Clinic discovery error:', error);
-        const errorMsg = error?.message || 'Clinic discovery failed';
-        setError(errorMsg);
-        return { success: false, clinics: [], error: errorMsg };
-      } finally {
-        setLoading(false);
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        return { success: false, clinics: [], error: 'Search cancelled' };
       }
-    }, [userLocation, searchFilter, checkRateLimit]);
 
-  // Clinic details with proper relationship handling
-    const getClinicDetails = useCallback(async (clinicId) => {
-      if (!clinicId) return { success: false, clinic: null, error: 'Clinic ID required' };
+      console.error('Get all clinics error:', error);
+      const errorMsg = error?.message || 'Failed to fetch clinics';
+      setError(errorMsg);
+      return { success: false, clinics: [], error: errorMsg };
+    } finally {
+      setLoading(false);
+      abortControllerRef.current = null;
+    }
+  }, [userLocation, checkRateLimit, user?.email]);
 
-      try {
-        setLoading(true);
-        setError(null);
+  // ✅ FIXED: Helper functions for PostGIS location extraction
+  const extractLatFromLocation = useCallback((location) => {
+    if (!location) return null;
+    
+    try {
+      if (typeof location === 'string') {
+        // Handle WKT format: "POINT(longitude latitude)"
+        const match = location.match(/POINT\s*\(\s*([+-]?\d+\.?\d*)\s+([+-]?\d+\.?\d*)\s*\)/i);
+        if (match) {
+          return parseFloat(match[2]); // latitude is second
+        }
+      } else if (location && typeof location === 'object') {
+        if (location.coordinates && Array.isArray(location.coordinates)) {
+          return location.coordinates[1]; // GeoJSON format [lng, lat]
+        }
+        if (location.y !== undefined) {
+          return location.y; // PostGIS object format
+        }
+      }
+      return null;
+    } catch (error) {
+      console.warn('Error extracting latitude:', error);
+      return null;
+    }
+  }, []);
 
-        // Get clinic basic info
-        const { data: clinic, error: clinicError } = await supabase
+  const extractLngFromLocation = useCallback((location) => {
+    if (!location) return null;
+    
+    try {
+      if (typeof location === 'string') {
+        // Handle WKT format: "POINT(longitude latitude)"
+        const match = location.match(/POINT\s*\(\s*([+-]?\d+\.?\d*)\s+([+-]?\d+\.?\d*)\s*\)/i);
+        if (match) {
+          return parseFloat(match[1]); // longitude is first
+        }
+      } else if (location && typeof location === 'object') {
+        if (location.coordinates && Array.isArray(location.coordinates)) {
+          return location.coordinates[0]; // GeoJSON format [lng, lat]
+        }
+        if (location.x !== undefined) {
+          return location.x; // PostGIS object format
+        }
+      }
+      return null;
+    } catch (error) {
+      console.warn('Error extracting longitude:', error);
+      return null;
+    }
+  }, []);
+
+  // ✅ Helper function for distance calculation
+  const calculateDistance = useCallback((lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Radius of Earth in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }, []);
+
+  // ✅ UPDATED: discoverClinics with better rate limiting
+  const discoverClinics = useCallback(async (location = null, options = {}) => {
+    // ✅ FIXED: More aggressive debouncing and concurrency prevention
+    const now = Date.now();
+    if (now - lastCallTimeRef.current < 3000) { // 3 second debounce
+      return { success: true, clinics: clinics, count: clinics.length };
+    }
+    lastCallTimeRef.current = now;
+
+    if (isDiscoveringRef.current) {
+      return { success: true, clinics: clinics, count: clinics.length };
+    }
+
+    isDiscoveringRef.current = true;
+
+    try {
+      const result = await getAllClinics();
+      return result;
+    } finally {
+      isDiscoveringRef.current = false;
+    }
+  }, [getAllClinics, clinics]);
+
+  // ✅ UPDATED: When location changes, recalculate distances only
+  useEffect(() => {
+    if (hasLoadedInitialClinics.current && userLocation && clinics.length > 0) {
+      const clinicsWithUpdatedDistance = clinics.map(clinic => ({
+        ...clinic,
+        distance_km: clinic.latitude && clinic.longitude ? calculateDistance(
+          userLocation.latitude,
+          userLocation.longitude,
+          clinic.latitude,
+          clinic.longitude
+        ) : null
+      }));
+      
+      setClinics(clinicsWithUpdatedDistance);
+    }
+  }, [userLocation, calculateDistance]);
+
+  const getClinicDetails = useCallback(async (clinicId) => {
+    if (!clinicId) return { success: false, clinic: null, error: 'Clinic ID required' };
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // ✅ FIXED: Get clinic with proper badge relationship
+      const { data: clinic, error: clinicError } = await supabase
+        .from('clinics')
+        .select(`
+          *,
+          clinic_badge_awards!inner (
+            id,
+            is_current,
+            award_date,
+            clinic_badges (
+              id,
+              badge_name,
+              badge_description,
+              badge_icon_url,
+              badge_color
+            )
+          )
+        `)
+        .eq('id', clinicId)
+        .eq('is_active', true)
+        .eq('clinic_badge_awards.is_current', true)
+        .single();
+
+      if (clinicError) {
+        // Try without badges if not found
+        const { data: clinicNoBadge, error: noBadgeError } = await supabase
           .from('clinics')
           .select('*')
           .eq('id', clinicId)
           .eq('is_active', true)
           .single();
+        
+        if (noBadgeError) throw new Error(noBadgeError.message);
+        
+        clinic.clinic_badge_awards = [];
+      }
 
-        if (clinicError) throw new Error(clinicError.message);
+      // Get doctors for this clinic
+      const { data: clinicDoctors, error: doctorError } = await supabase
+        .from('doctor_clinics')
+        .select(`
+          is_active,
+          schedule,
+          doctors (
+            id,
+            specialization,
+            consultation_fee,
+            experience_years,
+            is_available,
+            rating,
+            first_name,
+            last_name,
+            profile_image_url,
+            bio,
+            education,
+            certifications,
+            awards
+          )
+        `)
+        .eq('clinic_id', clinicId)
+        .eq('is_active', true)
+        .eq('doctors.is_available', true);
 
-        //  No user_profiles join - use doctors' direct fields
-        const { data: clinicDoctors, error: doctorError } = await supabase
-          .from('doctor_clinics')
-          .select(`
-            is_active,
-            schedule,
-            doctors (
-              id,
-              specialization,
-              consultation_fee,
-              experience_years,
-              is_available,
-              rating,
-              first_name,
-              last_name,
-              profile_image_url,
-              bio,
-              education,
-              certifications,
-              awards
-            )
-          `)
-          .eq('clinic_id', clinicId)
-          .eq('is_active', true)
-          .eq('doctors.is_available', true);
-
-        if (doctorError) {
-          console.warn('Doctor fetch error:', doctorError);
-        }
-
-        //  Use direct doctor fields
-        const doctors = clinicDoctors?.map(dc => {
-          const doctor = dc.doctors;
-          if (!doctor) return null;
-          
-          //Use doctors' own name fields
-          const hasFullName = doctor.first_name && doctor.last_name;
-          const doctorName = hasFullName 
-            ? `Dr. ${doctor.first_name} ${doctor.last_name}`
-            : `Dr. ${doctor.specialization}`;
-
-          return {
-            ...doctor,
-            schedule: dc.schedule,
-            name: doctorName,
-            display_name: hasFullName 
-              ? `${doctor.first_name} ${doctor.last_name}` 
-              : doctor.specialization,
-            isActive: dc.is_active
-          };
-        }).filter(Boolean) || [];
+      const doctors = clinicDoctors?.map(dc => {
+        const doctor = dc.doctors;
+        if (!doctor) return null;
+        
+        const hasFullName = doctor.first_name && doctor.last_name;
+        const doctorName = hasFullName 
+          ? `Dr. ${doctor.first_name} ${doctor.last_name}`
+          : `Dr. ${doctor.specialization}`;
 
         return {
-          success: true,
-          clinic: {
-            ...clinic,
-            doctors: doctors.filter(doc => doc.is_available && doc.isActive),
-            totalDoctors: doctors.length,
-            availableDoctors: doctors.filter(doc => doc.is_available).length
-          }
+          ...doctor,
+          schedule: dc.schedule,
+          name: doctorName,
+          display_name: hasFullName 
+            ? `${doctor.first_name} ${doctor.last_name}` 
+            : doctor.specialization,
+          isActive: dc.is_active
         };
+      }).filter(Boolean) || [];
 
-      } catch (error) {
-        console.error('Get clinic details error:', error);
-        const errorMsg = error.message || 'Failed to load clinic details';
-        setError(errorMsg);
-        return { success: false, clinic: null, error: errorMsg };
-      } finally {
-        setLoading(false);
-      }
-    }, []);
+      // ✅ FIXED: Process badges and location
+      const processedClinic = {
+        ...clinic,
+        latitude: clinic.location ? extractLatFromLocation(clinic.location) : null,
+        longitude: clinic.location ? extractLngFromLocation(clinic.location) : null,
+        badges: clinic.clinic_badge_awards?.map(award => ({
+          id: award.clinic_badges?.id,
+          badge_name: award.clinic_badges?.badge_name,
+          description: award.clinic_badges?.badge_description,
+          icon_url: award.clinic_badges?.badge_icon_url,
+          color: award.clinic_badges?.badge_color,
+          award_date: award.award_date
+        })).filter(badge => badge.badge_name) || [],
+        doctors: doctors.filter(doc => doc.is_available && doc.isActive),
+        total_doctors: doctors.length,
+        availableDoctors: doctors.filter(doc => doc.is_available).length
+      };
+
+      return {
+        success: true,
+        clinic: processedClinic
+      };
+
+    } catch (error) {
+      console.error('Get clinic details error:', error);
+      const errorMsg = error.message || 'Failed to load clinic details';
+      setError(errorMsg);
+      return { success: false, clinic: null, error: errorMsg };
+    } finally {
+      setLoading(false);
+    }
+  }, [extractLatFromLocation, extractLngFromLocation]);
 
   const applyFilters = useCallback((clinicsToFilter, filters) => {
     return clinicsToFilter.filter(clinic => {
-      // Service filter - check services_offered array
+      // Distance filter - only apply if user has location
+      if (userLocation && clinic.distance_km !== null && clinic.distance_km > filters.maxDistance) {
+        return false;
+      }
+
+      // Service filter
       if (filters.services.length > 0) {
         const clinicServices = clinic.services_offered || [];
         const hasRequiredServices = filters.services.every(service => 
@@ -281,7 +492,6 @@ const discoverClinics = useCallback(async (location = null, options = {}) => {
           clinic.name,
           clinic.address,
           clinic.city,
-          ...(clinic.specializations || []),
           ...(clinic.services_offered || [])
         ].join(' ').toLowerCase();
         
@@ -290,14 +500,17 @@ const discoverClinics = useCallback(async (location = null, options = {}) => {
 
       return true;
     });
-  }, []);
+  }, [userLocation]);
 
   const sortClinics = useCallback((clinicsToSort, sortBy) => {
     const sorted = [...clinicsToSort];
 
     switch (sortBy) {
       case 'distance':
-        return sorted.sort((a, b) => (a.distance_km || 999) - (b.distance_km || 999));
+        if (userLocation) {
+          return sorted.sort((a, b) => (a.distance_km || 999) - (b.distance_km || 999));
+        }
+        return sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       case 'rating':
         return sorted.sort((a, b) => (b.rating || 0) - (a.rating || 0));
       case 'name':
@@ -305,20 +518,16 @@ const discoverClinics = useCallback(async (location = null, options = {}) => {
       case 'availability':
         return sorted.sort((a, b) => (b.availableDoctors || 0) - (a.availableDoctors || 0));
       default:
-        return sorted;
+        return sorted.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     }
-  }, []);
+  }, [userLocation]);
 
-  // search filters with validation
   const updateSearchFilter = useCallback((newFilters) => {
     setSearchFilter(prevFilter => {
       const updated = { ...prevFilter, ...newFilters };
       
-      // Validate distance
       if (updated.maxDistance < 1) updated.maxDistance = 1;
       if (updated.maxDistance > 100) updated.maxDistance = 100;
-      
-      // Validate rating
       if (updated.minRating < 0) updated.minRating = 0;
       if (updated.minRating > 5) updated.minRating = 5;
       
@@ -328,13 +537,9 @@ const discoverClinics = useCallback(async (location = null, options = {}) => {
 
   const searchClinics = useCallback(async (searchQuery) => {
     updateSearchFilter({ searchQuery: searchQuery || '' });
-    // Trigger re-discovery if needed
-    if (userLocation) {
-      return await discoverClinics();
-    }
-  }, [updateSearchFilter, discoverClinics, userLocation]);
+    return { success: true, clinics: [], count: 0 };
+  }, [updateSearchFilter]);
 
-  // Enhanced computed values
   const processedClinics = useMemo(() => {
     let processed = applyFilters(clinics, searchFilter);
     processed = sortClinics(processed, searchFilter.sortBy);
@@ -345,14 +550,6 @@ const discoverClinics = useCallback(async (location = null, options = {}) => {
     setFilteredClinics(processedClinics);
   }, [processedClinics]);
 
-  // Auto-discover when location changes
-  useEffect(() => {
-    if (userLocation?.latitude && userLocation?.longitude) {
-      discoverClinics();
-    }
-  }, [userLocation?.latitude, userLocation?.longitude]);
-
-  // available services and badges
   const availableServices = useMemo(() => {
     const servicesSet = new Set();
     clinics.forEach(clinic => {
@@ -373,6 +570,15 @@ const discoverClinics = useCallback(async (location = null, options = {}) => {
     return Array.from(badgesSet).sort();
   }, [clinics]);
 
+  // ✅ Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
   return {
     // Data
     clinics: filteredClinics,
@@ -381,11 +587,12 @@ const discoverClinics = useCallback(async (location = null, options = {}) => {
     error,
     searchFilter,
 
-    // Actions
-    discoverClinics,     // Returns: { success, clinics, count, error }
-    searchClinics,       // Returns: { success, clinics, count, error }
+    // Actions  
+    discoverClinics,
+    searchClinics,
     updateSearchFilter,
-    getClinicDetails,    // Returns: { success, clinic, error }
+    getClinicDetails,
+    getAllClinics,
 
     // Computed
     availableServices,
@@ -393,33 +600,12 @@ const discoverClinics = useCallback(async (location = null, options = {}) => {
     hasLocation: !!(userLocation?.latitude && userLocation?.longitude),
     totalResults: filteredClinics.length,
     isEmpty: filteredClinics.length === 0,
+    hasLoadedClinics: hasLoadedInitialClinics.current,
     
-    //utilities
+    // Utilities
     formatDistance: (distance) => {
       if (!distance) return 'Unknown';
       return distance < 1 ? `${Math.round(distance * 1000)}m` : `${distance.toFixed(1)}km`;
     },
-    
-    getClinicsByService: (service) => 
-      filteredClinics.filter(clinic => 
-        clinic.services_offered?.some(offered => 
-          offered.toLowerCase().includes(service.toLowerCase())
-        )
-      ),
-    
-    getClinicsByRating: (minRating) =>
-      filteredClinics.filter(clinic => 
-        (clinic.rating || 0) >= minRating
-      ),
-
-    getNearestClinics: (count = 5) =>
-      filteredClinics
-        .sort((a, b) => (a.distance_km || 999) - (b.distance_km || 999))
-        .slice(0, count),
-
-    getTopRatedClinics: (count = 5) =>
-      filteredClinics
-        .sort((a, b) => (b.rating || 0) - (a.rating || 0))
-        .slice(0, count)
   };
 };

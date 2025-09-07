@@ -26,7 +26,8 @@ export const usePatientAppointments = () => {
       setLoading(true);
       setError(null);
 
-      const { 
+      const {
+        clinic: clinic_id, 
         tab = activeTab,
         limit = pagination.limit,
         offset = pagination.offset,
@@ -42,7 +43,7 @@ export const usePatientAppointments = () => {
 
       switch (tab) {
         case 'upcoming':
-          statusFilter = ['pending', 'confirmed'];
+          statusFilter = ['pending', 'confirmed',];
           dateFrom = today;
           break;
         case 'past':
@@ -61,13 +62,34 @@ export const usePatientAppointments = () => {
           break;
       }
 
-      const { data, error } = await supabase.rpc('get_appointments_by_role', {
-        p_status: statusFilter,
-        p_date_from: dateFrom,
-        p_date_to: dateTo,
-        p_limit: limit,
-        p_offset: refresh ? 0 : offset
-      });
+      let rpcFunction;
+      let rpcParams;
+
+      // ✅ Route to appropriate function based on role
+      if (isPatient()) {
+        rpcFunction = 'get_user_appointments';
+        rpcParams = {
+          p_status: statusFilter,
+          p_date_from: dateFrom,
+          p_date_to: dateTo,
+          p_limit: limit,
+          p_offset: refresh ? 0 : offset
+        };
+      } else if (isStaff() || isAdmin()) {
+        rpcFunction = 'get_appointments_by_role';
+        rpcParams = {
+          p_status: statusFilter,
+          p_date_from: dateFrom,
+          p_date_to: dateTo,
+          p_clinic_id: clinic || null,
+          p_limit: limit,
+          p_offset: refresh ? 0 : offset
+        };
+      } else {
+        throw new Error('Invalid user role for appointments');
+      }
+
+      const { data, error } = await supabase.rpc(rpcFunction, rpcParams);
 
       if (error) throw new Error(error.message);
 

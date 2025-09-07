@@ -22,6 +22,7 @@ import {
 import { Badge } from "@/core/components/ui/badge";
 import { Button } from "@/core/components/ui/button";
 import { formatDistanceToNow, format } from "date-fns";
+import { useAppointmentNotifications } from "@/core/hooks/useAppointmentNotification";
 
 const NotificationBell = ({
   className = "",
@@ -30,8 +31,6 @@ const NotificationBell = ({
   showPreview = true,
   maxPreviewItems = 5,
 }) => {
-  const { theme } = useTheme();
-  const [notifications, setNotifications] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState("all"); // all, unread, read
@@ -39,202 +38,22 @@ const NotificationBell = ({
   const dropdownRef = useRef(null);
   const bellRef = useRef(null);
 
-  // Mock data - replace with actual Supabase calls
-  const mockNotifications = [
-    {
-      id: "1",
-      user_id: "user_1",
-      notification_type: "appointment_reminder",
-      title: "Appointment Reminder",
-      message:
-        "Your dental appointment with Dr. Maria Santos is tomorrow at 2:00 PM",
-      related_appointment_id: "appt_1",
-      is_read: false,
-      sent_via: ["push", "email"],
-      scheduled_for: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      sent_at: new Date(),
-      created_at: new Date(Date.now() - 30 * 60 * 1000),
-    },
-    {
-      id: "2",
-      user_id: "user_1",
-      notification_type: "appointment_confirmed",
-      title: "Appointment Confirmed",
-      message:
-        "Your appointment has been confirmed for March 25, 2024 at 10:00 AM",
-      related_appointment_id: "appt_2",
-      is_read: false,
-      sent_via: ["push", "sms"],
-      scheduled_for: null,
-      sent_at: new Date(Date.now() - 2 * 60 * 60 * 1000),
-      created_at: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    },
-    {
-      id: "3",
-      user_id: "user_1",
-      notification_type: "appointment_cancelled",
-      title: "Appointment Cancelled",
-      message:
-        "Dr. Jennifer Lim has cancelled your appointment scheduled for March 20, 2024",
-      related_appointment_id: "appt_3",
-      is_read: true,
-      sent_via: ["push", "email"],
-      scheduled_for: null,
-      sent_at: new Date(Date.now() - 6 * 60 * 60 * 1000),
-      created_at: new Date(Date.now() - 6 * 60 * 60 * 1000),
-    },
-    {
-      id: "4",
-      user_id: "user_1",
-      notification_type: "payment_reminder",
-      title: "Payment Due",
-      message: "Your payment of ₱2,500 for dental cleaning is due tomorrow",
-      related_appointment_id: "appt_4",
-      is_read: false,
-      sent_via: ["push", "email"],
-      scheduled_for: new Date(Date.now() + 12 * 60 * 60 * 1000),
-      sent_at: new Date(Date.now() - 45 * 60 * 1000),
-      created_at: new Date(Date.now() - 45 * 60 * 1000),
-    },
-    {
-      id: "5",
-      user_id: "user_1",
-      notification_type: "system_update",
-      title: "New Features Available",
-      message:
-        "Check out our new online prescription feature and updated booking system",
-      related_appointment_id: null,
-      is_read: true,
-      sent_via: ["push"],
-      scheduled_for: null,
-      sent_at: new Date(Date.now() - 24 * 60 * 60 * 1000),
-      created_at: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    },
-    {
-      id: "6",
-      user_id: "user_1",
-      notification_type: "appointment_reminder",
-      title: "Follow-up Required",
-      message:
-        "Please schedule a follow-up appointment after your recent dental procedure",
-      related_appointment_id: "appt_5",
-      is_read: false,
-      sent_via: ["push", "email"],
-      scheduled_for: null,
-      sent_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-      created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-    },
-  ];
+  const {
+    notifications,
+    loading: notificationsLoading,
+    error: notificationsError,
+    unreadCount,
+    markAsRead,
+    markAllAsRead,
+    fetchNotifications,
+    refresh,
+  } = useAppointmentNotifications();
 
-  // Load notifications
+  // Remove the mock data loading effect and replace with:
   useEffect(() => {
-    const loadNotifications = async () => {
-      setIsLoading(true);
-      try {
-        // TODO: Replace with actual Supabase call
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        setNotifications(mockNotifications);
-      } catch (error) {
-        console.error("Error loading notifications:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadNotifications();
-  }, []);
-
-  // Click outside handler
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target) &&
-        bellRef.current &&
-        !bellRef.current.contains(event.target)
-      ) {
-        setIsOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  // Filter notifications
-  const filteredNotifications = notifications.filter((notification) => {
-    const matchesFilter =
-      filter === "all" ||
-      (filter === "unread" && !notification.is_read) ||
-      (filter === "read" && notification.is_read);
-
-    const matchesSearch =
-      !searchQuery ||
-      notification.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      notification.message.toLowerCase().includes(searchQuery.toLowerCase());
-
-    return matchesFilter && matchesSearch;
-  });
-
-  // Get unread count
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
-
-  // Get notification icon and color based on type
-  const getNotificationIcon = (type) => {
-    const iconMap = {
-      appointment_reminder: { icon: Clock, color: "text-warning" },
-      appointment_confirmed: { icon: Check, color: "text-success" },
-      appointment_cancelled: { icon: X, color: "text-destructive" },
-      payment_reminder: { icon: AlertTriangle, color: "text-warning" },
-      payment_confirmed: { icon: CheckCheck, color: "text-success" },
-      system_update: { icon: Settings, color: "text-info" },
-      promotion: { icon: Heart, color: "text-primary" },
-      general: { icon: Info, color: "text-muted-foreground" },
-    };
-    return iconMap[type] || iconMap.general;
-  };
-
-  // Handle notification actions
-  const markAsRead = async (notificationId) => {
-    try {
-      // TODO: Supabase update call
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n))
-      );
-    } catch (error) {
-      console.error("Error marking notification as read:", error);
-    }
-  };
-
-  const markAllAsRead = async () => {
-    try {
-      // TODO: Supabase bulk update
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-    } catch (error) {
-      console.error("Error marking all notifications as read:", error);
-    }
-  };
-
-  const deleteNotification = async (notificationId) => {
-    try {
-      // TODO: Supabase delete call
-      setNotifications((prev) => prev.filter((n) => n.id !== notificationId));
-    } catch (error) {
-      console.error("Error deleting notification:", error);
-    }
-  };
-
-  const handleNotificationClick = async (notification) => {
-    if (!notification.is_read) {
-      await markAsRead(notification.id);
-    }
-
-    // Handle navigation based on notification type
-    if (notification.related_appointment_id) {
-      // Navigate to appointment details
-      window.location.href = `/patient/appointments/${notification.related_appointment_id}`;
-    }
-  };
+    // Initial load handled by hook
+    refresh();
+  }, [refresh]);
 
   return (
     <div className="relative">

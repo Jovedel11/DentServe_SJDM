@@ -20,15 +20,6 @@ const PatientLayout = () => {
     <ThemeProvider defaultTheme="system" storageKey="dental-ui-theme">
       <div className="min-h-screen bg-[#F1FAEE]">
         <PDashboardLayout>
-          {hasProfileData && showToast && (
-            <WelcomeToast
-              isVisible={true}
-              onClose={() => setShowToast(false)}
-              onNavigate={() =>
-                setTimeout(() => navigate("/patient/profile"), 1000)
-              }
-            />
-          )}
           <Outlet />
         </PDashboardLayout>
       </div>

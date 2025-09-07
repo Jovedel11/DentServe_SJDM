@@ -13,7 +13,7 @@ export const useAppointmentBooking = () => {
     doctor: null,
     date: null,
     time: null,
-    services: [], // Array of service IDs
+    services: [],
     symptoms: '',
   });
 
@@ -31,7 +31,7 @@ export const useAppointmentBooking = () => {
     setError(null);
   }, []);
 
-  // Update booking data with validation
+  // Update booking data with enhanced validation
   const updateBookingData = useCallback((updates) => {
     setBookingData(prev => {
       const newData = { ...prev, ...updates };
@@ -42,12 +42,24 @@ export const useAppointmentBooking = () => {
         return prev;
       }
       
+      // Date validation if updating date
+      if (updates.date) {
+        const appointmentDate = new Date(updates.date);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        if (appointmentDate <= today) {
+          setError('Appointment must be scheduled for a future date');
+          return prev;
+        }
+      }
+      
       return newData;
     });
     setError(null);
   }, []);
 
-  // Get available doctors with correct schema
+  // Get available doctors
   const getAvailableDoctors = useCallback(async (clinicId) => {
     if (!clinicId) return { success: false, doctors: [], error: 'Clinic ID required' };
 
@@ -55,7 +67,6 @@ export const useAppointmentBooking = () => {
       setLoading(true);
       setError(null);
 
-      // get the doctor using join table
       const { data, error } = await supabase
         .from('doctor_clinics')
         .select(`
@@ -82,20 +93,20 @@ export const useAppointmentBooking = () => {
 
       const doctors = data?.map(item => {
         const doctor = item.doctors;
-        const first_name = doctor?.first_name;
-        const last_name = doctor?.last_name;
-        const full_name = first_name && last_name ? `${first_name} ${last_name}` : '';
+        const firstName = doctor?.first_name || '';
+        const lastName = doctor?.last_name || '';
 
         return {
-        id: doctor?.id,
-        specialization: doctor?.specialization,
-        consultation_fee: doctor?.consultation_fee,
-        certifications: doctor?.certifications,
-        awards: doctor?.awards,
-        experience_years: doctor?.experience_years,
-        rating: doctor?.rating,
-        name: doctor ? `Dr. ${first_name} ${last_name}` : 'Unknown Doctor',
-        display_name: full_name || doctor?.specialization || 'Unknown'
+          id: doctor?.id,
+          specialization: doctor?.specialization,
+          consultation_fee: doctor?.consultation_fee,
+          certifications: doctor?.certifications,
+          awards: doctor?.awards,
+          experience_years: doctor?.experience_years,
+          rating: doctor?.rating,
+          name: `Dr. ${firstName} ${lastName}`.trim(),
+          display_name: `${firstName} ${lastName}`.trim() || doctor?.specialization || 'Unknown',
+          profile_image_url: doctor?.profile_image_url
         };
       }).filter(Boolean);
 
@@ -109,7 +120,6 @@ export const useAppointmentBooking = () => {
     } catch (err) {
       const errorMsg = err?.message || 'Failed to load available doctors';
       setError(errorMsg);
-      console.error('Get available doctors error:', err);
       return { 
         success: false, 
         doctors: [], 
@@ -120,7 +130,7 @@ export const useAppointmentBooking = () => {
     }
   }, []);
 
-  // Get services with detailed info
+  // Get services
   const getServices = useCallback(async (clinicId) => {
     if (!clinicId) return { success: false, services: [], error: 'Clinic ID required' };
     
@@ -132,9 +142,9 @@ export const useAppointmentBooking = () => {
         .from('services')
         .select('*')
         .eq('clinic_id', clinicId)
-        .order('priority', { ascending: false })
+        .eq('is_active', true)
+        .order('priority', { ascending: false });
 
-      console.log("clinicServices:", clinicServices, error);
       if (error) throw new Error(error.message);
 
       return {
@@ -157,7 +167,7 @@ export const useAppointmentBooking = () => {
     }
   }, []);
 
-  // Proper availability check with multiple services
+  // Check slot availability with enhanced validation
   const checkSlotAvailability = useCallback(async (doctorId, date, time, serviceIds = []) => {
     if (!doctorId || !date || !time) {
       return { available: false, error: 'Missing required parameters' };
@@ -175,7 +185,7 @@ export const useAppointmentBooking = () => {
           .in('id', serviceIds);
           
         if (!servicesError && services) {
-          totalDuration = services.reduce((sum, service) => sum + service.duration_minutes, 0);
+          totalDuration = services.reduce((sum, service) => sum + (service.duration_minutes || 0), 0);
         }
       }
 
@@ -195,7 +205,6 @@ export const useAppointmentBooking = () => {
       };
 
     } catch (err) {
-      console.error('Slot availability check error:', err);
       return { 
         available: false, 
         error: err.message 
@@ -205,6 +214,7 @@ export const useAppointmentBooking = () => {
 
   // Book appointment with comprehensive validation
   const bookAppointment = useCallback(async () => {
+    // Role validation
     if (!isPatient()) {
       setError('Only patients can book appointments');
       return { success: false, error: 'Access denied' };
@@ -213,14 +223,18 @@ export const useAppointmentBooking = () => {
     const { clinic, doctor, date, time, services, symptoms } = bookingData;
 
     // Enhanced validation
-    if (!clinic?.id || !doctor?.id || !date || !time) {
-      setError('Please complete all booking details');
-      return { success: false, error: 'Missing required fields' };
-    }
+    const requiredFields = [
+      { field: clinic?.id, name: 'clinic' },
+      { field: doctor?.id, name: 'doctor' },
+      { field: date, name: 'date' },
+      { field: time, name: 'time' },
+      { field: services?.length > 0, name: 'services' }
+    ];
 
-    if (!services || services.length === 0) {
-      setError('Please select at least one service');
-      return { success: false, error: 'No services selected' };
+    const missingField = requiredFields.find(({ field }) => !field);
+    if (missingField) {
+      setError(`Please select ${missingField.name}`);
+      return { success: false, error: 'Missing required fields' };
     }
 
     if (services.length > 3) {
@@ -232,13 +246,12 @@ export const useAppointmentBooking = () => {
       setLoading(true);
       setError(null);
 
-      // Use correct parameter structure
       const { data, error } = await supabase.rpc('book_appointment', {
         p_clinic_id: clinic.id,
         p_doctor_id: doctor.id,
         p_appointment_date: date,
         p_appointment_time: time,
-        p_service_ids: services, // Array of UUIDs
+        p_service_ids: services,
         p_symptoms: symptoms || null,
       });
 
@@ -261,8 +274,8 @@ export const useAppointmentBooking = () => {
       return {
         success: true,
         appointment: {
-          id: data.appointment_id,
-          details: data.appointment_details,
+          id: data.data?.appointment_id,
+          details: data.data,
           clinic_name: clinic.name,
           doctor_name: doctor.name,
           date: date,
@@ -275,7 +288,6 @@ export const useAppointmentBooking = () => {
     } catch (err) {
       const errorMsg = err?.message || 'Failed to book appointment';
       setError(errorMsg);
-      console.error('Appointment booking error:', err);
       return { 
         success: false, 
         error: errorMsg 
@@ -285,7 +297,7 @@ export const useAppointmentBooking = () => {
     }
   }, [bookingData, isPatient, resetBooking]);
 
-  // Step validation with detailed checks
+  // Step validation
   const validateStep = useCallback((step) => {
     switch (step) {
       case 'clinic':
@@ -305,7 +317,7 @@ export const useAppointmentBooking = () => {
     }
   }, [bookingData]);
 
-  //Navigation with better step flow
+  // Navigation with step flow
   const goToStep = useCallback((step) => {
     setBookingStep(step);
     setError(null);
@@ -333,25 +345,6 @@ export const useAppointmentBooking = () => {
     }
   }, [bookingStep]);
 
-  // Get selected services details
-  const getSelectedServicesDetails = useCallback(async () => {
-    if (!bookingData.services?.length) return [];
-
-    try {
-      const { data, error } = await supabase
-        .from('services')
-        .select('*')
-        .in('id', bookingData.services);
-
-      if (error) throw error;
-
-      return data || [];
-    } catch (err) {
-      console.error('Error getting services details:', err);
-      return [];
-    }
-  }, [bookingData.services]);
-
   return {
     // State
     loading,
@@ -374,7 +367,6 @@ export const useAppointmentBooking = () => {
     getAvailableDoctors,
     getServices,
     checkSlotAvailability,
-    getSelectedServicesDetails,
 
     // Computed values
     canProceed: validateStep(bookingStep),

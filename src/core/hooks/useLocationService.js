@@ -192,6 +192,7 @@ export const useLocationService = () => {
   }, []);
 
   // Load saved location from user profile
+// Fixed loadSavedLocation method
   const loadSavedLocation = useCallback(async () => {
     if (!isPatient() || !profile?.role_specific_data?.preferred_location) {
       return { success: false, error: 'No saved location found' };
@@ -200,38 +201,53 @@ export const useLocationService = () => {
     try {
       const locationData = profile.role_specific_data.preferred_location;
       
-      // ✅ ENHANCED: Handle multiple PostGIS formats
+      // ✅ FIXED: Handle all PostGIS return formats properly
       let latitude, longitude;
       
       if (typeof locationData === 'string') {
-        // Handle WKT format: "POINT(longitude latitude)"
-        const pointMatch = locationData.match(/POINT\s*\(\s*([^\s]+)\s+([^\s]+)\s*\)/i);
+        // Handle WKT format: "POINT(longitude latitude)" 
+        const pointMatch = locationData.match(/POINT\s*\(\s*([+-]?\d+\.?\d*)\s+([+-]?\d+\.?\d*)\s*\)/i);
         if (pointMatch) {
           longitude = parseFloat(pointMatch[1]);
           latitude = parseFloat(pointMatch[2]);
+        } else {
+          // Handle alternative text formats
+          const coordMatch = locationData.match(/([+-]?\d+\.?\d*)[,\s]+([+-]?\d+\.?\d*)/);
+          if (coordMatch) {
+            latitude = parseFloat(coordMatch[1]);
+            longitude = parseFloat(coordMatch[2]);
+          }
         }
       } else if (locationData && typeof locationData === 'object') {
-        // Handle GeoJSON or geography object
+        // Handle GeoJSON format
         if (locationData.coordinates && Array.isArray(locationData.coordinates)) {
           longitude = locationData.coordinates[0];
           latitude = locationData.coordinates[1];
         }
+        // Handle PostGIS geography object  
+        else if (locationData.x !== undefined && locationData.y !== undefined) {
+          longitude = locationData.x;
+          latitude = locationData.y;
+        }
       }
       
-      if (!isNaN(latitude) && !isNaN(longitude)) {
-        const savedLocation = {
-          latitude,
-          longitude,
-          accuracy: null,
-          timestamp: Date.now(),
-          source: 'saved'
-        };
-        
-        setUserLocation(savedLocation);
-        return { success: true, location: savedLocation };
+      // Validate parsed coordinates
+      if (isNaN(latitude) || isNaN(longitude) || 
+          latitude < -90 || latitude > 90 || 
+          longitude < -180 || longitude > 180) {
+        return { success: false, error: 'Invalid saved location coordinates' };
       }
       
-      return { success: false, error: 'Invalid saved location format' };
+      const savedLocation = {
+        latitude,
+        longitude,
+        accuracy: null,
+        timestamp: Date.now(),
+        source: 'saved'
+      };
+      
+      setUserLocation(savedLocation);
+      return { success: true, location: savedLocation };
     } catch (error) {
       console.error('Error loading saved location:', error);
       return { success: false, error: 'Failed to load saved location' };

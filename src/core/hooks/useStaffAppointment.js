@@ -3,7 +3,7 @@ import { useAuth } from '../../auth/context/AuthProvider';
 import { supabase } from '../../lib/supabaseClient';
 
 export const useStaffAppointments = () => {
-  const { isStaff } = useAuth();
+  const { isStaff, isAdmin } = useAuth();
   
   const [appointments, setAppointments] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -18,22 +18,21 @@ export const useStaffAppointments = () => {
 
   // Fetch appointments with comprehensive filtering
   const fetchAppointments = useCallback(async (filters = {}) => {
-    if (!isStaff()) {
-      return { success: false, error: 'Access denied: Staff only' };
+    if (!isStaff() && !isAdmin()) {
+      return { success: false, error: 'Access denied: Staff or Admin only' };
     }
 
     setIsLoading(true);
     setError(null);
 
     try {
-      const { data, error } = await supabase
-        .rpc('get_appointments_by_role', {
-          p_status: filters.status || null,
-          p_date_from: filters.dateFrom || null,
-          p_date_to: filters.dateTo || null,
-          p_limit: filters.limit || 50,
-          p_offset: filters.offset || 0
-        });
+      const { data, error } = await supabase.rpc('get_appointments_by_role', {
+        p_status: filters.status || null,
+        p_date_from: filters.dateFrom || null,
+        p_date_to: filters.dateTo || null,
+        p_limit: filters.limit || 50,
+        p_offset: filters.offset || 0
+      });
 
       if (error) throw new Error(error.message);
 
@@ -46,28 +45,32 @@ export const useStaffAppointments = () => {
       }
 
       const appointmentData = data.data;
-      setAppointments(appointmentData.appointments || []);
+      const fetchedAppointments = appointmentData.appointments || [];
       
-      // Update stats
+      setAppointments(fetchedAppointments);
+      
+      // Calculate comprehensive stats
+      const totalCount = appointmentData.pagination?.total_count || 0;
+      const pendingCount = appointmentData.pagination?.pending_count || 0;
+      
       setStats({
-        total: appointmentData.total_count || 0,
-        pending: appointmentData.pending_count || 0,
-        confirmed: appointmentData.appointments?.filter(a => a.status === 'confirmed').length || 0,
-        completed: appointmentData.appointments?.filter(a => a.status === 'completed').length || 0,
-        cancelled: appointmentData.appointments?.filter(a => a.status === 'cancelled').length || 0
+        total: totalCount,
+        pending: pendingCount,
+        confirmed: fetchedAppointments.filter(a => a.status === 'confirmed').length,
+        completed: fetchedAppointments.filter(a => a.status === 'completed').length,
+        cancelled: fetchedAppointments.filter(a => a.status === 'cancelled').length
       });
 
       return {
         success: true,
-        appointments: appointmentData.appointments,
-        totalCount: appointmentData.total_count,
-        pendingCount: appointmentData.pending_count
+        appointments: fetchedAppointments,
+        totalCount: totalCount,
+        pendingCount: pendingCount
       };
 
     } catch (err) {
       const errorMessage = err.message || 'Failed to fetch appointments';
       setError(errorMessage);
-      console.error('Fetch appointments error:', err);
       
       return { 
         success: false, 
@@ -78,22 +81,28 @@ export const useStaffAppointments = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [isStaff]);
+  }, [isStaff, isAdmin]);
 
-  // Approve with optimistic updates
+  // Enhanced approve with comprehensive validation
   const approveAppointment = useCallback(async (appointmentId, staffNotes = '') => {
     if (!appointmentId) {
-      return { success: false, error: 'Appointment ID required' };
+      return { success: false, error: 'Appointment ID is required' };
+    }
+
+    if (!isStaff() && !isAdmin()) {
+      const error = 'Insufficient permissions';
+      setError(error);
+      return { success: false, error };
     }
 
     try {
       setIsLoading(true);
-      
-      const { data, error } = await supabase
-        .rpc('approve_appointment', {
-          p_appointment_id: appointmentId,
-          p_staff_notes: staffNotes
-        });
+      setError(null);
+
+      const { data, error } = await supabase.rpc('approve_appointment', {
+        p_appointment_id: appointmentId,
+        p_staff_notes: staffNotes
+      });
 
       if (error) throw new Error(error.message);
 
@@ -101,7 +110,7 @@ export const useStaffAppointments = () => {
         throw new Error(data?.error || 'Failed to approve appointment');
       }
 
-      // Optimistic update
+      // Optimistic update with comprehensive data
       setAppointments(prev => 
         prev.map(apt => 
           apt.id === appointmentId 
@@ -124,9 +133,9 @@ export const useStaffAppointments = () => {
 
       return {
         success: true,
-        message: data.message,
-        appointmentId: appointmentId,
-        patientName: data.patient_name
+        data: data.data,
+        message: data.message || 'Appointment approved successfully',
+        appointmentId: appointmentId
       };
 
     } catch (err) {
@@ -136,26 +145,72 @@ export const useStaffAppointments = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isStaff, isAdmin]);
 
-  // Reject with validation
-  const rejectAppointment = useCallback(async (appointmentId, rejectionReason) => {
-    if (!appointmentId || !rejectionReason?.trim()) {
-      return { success: false, error: 'Appointment ID and rejection reason are required' };
+  // ✅ FIXED: Enhanced reject with proper RPC parameter mapping
+  const rejectAppointment = useCallback(async (appointmentId, rejectionData) => {
+    console.log('🔄 rejectAppointment called with:', { appointmentId, rejectionData });
+
+    if (!appointmentId) {
+      return { success: false, error: 'Appointment ID is required' };
+    }
+
+    if (!isStaff() && !isAdmin()) {
+      const error = 'Insufficient permissions';
+      setError(error);
+      return { success: false, error };
+    }
+
+    // ✅ FIXED: Proper parameter extraction and validation
+    let rejectionReason, rejectionCategory, suggestReschedule, alternativeDates;
+
+    if (typeof rejectionData === 'string') {
+      rejectionReason = rejectionData;
+      rejectionCategory = 'other';
+      suggestReschedule = false;
+      alternativeDates = null;
+    } else if (rejectionData && typeof rejectionData === 'object') {
+      rejectionReason = rejectionData.reason;
+      rejectionCategory = rejectionData.category || 'staff_decision';
+      suggestReschedule = rejectionData.suggest_reschedule || rejectionData.suggestReschedule || false;
+      alternativeDates = rejectionData.alternative_dates || rejectionData.alternativeDates || null;
+    } else {
+      return { success: false, error: 'Invalid rejection data provided' };
+    }
+
+    if (!rejectionReason?.trim()) {
+      return { success: false, error: 'Rejection reason is required' };
     }
 
     try {
       setIsLoading(true);
+      setError(null);
 
-      const { data, error } = await supabase
-        .rpc('reject_appointment', {
-          p_appointment_id: appointmentId,
-          p_rejection_reason: rejectionReason.trim()
-        });
+      console.log('📤 Calling reject_appointment RPC with:', {
+        p_appointment_id: appointmentId,
+        p_rejection_reason: rejectionReason.trim(),
+        p_rejection_category: rejectionCategory,
+        p_suggest_reschedule: suggestReschedule,
+        p_alternative_dates: alternativeDates
+      });
 
-      if (error) throw new Error(error.message);
+      const { data, error } = await supabase.rpc('reject_appointment', {
+        p_appointment_id: appointmentId,
+        p_rejection_reason: rejectionReason.trim(),
+        p_rejection_category: rejectionCategory,
+        p_suggest_reschedule: suggestReschedule,
+        p_alternative_dates: alternativeDates
+      });
+
+      console.log('📥 RPC Response:', { data, error });
+
+      if (error) {
+        console.error('❌ RPC Error:', error);
+        throw new Error(error.message);
+      }
 
       if (!data?.success) {
+        console.error('❌ RPC returned failure:', data);
         throw new Error(data?.error || 'Failed to reject appointment');
       }
 
@@ -166,7 +221,7 @@ export const useStaffAppointments = () => {
             ? { 
                 ...apt, 
                 status: 'cancelled',
-                cancellation_reason: rejectionReason,
+                cancellation_reason: rejectionReason.trim(),
                 cancelled_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
               }
@@ -183,34 +238,49 @@ export const useStaffAppointments = () => {
 
       return {
         success: true,
-        message: data.message,
-        appointmentId: appointmentId,
-        patientName: data.patient_name
+        data: data.data,
+        message: data.message || 'Appointment rejected successfully',
+        appointmentId: appointmentId
       };
 
     } catch (err) {
+      console.error('❌ rejectAppointment error:', err);
       const errorMessage = err.message || 'Failed to reject appointment';
       setError(errorMessage);
       return { success: false, error: errorMessage };
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isStaff, isAdmin]);
 
-  // Complete appointment
-  const completeAppointment = useCallback(async (appointmentId, completionNotes = '') => {
+  // Enhanced complete with comprehensive completion data
+  const completeAppointment = useCallback(async (appointmentId, completionData = {}) => {
     if (!appointmentId) {
-      return { success: false, error: 'Appointment ID required' };
+      return { success: false, error: 'Appointment ID is required' };
+    }
+
+    if (!isStaff() && !isAdmin()) {
+      const error = 'Insufficient permissions';
+      setError(error);
+      return { success: false, error };
     }
 
     try {
       setIsLoading(true);
+      setError(null);
 
-      const { data, error } = await supabase
-        .rpc('complete_appointment', {
-          p_appointment_id: appointmentId,
-          p_completion_notes: completionNotes
-        });
+      // Handle both string and object completion data
+      const completionNotes = typeof completionData === 'string' 
+        ? completionData 
+        : completionData.notes || '';
+
+      const { data, error } = await supabase.rpc('complete_appointment', {
+        p_appointment_id: appointmentId,
+        p_completion_notes: completionNotes,
+        p_follow_up_required: completionData.follow_up_required || false,
+        p_follow_up_notes: completionData.follow_up_notes || '',
+        p_services_completed: completionData.services_completed || []
+      });
 
       if (error) throw new Error(error.message);
 
@@ -241,7 +311,8 @@ export const useStaffAppointments = () => {
 
       return {
         success: true,
-        message: data.message,
+        data: data.data,
+        message: data.message || 'Appointment completed successfully',
         appointmentId: appointmentId
       };
 
@@ -252,14 +323,14 @@ export const useStaffAppointments = () => {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isStaff, isAdmin]);
 
   // Auto-fetch on mount
   useEffect(() => {
-    if (isStaff()) {
+    if (isStaff() || isAdmin()) {
       fetchAppointments();
     }
-  }, [isStaff, fetchAppointments]);
+  }, [isStaff, isAdmin, fetchAppointments]);
 
   return {
     // Data
@@ -269,10 +340,10 @@ export const useStaffAppointments = () => {
     stats,
 
     // Actions
-    fetchAppointments,    // Returns: { success, appointments, totalCount, pendingCount }
-    approveAppointment,   // Returns: { success, message, appointmentId, patientName }
-    rejectAppointment,    // Returns: { success, message, appointmentId, patientName }
-    completeAppointment,  // Returns: { success, message, appointmentId }
+    fetchAppointments,
+    approveAppointment,
+    rejectAppointment,
+    completeAppointment,
 
     // Computed
     hasAppointments: appointments.length > 0,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar,
@@ -6,7 +6,6 @@ import {
   User,
   Phone,
   Mail,
-  MapPin,
   FileText,
   AlertCircle,
   Check,
@@ -16,14 +15,16 @@ import {
   Search,
   Loader2,
   Send,
-  Building2,
   UserCheck,
   Activity,
 } from "lucide-react";
+
+// ✅ FIXED: Import correct validated hooks
 import { useStaffAppointments } from "@/core/hooks/useStaffAppointment";
+import { useAppointmentRealtime } from "@/core/hooks/useAppointmentRealtime";
 
 const ManageAppointments = () => {
-  // Custom Hook Integration
+  // ✅ Hook integration
   const {
     appointments,
     isLoading,
@@ -36,228 +37,270 @@ const ManageAppointments = () => {
     hasAppointments,
   } = useStaffAppointments();
 
-  // State Management
+  // ✅ Real-time updates
+  const {} = useAppointmentRealtime({
+    enableAppointments: true,
+    enableNotifications: false,
+    onAppointmentUpdate: useCallback(
+      (update) => {
+        console.log("Real-time appointment update:", update);
+        fetchAppointments({ refresh: true });
+      },
+      [fetchAppointments]
+    ),
+  });
+
+  // ✅ FIXED: Better state management
+  const [filters, setFilters] = useState({
+    status: "all",
+    search: "",
+    date: "all",
+  });
+
   const [selectedAppointment, setSelectedAppointment] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [dateFilter, setDateFilter] = useState("all");
-  const [showConditionModal, setShowConditionModal] = useState(false);
-  const [processingAction, setProcessingAction] = useState(false);
-  const [actionError, setActionError] = useState(null);
+  const [modals, setModals] = useState({
+    details: false,
+    condition: false,
+  });
+
+  const [actionState, setActionState] = useState({
+    processing: false,
+    error: null,
+    type: null,
+    appointmentId: null,
+  });
 
   const [conditionReport, setConditionReport] = useState({
     appointmentId: "",
     conditions: "",
-    symptoms: "",
-    reportType: "completion", // 'completion' or 'cancellation'
+    followUp: "",
+    type: "completion",
   });
 
-  // Handle appointment approval
-  const handleApproveAppointment = async (appointmentId) => {
-    setProcessingAction(true);
-    setActionError(null);
+  // ✅ FIXED: Enhanced action handler with better error handling
+  const handleAppointmentAction = useCallback(
+    async (appointmentId, actionType, data = null) => {
+      console.log(`🔄 Starting ${actionType} for appointment:`, appointmentId);
 
-    try {
-      const result = await approveAppointment(
+      setActionState({
+        processing: true,
+        error: null,
+        type: actionType,
         appointmentId,
-        "Approved by staff"
-      );
+      });
 
-      if (result.success) {
-        console.log(`Appointment approved: ${result.message}`);
-        // Optional: Show success toast
-      } else {
-        throw new Error(result.error || "Failed to approve appointment");
+      try {
+        let result;
+
+        switch (actionType) {
+          case "approve":
+            console.log("📋 Calling approveAppointment...");
+            result = await approveAppointment(
+              appointmentId,
+              data?.notes || "Approved by staff"
+            );
+            break;
+
+          case "reject":
+            // ✅ Proper reject case
+            const rejectionPayload = {
+              reason: data.reason.trim(),
+              // ⚠️ must match your enum: doctor_unavailable, overbooked, patient_request, system_error, other
+              category: data.category || "other",
+              suggest_reschedule: data.suggestReschedule || false,
+              alternative_dates: data.alternativeDates || null,
+            };
+
+            console.log("📤 Rejection payload:", rejectionPayload);
+            result = await rejectAppointment(appointmentId, rejectionPayload);
+            break;
+
+          case "complete":
+            console.log("✅ Calling completeAppointment...");
+            if (!data?.notes?.trim()) {
+              throw new Error("Treatment summary is required");
+            }
+
+            const completionPayload = {
+              notes: data.notes.trim(),
+              follow_up_required: Boolean(data.followUp?.trim()),
+              follow_up_notes: data.followUp || "",
+              services_completed: data.services || [],
+            };
+
+            result = await completeAppointment(
+              appointmentId,
+              completionPayload
+            );
+            break;
+
+          default:
+            throw new Error("Invalid action type");
+        }
+
+        console.log(`✅ ${actionType} result:`, result);
+
+        if (!result.success) {
+          throw new Error(result.error || `${actionType} failed`);
+        }
+
+        // ✅ SUCCESS: Reset state and close modals
+        setConditionReport({
+          appointmentId: "",
+          conditions: "",
+          followUp: "",
+          type: "completion",
+        });
+        setModals({ details: false, condition: false });
+        setActionState({
+          processing: false,
+          error: null,
+          type: null,
+          appointmentId: null,
+        });
+
+        return result;
+      } catch (err) {
+        console.error(`❌ ${actionType} error:`, err);
+        const errorMessage =
+          err.message || `${actionType} failed. Please try again.`;
+
+        setActionState({
+          processing: false,
+          error: errorMessage,
+          type: null,
+          appointmentId: null,
+        });
+
+        throw err;
       }
-    } catch (err) {
-      setActionError(err.message);
-      console.error("Error approving appointment:", err);
-    } finally {
-      setProcessingAction(false);
-    }
-  };
+    },
+    [approveAppointment, rejectAppointment, completeAppointment]
+  );
 
-  // Handle appointment rejection with condition report
-  const handleRejectAppointment = async () => {
-    if (!conditionReport.conditions.trim()) {
-      setActionError("Rejection reason is required");
-      return;
-    }
-
-    setProcessingAction(true);
-    setActionError(null);
-
-    try {
-      const result = await rejectAppointment(
-        conditionReport.appointmentId,
-        conditionReport.conditions.trim()
-      );
-
-      if (result.success) {
-        console.log(`Appointment rejected: ${result.message}`);
-        setShowConditionModal(false);
-        resetConditionReport();
-        // Optional: Show success toast
-      } else {
-        throw new Error(result.error || "Failed to reject appointment");
+  // ✅ FIXED: Quick approve handler
+  const quickApprove = useCallback(
+    async (appointmentId) => {
+      try {
+        await handleAppointmentAction(appointmentId, "approve");
+      } catch (err) {
+        console.error("Quick approve failed:", err);
       }
-    } catch (err) {
-      setActionError(err.message);
-      console.error("Error rejecting appointment:", err);
-    } finally {
-      setProcessingAction(false);
-    }
-  };
+    },
+    [handleAppointmentAction]
+  );
 
-  // Handle appointment completion with report
-  const handleCompleteAppointment = async () => {
-    if (!conditionReport.conditions.trim()) {
-      setActionError("Treatment summary is required");
-      return;
-    }
-
-    setProcessingAction(true);
-    setActionError(null);
-
-    try {
-      const completionNotes = `${conditionReport.conditions}${
-        conditionReport.symptoms
-          ? `\n\nFollow-up: ${conditionReport.symptoms}`
-          : ""
-      }`;
-
-      const result = await completeAppointment(
-        conditionReport.appointmentId,
-        completionNotes
-      );
-
-      if (result.success) {
-        console.log(`Appointment completed: ${result.message}`);
-        setShowConditionModal(false);
-        resetConditionReport();
-        // Optional: Show success toast
-      } else {
-        throw new Error(result.error || "Failed to complete appointment");
-      }
-    } catch (err) {
-      setActionError(err.message);
-      console.error("Error completing appointment:", err);
-    } finally {
-      setProcessingAction(false);
-    }
-  };
-
-  // Reset condition report modal
-  const resetConditionReport = () => {
-    setConditionReport({
-      appointmentId: "",
-      conditions: "",
-      symptoms: "",
-      reportType: "completion",
+  // ✅ FIXED: Condition modal handler
+  const openConditionModal = useCallback((appointment, type) => {
+    console.log("🔄 Opening condition modal:", {
+      appointmentId: appointment.id,
+      type,
     });
-  };
 
-  // Open condition report modal
-  const openConditionModal = (appointment, type) => {
     setConditionReport({
       appointmentId: appointment.id,
       conditions: "",
-      symptoms: "",
-      reportType: type,
+      followUp: "",
+      type,
     });
-    setActionError(null);
-    setShowConditionModal(true);
-  };
+    setActionState({
+      processing: false,
+      error: null,
+      type: null,
+      appointmentId: null,
+    });
+    setModals((prev) => ({ ...prev, condition: true }));
+  }, []);
 
-  // Status badge component with enhanced styling
-  const StatusBadge = ({ status }) => {
-    const statusConfig = {
-      pending: {
-        color:
-          "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 border border-yellow-200 dark:border-yellow-800",
-        label: "Pending",
-        icon: Clock,
-      },
-      confirmed: {
-        color:
-          "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200 dark:border-blue-800",
-        label: "Confirmed",
-        icon: UserCheck,
-      },
-      completed: {
-        color:
-          "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 border border-green-200 dark:border-green-800",
-        label: "Completed",
-        icon: Check,
-      },
-      cancelled: {
-        color:
-          "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300 border border-red-200 dark:border-red-800",
-        label: "Cancelled",
-        icon: X,
-      },
-      no_show: {
-        color:
-          "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300 border border-gray-200 dark:border-gray-800",
-        label: "No Show",
-        icon: AlertCircle,
-      },
-    };
+  // ✅ FIXED: Submit condition report with validation
+  // In your submitConditionReport function, add this logging:
+  const submitConditionReport = useCallback(async () => {
+    console.log("📋 Submitting condition report:", conditionReport);
 
-    const config = statusConfig[status];
-    const Icon = config?.icon || Activity;
+    const { appointmentId, conditions, followUp, type } = conditionReport;
 
-    return (
-      <span
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${config?.color}`}
-      >
-        <Icon className="w-3 h-3" />
-        {config?.label || status}
-      </span>
-    );
-  };
+    if (!conditions.trim()) {
+      const errorMsg =
+        type === "completion"
+          ? "Treatment summary is required"
+          : "Rejection reason is required";
+      setActionState((prev) => ({ ...prev, error: errorMsg }));
+      return;
+    }
 
-  // Enhanced filtering logic
-  const filteredAppointments = appointments.filter((appointment) => {
-    const matchesStatus =
-      filterStatus === "all" || appointment.status === filterStatus;
+    try {
+      if (type === "completion") {
+        await handleAppointmentAction(appointmentId, "complete", {
+          notes: conditions,
+          followUp: followUp,
+        });
+      } else if (type === "cancellation") {
+        // ✅ ADD: Better debugging for rejection
+        console.log("🚫 About to reject with payload:", {
+          appointmentId,
+          reason: conditions,
+          category: "staff_decision",
+        });
 
-    const searchLower = searchTerm.toLowerCase();
-    const patientName = `${appointment.patient?.name || ""}`.toLowerCase();
-    const doctorName = `${appointment.doctor?.name || ""}`.toLowerCase();
-    const patientEmail = `${appointment.patient?.email || ""}`.toLowerCase();
+        const result = await handleAppointmentAction(appointmentId, "reject", {
+          reason: conditions,
+          category: "other", // ✅ CHANGED: Use valid enum value
+          suggestReschedule: false,
+        });
 
-    const matchesSearch =
-      searchTerm === "" ||
-      patientName.includes(searchLower) ||
-      doctorName.includes(searchLower) ||
-      patientEmail.includes(searchLower) ||
-      (appointment.services || []).some((service) =>
-        service.name.toLowerCase().includes(searchLower)
-      );
+        console.log("🚫 Rejection result:", result);
+      }
+    } catch (err) {
+      console.error("Submit condition report failed:", err);
+      console.error("Full error details:", {
+        message: err.message,
+        stack: err.stack,
+        conditionReport,
+      });
+    }
+  }, [conditionReport, handleAppointmentAction]);
 
-    const appointmentDate = new Date(appointment.appointment_date);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+  // ✅ Memoized filtered appointments
+  const filteredAppointments = React.useMemo(() => {
+    return appointments.filter((appointment) => {
+      const matchesStatus =
+        filters.status === "all" || appointment.status === filters.status;
+      const matchesSearch =
+        !filters.search ||
+        [
+          appointment.patient?.name,
+          appointment.doctor?.name,
+          appointment.patient?.email,
+        ].some((field) =>
+          field?.toLowerCase().includes(filters.search.toLowerCase())
+        );
 
-    const matchesDate =
-      dateFilter === "all" ||
-      (dateFilter === "today" &&
-        appointmentDate.toDateString() === today.toDateString()) ||
-      (dateFilter === "upcoming" && appointmentDate > today) ||
-      (dateFilter === "past" && appointmentDate < today);
+      const appointmentDate = new Date(appointment.appointment_date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-    return matchesStatus && matchesSearch && matchesDate;
-  });
+      const matchesDate =
+        filters.date === "all" ||
+        (filters.date === "today" &&
+          appointmentDate.toDateString() === today.toDateString()) ||
+        (filters.date === "upcoming" && appointmentDate > today) ||
+        (filters.date === "past" && appointmentDate < today);
 
-  // Enhanced date and time formatting
-  const formatDateTime = (date, time) => {
+      return matchesStatus && matchesSearch && matchesDate;
+    });
+  }, [appointments, filters]);
+
+  // ✅ Filter update handler
+  const updateFilter = useCallback((key, value) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  // ✅ Format date/time
+  const formatDateTime = useCallback((date, time) => {
     const dateObj = new Date(`${date}T${time}`);
     return {
       date: dateObj.toLocaleDateString("en-US", {
         weekday: "short",
-        year: "numeric",
         month: "short",
         day: "numeric",
       }),
@@ -269,25 +312,70 @@ const ManageAppointments = () => {
       isToday: dateObj.toDateString() === new Date().toDateString(),
       isPast: dateObj < new Date(),
     };
-  };
+  }, []);
+
+  // ✅ Status Badge Component
+  const StatusBadge = React.memo(({ status }) => {
+    const configs = {
+      pending: {
+        color: "bg-yellow-100 text-yellow-800 border-yellow-200",
+        icon: Clock,
+        label: "Pending",
+      },
+      confirmed: {
+        color: "bg-blue-100 text-blue-800 border-blue-200",
+        icon: UserCheck,
+        label: "Confirmed",
+      },
+      completed: {
+        color: "bg-green-100 text-green-800 border-green-200",
+        icon: Check,
+        label: "Completed",
+      },
+      cancelled: {
+        color: "bg-red-100 text-red-800 border-red-200",
+        icon: X,
+        label: "Cancelled",
+      },
+      no_show: {
+        color: "bg-gray-100 text-gray-800 border-gray-200",
+        icon: AlertCircle,
+        label: "No Show",
+      },
+    };
+
+    const config = configs[status] || configs.pending;
+    const Icon = config.icon;
+
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${config.color}`}
+      >
+        <Icon className="w-3 h-3" />
+        {config.label}
+      </span>
+    );
+  });
+
+  // Auto-fetch on mount
+  useEffect(() => {
+    fetchAppointments();
+  }, [fetchAppointments]);
 
   // Loading state
-  if (isLoading) {
+  if (isLoading && appointments.length === 0) {
     return (
       <div className="p-6">
-        <div className="animate-pulse space-y-6">
-          <div className="flex justify-between items-center">
-            <div className="h-8 bg-muted rounded-lg w-64"></div>
-            <div className="h-6 bg-muted rounded w-32"></div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-10 bg-muted rounded-lg"></div>
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 rounded w-64"></div>
+          <div className="grid grid-cols-4 gap-4">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="h-10 bg-gray-200 rounded"></div>
             ))}
           </div>
           <div className="space-y-4">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="h-32 bg-muted rounded-xl"></div>
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className="h-32 bg-gray-200 rounded"></div>
             ))}
           </div>
         </div>
@@ -296,83 +384,97 @@ const ManageAppointments = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Enhanced Header with Stats */}
+    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-foreground mb-1">
+          <h1 className="text-3xl font-bold text-gray-900">
             Manage Appointments
           </h1>
-          <p className="text-muted-foreground">
-            Healthcare Management Dashboard
-          </p>
+          <p className="text-gray-600 mt-1">Healthcare Management Dashboard</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-lg">
-            <span className="font-medium">{stats.total}</span> total
+        <div className="flex items-center gap-4 text-sm">
+          <div className="bg-gray-50 border px-3 py-2 rounded-lg">
+            <span className="font-medium text-gray-900">{stats.total}</span>
+            <span className="text-gray-600 ml-1">total</span>
           </div>
-          <div className="text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-lg">
-            <span className="font-medium">{stats.pending}</span> pending
+          <div className="bg-yellow-50 border-yellow-200 border px-3 py-2 rounded-lg">
+            <span className="font-medium text-yellow-800">{stats.pending}</span>
+            <span className="text-yellow-600 ml-1">pending</span>
           </div>
-          <div className="text-sm text-muted-foreground bg-muted/30 px-3 py-2 rounded-lg">
-            <span className="font-medium">{filteredAppointments.length}</span>{" "}
-            showing
+          <div className="bg-blue-50 border-blue-200 border px-3 py-2 rounded-lg">
+            <span className="font-medium text-blue-800">
+              {filteredAppointments.length}
+            </span>
+            <span className="text-blue-600 ml-1">showing</span>
           </div>
         </div>
       </div>
 
-      {/* Error Messages */}
-      {(error || actionError) && (
+      {/* Error Display */}
+      {(error || actionState.error) && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-destructive/10 border border-destructive/20 rounded-xl p-4 flex items-center gap-3"
+          className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3"
         >
-          <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0" />
+          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="text-sm text-destructive">{error || actionError}</p>
+            <p className="text-sm text-red-700 font-medium">
+              {error || actionState.error}
+            </p>
+            {actionState.appointmentId && (
+              <p className="text-xs text-red-600 mt-1">
+                Appointment ID: {actionState.appointmentId.slice(0, 8)}
+              </p>
+            )}
           </div>
+          <button
+            onClick={() => {
+              setError(null);
+              setActionState((prev) => ({ ...prev, error: null }));
+            }}
+            className="text-red-400 hover:text-red-600"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </motion.div>
       )}
 
-      {/* Enhanced Filters */}
+      {/* Filters */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <input
             type="text"
-            placeholder="Search patients, doctors, services..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none transition-colors"
+            placeholder="Search patients, doctors..."
+            value={filters.search}
+            onChange={(e) => updateFilter("search", e.target.value)}
+            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
           />
         </div>
 
-        {/* Status Filter */}
         <div className="relative">
-          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+          <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 border-2 border-border rounded-xl bg-background text-foreground focus:border-primary focus:outline-none appearance-none"
+            value={filters.status}
+            onChange={(e) => updateFilter("status", e.target.value)}
+            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white appearance-none"
           >
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
             <option value="confirmed">Confirmed</option>
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
-            <option value="no_show">No Show</option>
           </select>
         </div>
 
-        {/* Date Filter */}
         <div className="relative">
-          <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+          <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <select
-            value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 border-2 border-border rounded-xl bg-background text-foreground focus:border-primary focus:outline-none appearance-none"
+            value={filters.date}
+            onChange={(e) => updateFilter("date", e.target.value)}
+            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white appearance-none"
           >
             <option value="all">All Dates</option>
             <option value="today">Today</option>
@@ -381,68 +483,55 @@ const ManageAppointments = () => {
           </select>
         </div>
 
-        {/* Quick Actions */}
-        <div className="flex items-center justify-center">
-          <button
-            onClick={() => fetchAppointments()}
-            disabled={isLoading}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <>
-                <Activity className="w-4 h-4" />
-                Refresh
-              </>
-            )}
-          </button>
-        </div>
+        <button
+          onClick={() => fetchAppointments({ refresh: true })}
+          disabled={isLoading}
+          className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Activity className="w-4 h-4" />
+          )}
+          Refresh
+        </button>
       </div>
 
       {/* Appointments List */}
       <div className="space-y-4">
         {!hasAppointments ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-center py-16"
-          >
-            <AlertCircle className="mx-auto h-16 w-16 text-muted-foreground mb-4" />
-            <h3 className="text-xl font-semibold text-foreground mb-2">
+          <div className="text-center py-16 bg-gray-50 rounded-lg">
+            <AlertCircle className="mx-auto h-16 w-16 text-gray-400 mb-4" />
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
               No appointments found
             </h3>
-            <p className="text-muted-foreground mb-6">
-              {searchTerm || filterStatus !== "all" || dateFilter !== "all"
+            <p className="text-gray-600 mb-6">
+              {Object.values(filters).some((v) => v !== "all" && v !== "")
                 ? "Try adjusting your filters to see more results."
                 : "No appointments have been scheduled yet."}
             </p>
-            {(searchTerm || filterStatus !== "all" || dateFilter !== "all") && (
+            {Object.values(filters).some((v) => v !== "all" && v !== "") && (
               <button
-                onClick={() => {
-                  setSearchTerm("");
-                  setFilterStatus("all");
-                  setDateFilter("all");
-                }}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                onClick={() =>
+                  setFilters({ status: "all", search: "", date: "all" })
+                }
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
                 Clear Filters
               </button>
             )}
-          </motion.div>
+          </div>
         ) : (
           <AnimatePresence>
             {filteredAppointments.map((appointment, index) => {
-              const { date, time, isToday, isPast } = formatDateTime(
+              const { date, time, isToday } = formatDateTime(
                 appointment.appointment_date,
                 appointment.appointment_time
               );
 
-              // Get service information
-              const primaryService = appointment.services?.[0];
-              const serviceName =
-                primaryService?.name || "General Consultation";
-              const serviceDuration = primaryService?.duration_minutes || 30;
+              const isProcessingThisAppointment =
+                actionState.processing &&
+                actionState.appointmentId === appointment.id;
 
               return (
                 <motion.div
@@ -450,80 +539,68 @@ const ManageAppointments = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
-                  transition={{ delay: index * 0.1 }}
-                  className={`bg-card border-2 border-border rounded-xl p-6 hover:shadow-lg transition-all duration-200 ${
-                    isToday ? "border-primary/50 bg-primary/5" : ""
-                  } ${
-                    isPast && appointment.status === "pending"
-                      ? "border-yellow-300 bg-yellow-50 dark:bg-yellow-900/10"
-                      : ""
-                  }`}
+                  transition={{ delay: index * 0.05 }}
+                  className={`bg-white border rounded-lg p-6 hover:shadow-md transition-all duration-200 ${
+                    isToday ? "border-blue-300 bg-blue-50" : "border-gray-200"
+                  } ${isProcessingThisAppointment ? "opacity-75" : ""}`}
                 >
                   <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-                    {/* Main Info */}
+                    {/* Appointment Info */}
                     <div className="flex-1 space-y-4">
                       <div className="flex flex-wrap items-center gap-3">
-                        <h3 className="text-xl font-bold text-card-foreground">
+                        <h3 className="text-xl font-semibold text-gray-900">
                           {appointment.patient?.name || "Unknown Patient"}
                         </h3>
                         <StatusBadge status={appointment.status} />
                         {isToday && (
-                          <span className="px-2 py-1 bg-primary/20 text-primary text-xs font-medium rounded-full">
+                          <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
                             Today
+                          </span>
+                        )}
+                        {isProcessingThisAppointment && (
+                          <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-full flex items-center gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            Processing...
                           </span>
                         )}
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                        <div className="flex items-center text-muted-foreground">
-                          <Calendar className="w-4 h-4 mr-2 flex-shrink-0" />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-gray-600">
+                        <div className="flex items-center">
+                          <Calendar className="w-4 h-4 mr-2 text-gray-400" />
                           <span>{date}</span>
                         </div>
-                        <div className="flex items-center text-muted-foreground">
-                          <Clock className="w-4 h-4 mr-2 flex-shrink-0" />
-                          <span>
-                            {time} ({serviceDuration}m)
-                          </span>
+                        <div className="flex items-center">
+                          <Clock className="w-4 h-4 mr-2 text-gray-400" />
+                          <span>{time}</span>
                         </div>
-                        <div className="flex items-center text-muted-foreground">
-                          <User className="w-4 h-4 mr-2 flex-shrink-0" />
+                        <div className="flex items-center">
+                          <User className="w-4 h-4 mr-2 text-gray-400" />
                           <span>
                             {appointment.doctor?.name || "Unassigned"}
                           </span>
                         </div>
-                        <div className="flex items-center text-muted-foreground">
-                          <FileText className="w-4 h-4 mr-2 flex-shrink-0" />
-                          <span>{serviceName}</span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                        <div className="flex items-center text-muted-foreground">
-                          <Phone className="w-4 h-4 mr-2 flex-shrink-0" />
+                        <div className="flex items-center">
+                          <Phone className="w-4 h-4 mr-2 text-gray-400" />
                           <span>{appointment.patient?.phone || "N/A"}</span>
-                        </div>
-                        <div className="flex items-center text-muted-foreground">
-                          <Mail className="w-4 h-4 mr-2 flex-shrink-0" />
-                          <span>{appointment.patient?.email || "N/A"}</span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Actions */}
+                    {/* Action Buttons */}
                     <div className="flex flex-wrap items-center gap-2">
                       {appointment.status === "pending" && (
                         <>
                           <button
-                            onClick={() =>
-                              handleApproveAppointment(appointment.id)
-                            }
-                            disabled={processingAction}
-                            className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50 transition-colors disabled:opacity-50"
+                            onClick={() => quickApprove(appointment.id)}
+                            disabled={isProcessingThisAppointment}
+                            className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg bg-green-100 text-green-800 hover:bg-green-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                           >
-                            {processingAction ? (
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            {isProcessingThisAppointment &&
+                            actionState.type === "approve" ? (
+                              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
                             ) : (
-                              <Check className="w-4 h-4 mr-2" />
+                              <Check className="w-4 h-4 mr-1" />
                             )}
                             Confirm
                           </button>
@@ -531,11 +608,11 @@ const ManageAppointments = () => {
                             onClick={() =>
                               openConditionModal(appointment, "cancellation")
                             }
-                            disabled={processingAction}
-                            className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-300 dark:hover:bg-red-900/50 transition-colors disabled:opacity-50"
+                            disabled={isProcessingThisAppointment}
+                            className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg bg-red-100 text-red-800 hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                           >
-                            <X className="w-4 h-4 mr-2" />
-                            Cancel & Report
+                            <X className="w-4 h-4 mr-1" />
+                            Cancel
                           </button>
                         </>
                       )}
@@ -545,35 +622,23 @@ const ManageAppointments = () => {
                           onClick={() =>
                             openConditionModal(appointment, "completion")
                           }
-                          disabled={processingAction}
-                          className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:hover:bg-blue-900/50 transition-colors disabled:opacity-50"
+                          disabled={isProcessingThisAppointment}
+                          className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                          <Check className="w-4 h-4 mr-2" />
-                          Complete & Report
-                        </button>
-                      )}
-
-                      {appointment.status === "completed" && (
-                        <button
-                          onClick={() =>
-                            openConditionModal(appointment, "completion")
-                          }
-                          className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-300 dark:hover:bg-green-900/50 transition-colors"
-                        >
-                          <Send className="w-4 h-4 mr-2" />
-                          View Report
+                          <Check className="w-4 h-4 mr-1" />
+                          Complete
                         </button>
                       )}
 
                       <button
                         onClick={() => {
                           setSelectedAppointment(appointment);
-                          setIsModalOpen(true);
+                          setModals((prev) => ({ ...prev, details: true }));
                         }}
-                        className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                        className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg bg-gray-100 text-gray-800 hover:bg-gray-200 transition-colors"
                       >
-                        <Eye className="w-4 h-4 mr-2" />
-                        View Details
+                        <Eye className="w-4 h-4 mr-1" />
+                        Details
                       </button>
                     </div>
                   </div>
@@ -585,51 +650,49 @@ const ManageAppointments = () => {
       </div>
 
       {/* Condition Report Modal */}
-      {showConditionModal && (
+      {modals.condition && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-card border-2 border-border rounded-xl w-full max-w-lg"
+            className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-xl"
           >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-border">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <div>
-                <h2 className="text-xl font-bold text-card-foreground">
-                  {conditionReport.reportType === "completion"
-                    ? "Post-Treatment Report"
-                    : "Cancellation Report"}
+                <h2 className="text-xl font-bold text-gray-900">
+                  {conditionReport.type === "completion"
+                    ? "Complete Appointment"
+                    : "Cancel Appointment"}
                 </h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {conditionReport.reportType === "completion"
-                    ? "Document treatment summary and follow-up instructions"
-                    : "Provide reason for appointment cancellation"}
+                <p className="text-sm text-gray-600 mt-1">
+                  {conditionReport.type === "completion"
+                    ? "Document treatment and follow-up instructions"
+                    : "Provide reason for cancellation"}
                 </p>
               </div>
               <button
                 onClick={() => {
-                  setShowConditionModal(false);
-                  resetConditionReport();
-                  setActionError(null);
+                  setModals((prev) => ({ ...prev, condition: false }));
+                  setActionState((prev) => ({ ...prev, error: null }));
                 }}
-                className="p-2 hover:bg-muted rounded-full transition-colors"
+                disabled={actionState.processing}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors disabled:opacity-50"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Modal Content */}
-            <div className="p-6 space-y-6">
-              {actionError && (
-                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0" />
-                  <p className="text-sm text-destructive">{actionError}</p>
+            <div className="p-6 space-y-4">
+              {actionState.error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-700">{actionState.error}</p>
                 </div>
               )}
 
               <div>
-                <label className="block text-sm font-semibold text-card-foreground mb-2">
-                  {conditionReport.reportType === "completion"
+                <label className="block text-sm font-semibold text-gray-900 mb-2">
+                  {conditionReport.type === "completion"
                     ? "Treatment Summary *"
                     : "Cancellation Reason *"}
                 </label>
@@ -642,65 +705,60 @@ const ManageAppointments = () => {
                     }))
                   }
                   placeholder={
-                    conditionReport.reportType === "completion"
-                      ? "Describe the treatment provided, procedures performed, medications prescribed, patient response, etc."
-                      : "Explain the reason for cancellation, any scheduling conflicts, patient requests, etc."
-                  }
-                  rows={5}
-                  className="w-full px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none resize-none transition-colors"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-card-foreground mb-2">
-                  {conditionReport.reportType === "completion"
-                    ? "Follow-up Instructions"
-                    : "Next Steps"}
-                </label>
-                <textarea
-                  value={conditionReport.symptoms}
-                  onChange={(e) =>
-                    setConditionReport((prev) => ({
-                      ...prev,
-                      symptoms: e.target.value,
-                    }))
-                  }
-                  placeholder={
-                    conditionReport.reportType === "completion"
-                      ? "Any follow-up care instructions, next appointment recommendations, care tips, etc."
-                      : "Rescheduling options, alternative solutions, refund information, etc."
+                    conditionReport.type === "completion"
+                      ? "Describe treatment provided, patient response, medications prescribed, etc."
+                      : "Explain the reason for cancellation, scheduling conflicts, etc."
                   }
                   rows={4}
-                  className="w-full px-4 py-3 border-2 border-border rounded-xl bg-background text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none resize-none transition-colors"
+                  className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  disabled={actionState.processing}
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  {conditionReport.conditions.length}/1000 characters
+                </p>
               </div>
+
+              {conditionReport.type === "completion" && (
+                <div>
+                  <label className="block text-sm font-semibold text-gray-900 mb-2">
+                    Follow-up Instructions
+                  </label>
+                  <textarea
+                    value={conditionReport.followUp}
+                    onChange={(e) =>
+                      setConditionReport((prev) => ({
+                        ...prev,
+                        followUp: e.target.value,
+                      }))
+                    }
+                    placeholder="Any follow-up care instructions, next appointment recommendations, etc."
+                    rows={3}
+                    className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                    disabled={actionState.processing}
+                  />
+                </div>
+              )}
             </div>
 
-            {/* Modal Actions */}
-            <div className="flex justify-end gap-3 p-6 border-t border-border">
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
               <button
                 onClick={() => {
-                  setShowConditionModal(false);
-                  resetConditionReport();
-                  setActionError(null);
+                  setModals((prev) => ({ ...prev, condition: false }));
+                  setActionState((prev) => ({ ...prev, error: null }));
                 }}
-                disabled={processingAction}
-                className="px-6 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                disabled={actionState.processing}
+                className="px-6 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 disabled:opacity-50 transition-colors"
               >
                 Cancel
               </button>
               <button
-                onClick={
-                  conditionReport.reportType === "completion"
-                    ? handleCompleteAppointment
-                    : handleRejectAppointment
-                }
+                onClick={submitConditionReport}
                 disabled={
-                  !conditionReport.conditions.trim() || processingAction
+                  !conditionReport.conditions.trim() || actionState.processing
                 }
-                className="inline-flex items-center gap-2 px-6 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="inline-flex items-center gap-2 px-6 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {processingAction ? (
+                {actionState.processing ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Processing...
@@ -708,7 +766,7 @@ const ManageAppointments = () => {
                 ) : (
                   <>
                     <Send className="w-4 h-4" />
-                    {conditionReport.reportType === "completion"
+                    {conditionReport.type === "completion"
                       ? "Complete"
                       : "Cancel"}{" "}
                     Appointment
@@ -721,245 +779,161 @@ const ManageAppointments = () => {
       )}
 
       {/* Appointment Details Modal */}
-      {isModalOpen && selectedAppointment && (
+      {modals.details && selectedAppointment && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-card border-2 border-border rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-xl"
           >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-border">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <div>
-                <h2 className="text-2xl font-bold text-card-foreground">
+                <h2 className="text-2xl font-bold text-gray-900">
                   Appointment Details
                 </h2>
-                <p className="text-sm text-muted-foreground mt-1">
-                  #{selectedAppointment.id.slice(0, 8).toUpperCase()}
+                <p className="text-sm text-gray-600 mt-1">
+                  ID: {selectedAppointment.id.slice(0, 8).toUpperCase()}
                 </p>
               </div>
               <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-2 hover:bg-muted rounded-full transition-colors"
+                onClick={() =>
+                  setModals((prev) => ({ ...prev, details: false }))
+                }
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
 
-            {/* Modal Content */}
             <div className="p-6 space-y-6">
-              {/* Status and Basic Info */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-xl font-semibold text-card-foreground">
-                      {selectedAppointment.patient?.name || "Unknown Patient"}
-                    </h3>
-                    <StatusBadge status={selectedAppointment.status} />
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Created{" "}
-                    {new Date(
-                      selectedAppointment.created_at || Date.now()
-                    ).toLocaleDateString("en-US", {
-                      weekday: "long",
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
-                  </p>
-                </div>
+              <div className="flex items-center gap-3">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  {selectedAppointment.patient?.name || "Unknown Patient"}
+                </h3>
+                <StatusBadge status={selectedAppointment.status} />
               </div>
 
               <div className="grid gap-6 lg:grid-cols-2">
-                {/* Patient Information */}
-                <div className="bg-muted/30 rounded-xl p-6">
-                  <h4 className="font-bold text-card-foreground mb-4 flex items-center">
-                    <User className="w-5 h-5 mr-2 text-primary" />
+                <div className="bg-gray-50 rounded-xl p-6">
+                  <h4 className="font-bold text-gray-900 mb-4 flex items-center">
+                    <User className="w-5 h-5 mr-2 text-blue-600" />
                     Patient Information
                   </h4>
-                  <div className="space-y-4 text-sm">
-                    <div className="grid grid-cols-1 gap-4">
-                      <div>
-                        <span className="text-muted-foreground font-medium">
-                          Full Name:
-                        </span>
-                        <p className="font-semibold">
-                          {selectedAppointment.patient?.name || "N/A"}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground font-medium">
-                          Email:
-                        </span>
-                        <p className="font-semibold flex items-center">
-                          <Mail className="w-4 h-4 mr-2 text-primary" />
-                          {selectedAppointment.patient?.email || "N/A"}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground font-medium">
-                          Phone:
-                        </span>
-                        <p className="font-semibold flex items-center">
-                          <Phone className="w-4 h-4 mr-2 text-primary" />
-                          {selectedAppointment.patient?.phone || "N/A"}
-                        </p>
-                      </div>
+                  <div className="space-y-3 text-sm">
+                    <div>
+                      <span className="text-gray-600 font-medium">Name:</span>
+                      <p className="font-semibold text-gray-900 mt-1">
+                        {selectedAppointment.patient?.name || "N/A"}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-600 font-medium">Email:</span>
+                      <p className="font-semibold text-gray-900 mt-1 flex items-center">
+                        <Mail className="w-4 h-4 mr-2 text-gray-400" />
+                        {selectedAppointment.patient?.email || "N/A"}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-600 font-medium">Phone:</span>
+                      <p className="font-semibold text-gray-900 mt-1 flex items-center">
+                        <Phone className="w-4 h-4 mr-2 text-gray-400" />
+                        {selectedAppointment.patient?.phone || "N/A"}
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                {/* Doctor Information */}
-                <div className="bg-muted/30 rounded-xl p-6">
-                  <h4 className="font-bold text-card-foreground mb-4 flex items-center">
-                    <UserCheck className="w-5 h-5 mr-2 text-primary" />
-                    Assigned Doctor
+                <div className="bg-gray-50 rounded-xl p-6">
+                  <h4 className="font-bold text-gray-900 mb-4 flex items-center">
+                    <Calendar className="w-5 h-5 mr-2 text-blue-600" />
+                    Appointment Details
                   </h4>
-                  <div className="space-y-4 text-sm">
+                  <div className="space-y-3 text-sm">
                     <div>
-                      <span className="text-muted-foreground font-medium">
-                        Doctor:
+                      <span className="text-gray-600 font-medium">
+                        Date & Time:
                       </span>
-                      <p className="font-semibold">
+                      <div className="mt-1">
+                        <p className="font-semibold text-gray-900">
+                          {
+                            formatDateTime(
+                              selectedAppointment.appointment_date,
+                              selectedAppointment.appointment_time
+                            ).date
+                          }
+                        </p>
+                        <p className="font-semibold text-blue-600">
+                          {
+                            formatDateTime(
+                              selectedAppointment.appointment_date,
+                              selectedAppointment.appointment_time
+                            ).time
+                          }
+                        </p>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-gray-600 font-medium">Doctor:</span>
+                      <p className="font-semibold text-gray-900 mt-1">
                         {selectedAppointment.doctor?.name || "Unassigned"}
                       </p>
                     </div>
-                    {selectedAppointment.doctor?.specialization && (
-                      <div>
-                        <span className="text-muted-foreground font-medium">
-                          Specialization:
-                        </span>
-                        <p className="font-semibold">
-                          {selectedAppointment.doctor.specialization}
-                        </p>
-                      </div>
-                    )}
+                    <div>
+                      <span className="text-gray-600 font-medium">
+                        Services:
+                      </span>
+                      <p className="font-semibold text-gray-900 mt-1">
+                        {selectedAppointment.services
+                          ?.map((s) => s.name)
+                          .join(", ") || "General Consultation"}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Appointment Details */}
-              <div className="bg-muted/30 rounded-xl p-6">
-                <h4 className="font-bold text-card-foreground mb-4 flex items-center">
-                  <Calendar className="w-5 h-5 mr-2 text-primary" />
-                  Appointment Details
-                </h4>
-                <div className="space-y-4 text-sm">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <span className="text-muted-foreground font-medium">
-                        Date & Time:
-                      </span>
-                      <p className="font-semibold">
-                        {
-                          formatDateTime(
-                            selectedAppointment.appointment_date,
-                            selectedAppointment.appointment_time
-                          ).date
-                        }
-                      </p>
-                      <p className="text-primary font-semibold">
-                        {
-                          formatDateTime(
-                            selectedAppointment.appointment_date,
-                            selectedAppointment.appointment_time
-                          ).time
-                        }
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground font-medium">
-                        Duration:
-                      </span>
-                      <p className="font-semibold">
-                        {selectedAppointment.services?.[0]?.duration_minutes ||
-                          30}{" "}
-                        minutes
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground font-medium">
-                        Service Type:
-                      </span>
-                      <p className="font-semibold">
-                        {selectedAppointment.services?.[0]?.name ||
-                          "General Consultation"}
-                      </p>
-                    </div>
-                  </div>
+              {selectedAppointment.notes && (
+                <div className="bg-gray-50 rounded-xl p-6">
+                  <h4 className="font-bold text-gray-900 mb-4 flex items-center">
+                    <FileText className="w-5 h-5 mr-2 text-blue-600" />
+                    Notes
+                  </h4>
+                  <p className="text-sm text-gray-700 leading-relaxed">
+                    {selectedAppointment.notes}
+                  </p>
+                </div>
+              )}
 
-                  {selectedAppointment.notes && (
-                    <div>
-                      <span className="text-muted-foreground font-medium">
-                        Notes:
-                      </span>
-                      <p className="font-semibold mt-1 leading-relaxed">
-                        {selectedAppointment.notes}
-                      </p>
-                    </div>
-                  )}
-
-                  {selectedAppointment.cancellation_reason && (
-                    <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
-                      <span className="text-muted-foreground font-medium">
-                        Cancellation Reason:
-                      </span>
-                      <p className="font-semibold mt-1 text-red-700 dark:text-red-300">
-                        {selectedAppointment.cancellation_reason}
-                      </p>
-                    </div>
+              {selectedAppointment.cancellation_reason && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+                  <h4 className="font-bold text-red-900 mb-4 flex items-center">
+                    <AlertCircle className="w-5 h-5 mr-2 text-red-600" />
+                    Cancellation Details
+                  </h4>
+                  <p className="text-sm text-red-700 leading-relaxed">
+                    {selectedAppointment.cancellation_reason}
+                  </p>
+                  {selectedAppointment.cancelled_at && (
+                    <p className="text-xs text-red-600 mt-2">
+                      Cancelled:{" "}
+                      {new Date(
+                        selectedAppointment.cancelled_at
+                      ).toLocaleString()}
+                    </p>
                   )}
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Modal Actions */}
-            <div className="flex justify-end gap-3 p-6 border-t border-border">
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
               <button
-                onClick={() => setIsModalOpen(false)}
-                className="px-6 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() =>
+                  setModals((prev) => ({ ...prev, details: false }))
+                }
+                className="px-6 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
               >
                 Close
               </button>
-
-              {selectedAppointment.status === "pending" && (
-                <>
-                  <button
-                    onClick={() => {
-                      handleApproveAppointment(selectedAppointment.id);
-                      setIsModalOpen(false);
-                    }}
-                    disabled={processingAction}
-                    className="px-6 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
-                  >
-                    Confirm Appointment
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsModalOpen(false);
-                      openConditionModal(selectedAppointment, "cancellation");
-                    }}
-                    disabled={processingAction}
-                    className="px-6 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-                  >
-                    Cancel & Report
-                  </button>
-                </>
-              )}
-
-              {selectedAppointment.status === "confirmed" && (
-                <button
-                  onClick={() => {
-                    setIsModalOpen(false);
-                    openConditionModal(selectedAppointment, "completion");
-                  }}
-                  disabled={processingAction}
-                  className="px-6 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  Mark Completed & Send Report
-                </button>
-              )}
             </div>
           </motion.div>
         </div>

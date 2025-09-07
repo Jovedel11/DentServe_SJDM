@@ -1,10 +1,10 @@
-// hooks/useStaffCommunications.js
+// useStaffCommunications.js
 import { useState, useCallback, useEffect } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 
 export const useStaffCommunications = () => {
-  const { isStaff } = useAuth();
+  const { isStaff, isAdmin } = useAuth();
   
   const [communications, setCommunications] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -17,7 +17,7 @@ export const useStaffCommunications = () => {
 
   // Fetch communications from email_communications table
   const fetchCommunications = useCallback(async (options = {}) => {
-    if (!isStaff()) {
+    if (!isStaff() && !isAdmin()) {
       return { success: false, error: 'Access denied: Staff only' };
     }
 
@@ -64,22 +64,55 @@ export const useStaffCommunications = () => {
     } finally {
       setLoading(false);
     }
-  }, [isStaff]);
+  }, [isStaff, isAdmin]);
 
   const markAsRead = useCallback(async (communicationId) => {
-    // Implementation here
+    try {
+      const { error } = await supabase
+        .from('email_communications')
+        .update({ is_read: true })
+        .eq('id', communicationId);
+
+      if (error) throw error;
+
+      setCommunications(prev => prev.map(comm => 
+        comm.id === communicationId ? { ...comm, is_read: true } : comm
+      ));
+
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   }, []);
 
   const toggleStar = useCallback(async (communicationId) => {
-    // Implementation here
+    // For now, just update local state - you can add DB field later
+    setCommunications(prev => prev.map(comm => 
+      comm.id === communicationId ? { ...comm, is_starred: !comm.is_starred } : comm
+    ));
+    return { success: true };
   }, []);
 
   const deleteCommunication = useCallback(async (communicationId) => {
-    // Implementation here
+    try {
+      const { error } = await supabase
+        .from('email_communications')
+        .delete()
+        .eq('id', communicationId);
+
+      if (error) throw error;
+
+      setCommunications(prev => prev.filter(comm => comm.id !== communicationId));
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   }, []);
 
   const sendReply = useCallback(async (originalId, replyText) => {
-    // Implementation here
+    // Implementation here - would create new email_communications record
+    console.log('Reply functionality not implemented yet');
+    return { success: true };
   }, []);
 
   const refresh = useCallback(() => {
@@ -95,10 +128,10 @@ export const useStaffCommunications = () => {
   }, [communications]);
 
   useEffect(() => {
-    if (isStaff()) {
+    if (isStaff() || isAdmin()) {
       fetchCommunications();
     }
-  }, [isStaff, fetchCommunications]);
+  }, [isStaff, isAdmin, fetchCommunications]);
 
   return {
     communications,

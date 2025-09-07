@@ -1,350 +1,331 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  Calendar,
-  Clock,
-  MapPin,
-  User,
-  Phone,
-  Mail,
-  Download,
-  Eye,
-  Bell,
-  AlertCircle,
-  CalendarDays,
-  Stethoscope,
-  Building2,
-  ChevronRight,
-  Filter,
-  Search,
-  RefreshCw,
-  CheckCircle2,
-  Timer,
-  Calendar as CalendarIcon,
-  X,
-  XCircle,
-  Info,
-  AlertTriangle,
-} from "lucide-react";
-import CancelAppointmentModal from "../components/cancel-modal";
-import NotificationToast from "@/core/components/notification-toast";
-import { usePatientAppointments } from "@/core/hooks/usePatientAppointment";
-import { useAppointmentRealtime } from "@/core/hooks/useAppointmentRealtime";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "@/auth/context/AuthProvider";
+import { usePatientAppointments } from "@/core/hooks/usePatientAppointment";
+import { useAppointmentCancellation } from "@/core/hooks/useAppointmentCancellation";
+import { useAppointmentRealtime } from "@/core/hooks/useAppointmentRealtime";
+import { supabase } from "@/lib/supabaseClient";
 
 const UpcomingAppointments = () => {
-  // ✅ INTEGRATION: Use real hooks instead of mock data
-  const { user, profile, isPatient, canAccessApp } = useAuth();
+  const { user, profile, isPatient } = useAuth();
 
+  // ✅ FIXED: Use proper hooks for upcoming appointments only
   const {
     appointments,
-    loading,
-    error,
-    activeTab,
-    pagination,
-    fetchAppointments,
-    cancelAppointment,
-    canCancelAppointment,
-    changeTab,
-    refresh,
-    loadMore,
+    loading: appointmentsLoading,
+    error: appointmentsError,
     stats,
-    upcomingAppointments,
-    pastAppointments,
-    isEmpty,
-    hasMore,
+    refresh: refreshAppointments,
     getAppointmentDetails,
-    searchAppointments,
+    cancelAppointment: hookCancelAppointment,
+    canCancelAppointment: hookCheckCanCancel,
   } = usePatientAppointments();
 
-  // ✅ REAL-TIME: Setup real-time updates
+  // ✅ FIXED: Use cancellation hook properly
+  const {
+    loading: cancelLoading,
+    error: cancelError,
+    cancelAppointment: cancellationHookCancel,
+    checkCancellationEligibility,
+  } = useAppointmentCancellation();
+
   const { enableRealtimeUpdates, disableRealtimeUpdates, isConnected } =
     useAppointmentRealtime({
-      onAppointmentUpdate: (update) => {
-        console.log("Real-time appointment update:", update);
-        // Refresh appointments when updates occur
-        refresh();
-      },
-      onAppointmentStatusChange: (statusUpdate) => {
-        console.log("Appointment status changed:", statusUpdate);
-        // Show notification for status changes
-        showToast(
-          "info",
-          "Appointment Updated",
-          `Your appointment status has been changed to ${statusUpdate.newStatus}`
-        );
-        refresh();
-      },
+      onAppointmentUpdate: useCallback(
+        (update) => {
+          console.log("Real-time appointment update:", update);
+          refreshAppointments();
+        },
+        [refreshAppointments]
+      ),
+      onAppointmentStatusChange: useCallback(
+        (statusUpdate) => {
+          console.log("Appointment status changed:", statusUpdate);
+          showToast(`Appointment status changed to ${statusUpdate.newStatus}`);
+          refreshAppointments();
+        },
+        [refreshAppointments]
+      ),
       enableAppointments: true,
       enableNotifications: true,
     });
 
-  // ✅ LOCAL STATE: Keep only UI-specific state
+  // ✅ STATE MANAGEMENT
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState("upcoming"); // Default to upcoming
   const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [ongoingTreatments, setOngoingTreatments] = useState([]);
+  const [treatmentsLoading, setTreatmentsLoading] = useState(false);
+  const [treatmentsError, setTreatmentsError] = useState(null);
   const [cancelModal, setCancelModal] = useState({
     isOpen: false,
     appointment: null,
     canCancel: true,
     reason: "",
+    eligibilityChecked: false,
   });
-  const [toast, setToast] = useState({
-    isVisible: false,
-    type: "success",
-    title: "",
-    message: "",
-  });
+  const [toastMessage, setToastMessage] = useState("");
 
-  // ✅ AUTHENTICATION: Check access
+  // ✅ FIXED: Fetch ongoing treatments with proper error handling
+  const fetchOngoingTreatments = useCallback(async () => {
+    if (!isPatient()) return;
+
+    try {
+      setTreatmentsLoading(true);
+      setTreatmentsError(null);
+
+      const { data, error } = await supabase.rpc("get_ongoing_treatments");
+
+      if (error) {
+        console.error("RPC Error:", error);
+        throw new Error(error.message);
+      }
+
+      if (data?.authenticated === false) {
+        throw new Error("Authentication required");
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || "Failed to fetch treatments");
+      }
+
+      console.log("Ongoing treatments data:", data.data);
+      setOngoingTreatments(data.data?.treatments || []);
+    } catch (err) {
+      console.error("Error fetching ongoing treatments:", err);
+      setTreatmentsError(err.message);
+    } finally {
+      setTreatmentsLoading(false);
+    }
+  }, [isPatient]);
+
+  // ✅ INITIALIZATION
   useEffect(() => {
-    if (!user || !canAccessApp || !isPatient()) {
+    if (!user || !isPatient()) {
       console.warn("Access denied: Not a patient or not authenticated");
       return;
     }
 
-    // Enable real-time updates
+    fetchOngoingTreatments();
     enableRealtimeUpdates();
 
-    return () => {
-      disableRealtimeUpdates();
-    };
+    return () => disableRealtimeUpdates();
   }, [
     user,
-    canAccessApp,
     isPatient,
+    fetchOngoingTreatments,
     enableRealtimeUpdates,
     disableRealtimeUpdates,
   ]);
 
-  // ✅ DATA PROCESSING: Filter appointments with search
-  const filteredAppointments = useMemo(() => {
-    let filtered = appointments;
-
-    // Apply search filter
-    if (searchTerm.trim()) {
-      filtered = searchAppointments(searchTerm);
-    }
-
-    // Apply date/status filter
+  // ✅ FILTER ONLY UPCOMING APPOINTMENTS (remove past appointments)
+  const upcomingAppointments = useMemo(() => {
     const today = new Date().toISOString().split("T")[0];
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split("T")[0];
 
-    switch (filterType) {
-      case "upcoming":
-        filtered = filtered.filter(
-          (apt) =>
-            ["pending", "confirmed"].includes(apt.status) &&
-            apt.appointment_date >= today
-        );
-        break;
-      case "today":
-        filtered = filtered.filter((apt) => apt.appointment_date === today);
-        break;
-      case "tomorrow":
-        filtered = filtered.filter(
-          (apt) => apt.appointment_date === tomorrowStr
-        );
-        break;
-      case "thisWeek":
-        const nextWeek = new Date();
-        nextWeek.setDate(nextWeek.getDate() + 7);
-        const nextWeekStr = nextWeek.toISOString().split("T")[0];
-        filtered = filtered.filter(
-          (apt) =>
-            apt.appointment_date >= today && apt.appointment_date <= nextWeekStr
-        );
-        break;
-      case "all":
-      default:
-        // Keep all appointments
-        break;
+    return appointments.filter((apt) => {
+      // Only upcoming appointments (pending or confirmed, and future dates)
+      const isUpcoming =
+        ["pending", "confirmed"].includes(apt.status) &&
+        apt.appointment_date >= today;
+      return isUpcoming;
+    });
+  }, [appointments]);
+
+  // ✅ SEARCH FILTERING
+  const filteredAppointments = useMemo(() => {
+    let filtered = upcomingAppointments;
+
+    if (searchTerm.trim()) {
+      const query = searchTerm.toLowerCase();
+      filtered = filtered.filter(
+        (apt) =>
+          apt.services?.some((service) =>
+            service.name?.toLowerCase().includes(query)
+          ) ||
+          apt.doctor?.name?.toLowerCase().includes(query) ||
+          apt.clinic?.name?.toLowerCase().includes(query) ||
+          apt.symptoms?.toLowerCase().includes(query)
+      );
     }
 
     return filtered;
-  }, [appointments, searchTerm, filterType, searchAppointments]);
+  }, [upcomingAppointments, searchTerm]);
 
-  // ✅ COMPUTED VALUES: Get today's and tomorrow's appointments for reminders
+  // ✅ URGENT APPOINTMENTS (today and tomorrow)
   const urgentAppointments = useMemo(() => {
     const today = new Date().toISOString().split("T")[0];
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const tomorrowStr = tomorrow.toISOString().split("T")[0];
 
-    return appointments.filter(
+    return upcomingAppointments.filter(
       (apt) =>
-        (apt.appointment_date === today ||
-          apt.appointment_date === tomorrowStr) &&
-        ["pending", "confirmed"].includes(apt.status)
+        apt.appointment_date === today || apt.appointment_date === tomorrowStr
     );
-  }, [appointments]);
+  }, [upcomingAppointments]);
 
-  // ✅ ONGOING TREATMENTS: Extract from appointments with services
-  const ongoingTreatments = useMemo(() => {
-    // Filter appointments that are part of ongoing treatments
-    // This could be based on service types or recurring appointment patterns
-    return appointments.filter((apt) => {
-      // Check if appointment has multiple related services or is recurring
-      const isOngoingTreatment = apt.services?.some(
-        (service) =>
-          service.name?.toLowerCase().includes("orthodontic") ||
-          service.name?.toLowerCase().includes("implant") ||
-          service.name?.toLowerCase().includes("braces") ||
-          service.name?.toLowerCase().includes("treatment plan")
-      );
+  // ✅ UTILITY FUNCTIONS
+  const showToast = useCallback((message) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(""), 3000);
+  }, []);
 
-      return isOngoingTreatment && apt.status !== "cancelled";
-    });
-  }, [appointments]);
-
-  const showToast = (type, title, message) => {
-    setToast({
-      isVisible: true,
-      type,
-      title,
-      message,
-    });
-
-    setTimeout(() => {
-      setToast((prev) => ({ ...prev, isVisible: false }));
-    }, 5000);
-  };
-
-  // ✅ REAL CANCELLATION: Use hook function
-  const handleCancelAppointment = async (appointment) => {
-    try {
-      // Check if appointment can be cancelled using real function
-      const { canCancel, error: checkError } = await canCancelAppointment(
-        appointment.id
-      );
-
-      if (checkError) {
-        showToast("error", "Error", checkError);
-        return;
-      }
-
-      if (!canCancel) {
-        setCancelModal({
-          isOpen: true,
-          appointment,
-          canCancel: false,
-          reason:
-            "Appointments cannot be cancelled within the clinic's policy timeframe.",
-        });
-      } else {
-        setCancelModal({
-          isOpen: true,
-          appointment,
-          canCancel: true,
-          reason: "",
-        });
-      }
-    } catch (err) {
-      console.error("Error checking cancellation eligibility:", err);
-      showToast("error", "Error", "Failed to check cancellation eligibility");
-    }
-  };
-
-  // ✅ REAL CANCELLATION: Execute cancellation
-  const confirmCancelAppointment = async (
-    appointmentId,
-    cancellationReason
-  ) => {
-    try {
-      const result = await cancelAppointment(appointmentId, cancellationReason);
-
-      if (result.success) {
-        setCancelModal({
-          isOpen: false,
-          appointment: null,
-          canCancel: true,
-          reason: "",
-        });
-
-        showToast(
-          "success",
-          "Appointment Cancelled",
-          result.message || "Your appointment has been successfully cancelled."
-        );
-      } else {
-        showToast(
-          "error",
-          "Cancellation Failed",
-          result.error || "Failed to cancel appointment. Please try again."
-        );
-      }
-    } catch (error) {
-      console.error("Error cancelling appointment:", error);
-      showToast(
-        "error",
-        "Cancellation Failed",
-        "An unexpected error occurred. Please try again or contact support."
-      );
-    }
-  };
-
-  // ✅ ENHANCED UTILITIES: Use real appointment data
-  const getReminderMessage = (appointment) => {
-    const appointmentDate = new Date(appointment.appointment_date);
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split("T")[0];
-
-    if (appointment.appointment_date === todayStr) {
-      return {
-        message: `You have an appointment today at ${formatTime(
-          appointment.appointment_time
-        )}`,
-        type: "today",
-        urgent: true,
-      };
-    } else if (appointment.appointment_date === tomorrowStr) {
-      return {
-        message: `You have an appointment tomorrow at ${formatTime(
-          appointment.appointment_time
-        )}`,
-        type: "tomorrow",
-        urgent: true,
-      };
-    } else {
-      return {
-        message: `You have an upcoming appointment on ${formatDate(
-          appointment.appointment_date
-        )} at ${formatTime(appointment.appointment_time)}`,
-        type: "upcoming",
-        urgent: false,
-      };
-    }
-  };
-
-  const formatDate = (dateString) => {
+  const formatDate = useCallback((dateString) => {
     return new Date(dateString).toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
       month: "long",
       day: "numeric",
     });
-  };
+  }, []);
 
-  const formatTime = (timeString) => {
+  const formatTime = useCallback((timeString) => {
     return new Date(`2000-01-01T${timeString}`).toLocaleTimeString("en-US", {
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
     });
-  };
+  }, []);
 
-  const handleViewDetails = (appointment) => {
-    const details = getAppointmentDetails(appointment.id);
-    setSelectedAppointment(details || appointment);
-  };
+  const getReminderMessage = useCallback(
+    (appointment) => {
+      const today = new Date().toISOString().split("T")[0];
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split("T")[0];
 
-  const handleDownloadDetails = (appointment) => {
-    const details = `
+      if (appointment.appointment_date === today) {
+        return {
+          message: `Today at ${formatTime(appointment.appointment_time)}`,
+          type: "today",
+          urgent: true,
+        };
+      } else if (appointment.appointment_date === tomorrowStr) {
+        return {
+          message: `Tomorrow at ${formatTime(appointment.appointment_time)}`,
+          type: "tomorrow",
+          urgent: true,
+        };
+      } else {
+        return {
+          message: `${formatDate(appointment.appointment_date)} at ${formatTime(
+            appointment.appointment_time
+          )}`,
+          type: "upcoming",
+          urgent: false,
+        };
+      }
+    },
+    [formatDate, formatTime]
+  );
+
+  // ✅ FIXED: Cancellation logic with proper eligibility checking
+  const handleCancelAppointment = useCallback(
+    async (appointment) => {
+      try {
+        console.log(
+          "Checking cancellation eligibility for appointment:",
+          appointment.id
+        );
+
+        // Check eligibility using cancellation hook
+        const eligibility = await checkCancellationEligibility(appointment.id);
+        console.log("Eligibility result:", eligibility);
+
+        setCancelModal({
+          isOpen: true,
+          appointment,
+          canCancel: eligibility.canCancel,
+          reason: "", // Start with empty reason for input
+          eligibilityMessage: eligibility.canCancel ? null : eligibility.reason,
+          eligibilityChecked: true,
+        });
+      } catch (err) {
+        console.error("Error checking cancellation eligibility:", err);
+        showToast("Failed to check cancellation eligibility");
+      }
+    },
+    [checkCancellationEligibility, showToast]
+  );
+
+  // ✅ FIXED: Actual cancellation with reason validation
+  const confirmCancelAppointment = useCallback(
+    async (appointmentId, cancellationReason) => {
+      if (!cancellationReason || cancellationReason.trim() === "") {
+        showToast("Please provide a cancellation reason");
+        return;
+      }
+
+      try {
+        console.log(
+          "Attempting to cancel appointment:",
+          appointmentId,
+          "with reason:",
+          cancellationReason
+        );
+
+        // Try the cancellation hook first
+        const hookResult = await hookCancelAppointment(
+          appointmentId,
+          cancellationReason.trim()
+        );
+        console.log("Hook cancellation result:", hookResult);
+
+        if (hookResult?.success) {
+          setCancelModal({
+            isOpen: false,
+            appointment: null,
+            canCancel: true,
+            reason: "",
+            eligibilityChecked: false,
+          });
+          showToast("Appointment cancelled successfully");
+          refreshAppointments();
+          return;
+        }
+
+        // Fallback to cancellation hook
+        const fallbackResult = await cancellationHookCancel(
+          appointmentId,
+          cancellationReason.trim()
+        );
+        console.log("Fallback cancellation result:", fallbackResult);
+
+        if (fallbackResult?.success) {
+          setCancelModal({
+            isOpen: false,
+            appointment: null,
+            canCancel: true,
+            reason: "",
+            eligibilityChecked: false,
+          });
+          showToast("Appointment cancelled successfully");
+          refreshAppointments();
+        } else {
+          showToast(fallbackResult?.error || "Failed to cancel appointment");
+        }
+      } catch (error) {
+        console.error("Error cancelling appointment:", error);
+        showToast("An error occurred while cancelling");
+      }
+    },
+    [
+      hookCancelAppointment,
+      cancellationHookCancel,
+      showToast,
+      refreshAppointments,
+    ]
+  );
+
+  const handleViewDetails = useCallback(
+    (appointment) => {
+      const detailedAppointment = getAppointmentDetails(appointment.id);
+      setSelectedAppointment(detailedAppointment || appointment);
+    },
+    [getAppointmentDetails]
+  );
+
+  const handleDownloadDetails = useCallback(
+    (appointment) => {
+      const details = `
 APPOINTMENT DETAILS
 ==================
 Service: ${appointment.services?.map((s) => s.name).join(", ") || "N/A"}
@@ -354,10 +335,10 @@ Address: ${appointment.clinic?.address || "N/A"}
 Date: ${formatDate(appointment.appointment_date)}
 Time: ${formatTime(appointment.appointment_time)}
 Duration: ${
-      appointment.duration_minutes
-        ? `${appointment.duration_minutes} minutes`
-        : "N/A"
-    }
+        appointment.duration_minutes
+          ? `${appointment.duration_minutes} minutes`
+          : "N/A"
+      }
 Status: ${appointment.status}
 Notes: ${appointment.notes || "None"}
 
@@ -367,606 +348,631 @@ Phone: ${appointment.clinic?.phone || "N/A"}
 Email: ${appointment.clinic?.email || "N/A"}
     `;
 
-    const blob = new Blob([details], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `appointment-${appointment.id}-details.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleRefresh = async () => {
-    try {
-      await refresh();
-      showToast("success", "Refreshed", "Appointments updated successfully");
-    } catch (err) {
-      showToast("error", "Refresh Failed", "Failed to refresh appointments");
-    }
-  };
-
-  // ✅ ACCESS CONTROL: Early return for unauthorized users
-  if (!user || !canAccessApp || !isPatient()) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center space-y-4">
-          <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto" />
-          <h3 className="text-lg font-medium text-foreground">Access Denied</h3>
-          <p className="text-muted-foreground">
-            You need to be a verified patient to view appointments.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // ✅ ERROR HANDLING: Show error state
-  if (error) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center space-y-4">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
-          <h3 className="text-lg font-medium text-foreground">
-            Error Loading Appointments
-          </h3>
-          <p className="text-muted-foreground">{error}</p>
-          <button
-            onClick={handleRefresh}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const EmptyState = () => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="text-center py-16"
-    >
-      <div className="w-24 h-24 mx-auto mb-6 rounded-full bg-muted/30 flex items-center justify-center">
-        <CalendarDays className="w-12 h-12 text-muted-foreground" />
-      </div>
-      <h3 className="text-xl font-semibold text-foreground mb-2">
-        No Upcoming Appointments
-      </h3>
-      <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-        You don't have any upcoming appointments scheduled. Book your next
-        appointment to maintain your dental health.
-      </p>
-      <button className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
-        <Calendar className="w-4 h-4" />
-        Book New Appointment
-      </button>
-    </motion.div>
+      const blob = new Blob([details], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `appointment-${appointment.id}-details.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+    [formatDate, formatTime]
   );
 
-  if (loading) {
+  // ✅ ACCESS CONTROL
+  if (!user || !isPatient()) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <div className="h-8 w-64 bg-muted rounded animate-pulse" />
-            <div className="h-4 w-96 bg-muted rounded animate-pulse" />
-          </div>
-          <div className="h-10 w-32 bg-muted rounded animate-pulse" />
-        </div>
-
-        <div className="grid gap-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-48 bg-muted rounded-lg animate-pulse" />
-          ))}
-        </div>
+      <div>
+        <h1>Access Denied</h1>
+        <p>You need to be a verified patient to view appointments.</p>
       </div>
     );
   }
 
+  // ✅ ERROR STATE
+  if (appointmentsError) {
+    return (
+      <div>
+        <h1>Error Loading Appointments</h1>
+        <p>Error: {appointmentsError}</p>
+        <button onClick={refreshAppointments}>Try Again</button>
+      </div>
+    );
+  }
+
+  // ✅ LOADING STATE
+  if (appointmentsLoading) {
+    return <div>Loading appointments...</div>;
+  }
+
+  // ✅ EMPTY STATE
+  if (
+    filteredAppointments.length === 0 &&
+    ongoingTreatments.length === 0 &&
+    !appointmentsLoading
+  ) {
+    return (
+      <div>
+        <h3>No Upcoming Appointments</h3>
+        <p>
+          {searchTerm
+            ? "Try adjusting your search terms."
+            : "You don't have any upcoming appointments scheduled."}
+        </p>
+        <button>Book New Appointment</button>
+      </div>
+    );
+  }
+
+  // ✅ MAIN RENDER
   return (
-    <div className="space-y-6">
+    <div>
       {/* Toast Notification */}
-      <NotificationToast
-        isVisible={toast.isVisible}
-        type={toast.type}
-        title={toast.title}
-        message={toast.message}
-        onClose={() => setToast((prev) => ({ ...prev, isVisible: false }))}
-      />
+      {toastMessage && (
+        <div
+          style={{
+            position: "fixed",
+            top: "20px",
+            right: "20px",
+            zIndex: 1000,
+            backgroundColor: "green",
+            color: "white",
+            padding: "10px 20px",
+            borderRadius: "5px",
+          }}
+        >
+          {toastMessage}
+        </div>
+      )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-bold text-foreground">
-            Upcoming Appointments
-          </h1>
-          <p className="text-muted-foreground">
-            Manage and track your scheduled appointments
-            {stats.upcoming > 0 && ` • ${stats.upcoming} upcoming`}
+      <div>
+        <h1>Upcoming Appointments</h1>
+        <p>
+          Manage your scheduled appointments and ongoing treatments •{" "}
+          {upcomingAppointments.length} upcoming
+        </p>
+        <button onClick={refreshAppointments} disabled={appointmentsLoading}>
+          {appointmentsLoading ? "Refreshing..." : "Refresh"}
+        </button>
+        {isConnected && <span>Live Updates Active</span>}
+      </div>
+
+      {/* Stats */}
+      <div>
+        <div>
+          <h3>Total Upcoming</h3>
+          <p>{upcomingAppointments.length}</p>
+        </div>
+        <div>
+          <h3>Pending</h3>
+          <p>
+            {upcomingAppointments.filter((a) => a.status === "pending").length}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleRefresh}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-muted/50 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
-          {isConnected && (
-            <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              Live Updates
-            </div>
-          )}
+        <div>
+          <h3>Confirmed</h3>
+          <p>
+            {
+              upcomingAppointments.filter((a) => a.status === "confirmed")
+                .length
+            }
+          </p>
+        </div>
+        <div>
+          <h3>Ongoing Treatments</h3>
+          <p>{ongoingTreatments.length}</p>
         </div>
       </div>
 
-      {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-          <input
-            type="text"
-            placeholder="Search appointments, doctors, or clinics..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-border rounded-lg bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-muted-foreground" />
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="px-3 py-2 border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
-          >
-            <option value="upcoming">Upcoming</option>
-            <option value="all">All Appointments</option>
-            <option value="today">Today</option>
-            <option value="tomorrow">Tomorrow</option>
-            <option value="thisWeek">This Week</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Today's Reminders */}
-      {urgentAppointments.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="p-4 bg-primary/5 border border-primary/20 rounded-lg"
-        >
-          <div className="flex items-start gap-3">
-            <Bell className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-            <div className="space-y-2">
-              <h3 className="font-semibold text-foreground">
-                Appointment Reminders
-              </h3>
-              {urgentAppointments.map((appointment) => {
-                const reminder = getReminderMessage(appointment);
-                return (
-                  <div
-                    key={appointment.id}
-                    className="text-sm text-muted-foreground"
-                  >
-                    {reminder.message}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </motion.div>
+      {/* ✅ ONGOING TREATMENTS SECTION */}
+      {treatmentsLoading && <div>Loading treatments...</div>}
+      {treatmentsError && (
+        <div>Error loading treatments: {treatmentsError}</div>
       )}
 
-      {/* Ongoing Treatments */}
       {ongoingTreatments.length > 0 && (
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
-            <Timer className="w-5 h-5 text-primary" />
-            Ongoing Treatments ({ongoingTreatments.length})
-          </h2>
-          <div className="grid gap-4 md:grid-cols-2">
-            {ongoingTreatments.map((treatment, index) => (
-              <motion.div
-                key={treatment.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="p-6 bg-card border border-border rounded-lg hover:shadow-md transition-shadow"
-              >
-                <div className="space-y-4">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <h3 className="font-semibold text-foreground">
-                        {treatment.services?.[0]?.name || "Ongoing Treatment"}
-                      </h3>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <User className="w-4 h-4" />
-                        {treatment.doctor?.name || "N/A"}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Building2 className="w-4 h-4" />
-                        {treatment.clinic?.name || "N/A"}
-                      </div>
-                    </div>
-                    <span className="px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full">
-                      In Progress
-                    </span>
-                  </div>
+        <div>
+          <h2>Ongoing Treatments</h2>
+          {ongoingTreatments.map((treatment) => (
+            <div
+              key={treatment.id}
+              style={{
+                border: "1px solid #ccc",
+                padding: "15px",
+                margin: "10px 0",
+              }}
+            >
+              <h3>{treatment.treatment_type}</h3>
+              <p>Doctor: {treatment.doctor_name}</p>
+              <p>Clinic: {treatment.clinic_name}</p>
+              <p>
+                Progress: {treatment.completed_sessions}/
+                {treatment.total_sessions} sessions ({treatment.progress}%)
+              </p>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 pt-2">
-                    <button
-                      onClick={() => handleViewDetails(treatment)}
-                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors"
-                    >
-                      <Eye className="w-4 h-4" />
-                      View Details
-                    </button>
-                    <button
-                      onClick={() => handleDownloadDetails(treatment)}
-                      className="flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground border border-border hover:bg-muted/50 rounded-lg transition-colors"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                  </div>
+              {treatment.next_appointment && (
+                <div
+                  style={{
+                    backgroundColor: "#f0f0f0",
+                    padding: "10px",
+                    marginTop: "10px",
+                  }}
+                >
+                  <strong>Next Session:</strong>
+                  <p>
+                    {formatDate(treatment.next_appointment.date)} at{" "}
+                    {formatTime(treatment.next_appointment.time)}
+                  </p>
+                  <p>Service: {treatment.next_appointment.service_name}</p>
+                  <p>Duration: {treatment.next_appointment.duration}</p>
+                  {treatment.next_appointment.cancellable && (
+                    <button>Cancel Next Session</button>
+                  )}
                 </div>
-              </motion.div>
-            ))}
-          </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Regular Appointments */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
-          <CalendarDays className="w-5 h-5 text-primary" />
-          Scheduled Appointments ({filteredAppointments.length})
-        </h2>
-
-        {filteredAppointments.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <div className="space-y-4">
-            {filteredAppointments.map((appointment, index) => {
-              const reminder = getReminderMessage(appointment);
-
-              return (
-                <motion.div
-                  key={appointment.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  className={`p-6 bg-card border rounded-lg hover:shadow-md transition-all duration-200 ${
-                    reminder.urgent
-                      ? "border-primary/30 bg-primary/5"
-                      : "border-border"
-                  }`}
-                >
-                  <div className="space-y-4">
-                    {/* Header */}
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-3">
-                          <h3 className="text-lg font-semibold text-foreground">
-                            {appointment.services
-                              ?.map((s) => s.name)
-                              .join(", ") || "Appointment"}
-                          </h3>
-                          {reminder.urgent && (
-                            <span
-                              className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                reminder.type === "today"
-                                  ? "bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400"
-                                  : "bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400"
-                              }`}
-                            >
-                              {reminder.type === "today" ? "Today" : "Tomorrow"}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {reminder.message}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {appointment.status === "cancelled" ? (
-                          <span className="px-3 py-1 bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400 text-sm font-medium rounded-full">
-                            Cancelled
-                          </span>
-                        ) : (
-                          <span
-                            className={`px-3 py-1 text-sm font-medium rounded-full ${
-                              appointment.status === "confirmed"
-                                ? "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400"
-                                : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400"
-                            }`}
-                          >
-                            {appointment.status.charAt(0).toUpperCase() +
-                              appointment.status.slice(1)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Details Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-3 text-sm">
-                          <User className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                          <span className="text-foreground font-medium">
-                            {appointment.doctor?.name || "N/A"}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 text-sm">
-                          <Building2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                          <div>
-                            <div className="text-foreground font-medium">
-                              {appointment.clinic?.name || "N/A"}
-                            </div>
-                            <div className="text-muted-foreground">
-                              {appointment.clinic?.address || "N/A"}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-3 text-sm">
-                          <CalendarIcon className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                          <span className="text-foreground font-medium">
-                            {formatDate(appointment.appointment_date)}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3 text-sm">
-                          <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                          <span className="text-foreground font-medium">
-                            {formatTime(appointment.appointment_time)}
-                            {appointment.duration_minutes &&
-                              ` (${appointment.duration_minutes} min)`}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Notes */}
-                    {appointment.notes && (
-                      <div className="p-3 bg-muted/30 rounded-lg">
-                        <div className="text-sm font-medium text-foreground mb-1">
-                          Notes
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {appointment.notes}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Cancellation Reason */}
-                    {appointment.status === "cancelled" &&
-                      appointment.cancellation_reason && (
-                        <div className="p-3 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg">
-                          <div className="text-sm font-medium text-red-800 dark:text-red-300 mb-1">
-                            Cancellation Reason
-                          </div>
-                          <div className="text-sm text-red-700 dark:text-red-400">
-                            {appointment.cancellation_reason}
-                          </div>
-                        </div>
-                      )}
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-3 pt-2 border-t border-border">
-                      <button
-                        onClick={() => handleViewDetails(appointment)}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors"
-                      >
-                        <Eye className="w-4 h-4" />
-                        View Details
-                      </button>
-                      <button
-                        onClick={() => handleDownloadDetails(appointment)}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground border border-border hover:bg-muted/50 rounded-lg transition-colors"
-                      >
-                        <Download className="w-4 h-4" />
-                        Download
-                      </button>
-
-                      {/* Cancel Button */}
-                      {appointment.status === "confirmed" &&
-                        appointment.canCancel && (
-                          <button
-                            onClick={() => handleCancelAppointment(appointment)}
-                            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-700 bg-red-100 hover:bg-red-200 dark:text-red-400 dark:bg-red-900/20 dark:hover:bg-red-900/30 rounded-lg transition-colors"
-                          >
-                            <XCircle className="w-4 h-4" />
-                            Cancel
-                          </button>
-                        )}
-
-                      <div className="ml-auto flex items-center gap-2">
-                        <Phone className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">
-                          {appointment.clinic?.phone || "N/A"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-
-            {/* Load More Button */}
-            {hasMore && (
-              <div className="text-center pt-4">
-                <button
-                  onClick={loadMore}
-                  disabled={loading}
-                  className="px-6 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {loading ? "Loading..." : "Load More"}
-                </button>
-              </div>
-            )}
-          </div>
+      {/* Search */}
+      <div>
+        <input
+          type="text"
+          placeholder="Search appointments, doctors, or clinics..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+        {searchTerm && (
+          <button onClick={() => setSearchTerm("")}>Clear search</button>
         )}
       </div>
 
-      {/* Cancel Appointment Modal */}
-      <CancelAppointmentModal
-        isOpen={cancelModal.isOpen}
-        appointment={cancelModal.appointment}
-        canCancel={cancelModal.canCancel}
-        reason={cancelModal.reason}
-        onConfirm={confirmCancelAppointment}
-        onClose={() =>
-          setCancelModal({
-            isOpen: false,
-            appointment: null,
-            canCancel: true,
-            reason: "",
-          })
-        }
-      />
+      {/* Urgent Reminders */}
+      {urgentAppointments.length > 0 && (
+        <div
+          style={{
+            backgroundColor: "#fff3cd",
+            padding: "15px",
+            border: "1px solid #ffeaa7",
+          }}
+        >
+          <h3>🔔 Appointment Reminders</h3>
+          {urgentAppointments.map((appointment) => {
+            const reminder = getReminderMessage(appointment);
+            return (
+              <div key={appointment.id}>
+                <span>{reminder.message}</span> - {appointment.clinic?.name}
+                {reminder.urgent && (
+                  <span style={{ color: "red" }}> [URGENT]</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      {/* Details Modal */}
-      <AnimatePresence>
-        {selectedAppointment && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-              onClick={() => setSelectedAppointment(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-2xl bg-card rounded-lg shadow-xl border max-h-[90vh] overflow-y-auto"
+      {/* Appointments List */}
+      <div>
+        {filteredAppointments.map((appointment) => {
+          const reminder = getReminderMessage(appointment);
+
+          return (
+            <div
+              key={appointment.id}
+              style={{
+                border: "1px solid #ddd",
+                padding: "20px",
+                margin: "10px 0",
+                backgroundColor: reminder.urgent ? "#fff5f5" : "#fff",
+              }}
             >
-              <div className="p-6 space-y-6">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-xl font-semibold text-foreground">
-                    Appointment Details
-                  </h2>
-                  <button
-                    onClick={() => setSelectedAppointment(null)}
-                    className="p-2 hover:bg-muted rounded-lg transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">
-                          Service
-                        </label>
-                        <div className="text-foreground">
-                          {selectedAppointment.services
-                            ?.map((s) => s.name)
-                            .join(", ") || "N/A"}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">
-                          Doctor
-                        </label>
-                        <div className="text-foreground">
-                          {selectedAppointment.doctor?.name || "N/A"}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">
-                          Clinic
-                        </label>
-                        <div className="text-foreground">
-                          {selectedAppointment.clinic?.name || "N/A"}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {selectedAppointment.clinic?.address || "N/A"}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">
-                          Date & Time
-                        </label>
-                        <div className="text-foreground">
-                          {selectedAppointment.appointment_date
-                            ? formatDate(selectedAppointment.appointment_date)
-                            : "N/A"}
-                        </div>
-                        <div className="text-foreground">
-                          {selectedAppointment.appointment_time
-                            ? formatTime(selectedAppointment.appointment_time)
-                            : "N/A"}
-                          {selectedAppointment.duration_minutes &&
-                            ` (${selectedAppointment.duration_minutes} min)`}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">
-                          Status
-                        </label>
-                        <div className="text-foreground capitalize">
-                          {selectedAppointment.status}
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium text-muted-foreground">
-                          Contact
-                        </label>
-                        <div className="text-foreground">
-                          {selectedAppointment.clinic?.phone || "N/A"}
-                        </div>
-                        <div className="text-foreground">
-                          {selectedAppointment.clinic?.email || "N/A"}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {selectedAppointment.notes && (
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">
-                        Notes
-                      </label>
-                      <div className="text-foreground">
-                        {selectedAppointment.notes}
-                      </div>
-                    </div>
+              {/* Header */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <h3>
+                    {appointment.services?.map((s) => s.name).join(", ") ||
+                      "Appointment"}
+                  </h3>
+                  {reminder.urgent && (
+                    <span
+                      style={{
+                        backgroundColor:
+                          reminder.type === "today" ? "#ff6b6b" : "#ffa500",
+                        color: "white",
+                        padding: "2px 8px",
+                        borderRadius: "10px",
+                        fontSize: "12px",
+                      }}
+                    >
+                      {reminder.type === "today" ? "TODAY" : "TOMORROW"}
+                    </span>
                   )}
+                  <p>{reminder.message}</p>
                 </div>
+                <span
+                  style={{
+                    backgroundColor:
+                      appointment.status === "confirmed"
+                        ? "#d4edda"
+                        : appointment.status === "pending"
+                        ? "#fff3cd"
+                        : "#f8f9fa",
+                    color:
+                      appointment.status === "confirmed"
+                        ? "#155724"
+                        : appointment.status === "pending"
+                        ? "#856404"
+                        : "#495057",
+                    padding: "4px 12px",
+                    borderRadius: "15px",
+                    fontSize: "12px",
+                  }}
+                >
+                  {appointment.status.toUpperCase()}
+                </span>
+              </div>
 
-                <div className="flex items-center gap-3 pt-4 border-t border-border">
+              {/* Details */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "20px",
+                  marginTop: "15px",
+                }}
+              >
+                <div>
+                  <p>
+                    <strong>Doctor:</strong> {appointment.doctor?.name || "N/A"}
+                  </p>
+                  <p>
+                    <strong>Clinic:</strong> {appointment.clinic?.name || "N/A"}
+                  </p>
+                  <p>
+                    <strong>Address:</strong>{" "}
+                    {appointment.clinic?.address || "N/A"}
+                  </p>
+                </div>
+                <div>
+                  <p>
+                    <strong>Date:</strong>{" "}
+                    {formatDate(appointment.appointment_date)}
+                  </p>
+                  <p>
+                    <strong>Time:</strong>{" "}
+                    {formatTime(appointment.appointment_time)}
+                    {appointment.duration_minutes &&
+                      ` (${appointment.duration_minutes} min)`}
+                  </p>
+                  <p>
+                    <strong>Phone:</strong> {appointment.clinic?.phone || "N/A"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Notes */}
+              {appointment.notes && (
+                <div
+                  style={{
+                    marginTop: "15px",
+                    padding: "10px",
+                    backgroundColor: "#f8f9fa",
+                    borderRadius: "5px",
+                  }}
+                >
+                  <h4>Notes:</h4>
+                  <p>{appointment.notes}</p>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div
+                style={{
+                  marginTop: "15px",
+                  display: "flex",
+                  gap: "10px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <button onClick={() => handleViewDetails(appointment)}>
+                  View Details
+                </button>
+                <button onClick={() => handleDownloadDetails(appointment)}>
+                  Download
+                </button>
+                {["confirmed", "pending"].includes(appointment.status) && (
                   <button
-                    onClick={() => handleDownloadDetails(selectedAppointment)}
-                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                    onClick={() => handleCancelAppointment(appointment)}
+                    style={{ color: "red", borderColor: "red" }}
                   >
-                    <Download className="w-4 h-4" />
-                    Download Details
+                    Cancel
                   </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ✅ FIXED: Cancel Modal with proper reason handling */}
+      {cancelModal.isOpen && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "white",
+              padding: "20px",
+              borderRadius: "8px",
+              minWidth: "400px",
+              maxWidth: "500px",
+            }}
+          >
+            <h3>Cancel Appointment</h3>
+
+            {!cancelModal.canCancel ? (
+              <div>
+                <div style={{ color: "red", marginBottom: "15px" }}>
+                  {cancelModal.eligibilityMessage ||
+                    "Outside cancellation window"}
+                </div>
+                <p>
+                  Please contact the clinic directly to discuss cancellation
+                  options.
+                </p>
+                <div style={{ textAlign: "right", marginTop: "20px" }}>
                   <button
-                    onClick={() => setSelectedAppointment(null)}
-                    className="flex items-center gap-2 px-4 py-2 text-muted-foreground hover:text-foreground border border-border hover:bg-muted/50 rounded-lg transition-colors"
+                    onClick={() =>
+                      setCancelModal({
+                        isOpen: false,
+                        appointment: null,
+                        canCancel: true,
+                        reason: "",
+                        eligibilityChecked: false,
+                      })
+                    }
                   >
                     Close
                   </button>
                 </div>
               </div>
-            </motion.div>
+            ) : (
+              <div>
+                <p>
+                  Are you sure you want to cancel your appointment with{" "}
+                  <strong>{cancelModal.appointment?.clinic?.name}</strong>?
+                </p>
+
+                <div style={{ margin: "20px 0" }}>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: "8px",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Reason for cancellation: *
+                  </label>
+                  <textarea
+                    value={cancelModal.reason}
+                    onChange={(e) =>
+                      setCancelModal((prev) => ({
+                        ...prev,
+                        reason: e.target.value,
+                      }))
+                    }
+                    placeholder="Please provide a reason for cancellation..."
+                    rows="4"
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      border: "1px solid #ccc",
+                      borderRadius: "4px",
+                      resize: "vertical",
+                    }}
+                    required
+                  />
+                  {!cancelModal.reason.trim() && (
+                    <small style={{ color: "red" }}>
+                      Cancellation reason is required
+                    </small>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "10px",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <button
+                    onClick={() =>
+                      setCancelModal({
+                        isOpen: false,
+                        appointment: null,
+                        canCancel: true,
+                        reason: "",
+                        eligibilityChecked: false,
+                      })
+                    }
+                  >
+                    Keep Appointment
+                  </button>
+                  <button
+                    onClick={() =>
+                      confirmCancelAppointment(
+                        cancelModal.appointment?.id,
+                        cancelModal.reason
+                      )
+                    }
+                    disabled={!cancelModal.reason.trim() || cancelLoading}
+                    style={{
+                      backgroundColor: "red",
+                      color: "white",
+                      opacity:
+                        !cancelModal.reason.trim() || cancelLoading ? 0.5 : 1,
+                    }}
+                  >
+                    {cancelLoading ? "Cancelling..." : "Confirm Cancel"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
+
+      {/* Details Modal */}
+      {selectedAppointment && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: "white",
+              padding: "30px",
+              borderRadius: "8px",
+              maxWidth: "600px",
+              width: "90%",
+              maxHeight: "80vh",
+              overflowY: "auto",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "20px",
+              }}
+            >
+              <h2>Appointment Details</h2>
+              <button
+                onClick={() => setSelectedAppointment(null)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  fontSize: "24px",
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "30px",
+              }}
+            >
+              <div>
+                <h4>Service Information</h4>
+                <p>
+                  <strong>Services:</strong>{" "}
+                  {selectedAppointment.services
+                    ?.map((s) => s.name)
+                    .join(", ") || "N/A"}
+                </p>
+                <p>
+                  <strong>Status:</strong> {selectedAppointment.status}
+                </p>
+
+                <h4 style={{ marginTop: "20px" }}>Healthcare Provider</h4>
+                <p>
+                  <strong>Doctor:</strong>{" "}
+                  {selectedAppointment.doctor?.name || "N/A"}
+                </p>
+                <p>
+                  <strong>Clinic:</strong>{" "}
+                  {selectedAppointment.clinic?.name || "N/A"}
+                </p>
+                <p>
+                  <strong>Address:</strong>{" "}
+                  {selectedAppointment.clinic?.address || "N/A"}
+                </p>
+              </div>
+
+              <div>
+                <h4>Schedule</h4>
+                <p>
+                  <strong>Date:</strong>{" "}
+                  {formatDate(selectedAppointment.appointment_date)}
+                </p>
+                <p>
+                  <strong>Time:</strong>{" "}
+                  {formatTime(selectedAppointment.appointment_time)}
+                  {selectedAppointment.duration_minutes &&
+                    ` (${selectedAppointment.duration_minutes} min)`}
+                </p>
+
+                <h4 style={{ marginTop: "20px" }}>Contact Information</h4>
+                <p>
+                  <strong>Phone:</strong>{" "}
+                  {selectedAppointment.clinic?.phone || "N/A"}
+                </p>
+                <p>
+                  <strong>Email:</strong>{" "}
+                  {selectedAppointment.clinic?.email || "N/A"}
+                </p>
+              </div>
+            </div>
+
+            {selectedAppointment.notes && (
+              <div style={{ marginTop: "20px" }}>
+                <h4>Notes</h4>
+                <p>{selectedAppointment.notes}</p>
+              </div>
+            )}
+
+            <div style={{ marginTop: "30px", textAlign: "right" }}>
+              <button
+                onClick={() => handleDownloadDetails(selectedAppointment)}
+                style={{ marginRight: "10px" }}
+              >
+                Download Details
+              </button>
+              <button onClick={() => setSelectedAppointment(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
