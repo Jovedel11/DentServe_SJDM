@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/auth/context/AuthProvider';
 
@@ -6,17 +6,23 @@ export const useDashboardAnalytics = () => {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [lastFetch, setLastFetch] = useState(0);
+  const lastFetchRef = useRef(0);
+  const cacheRef = useRef(new Map());
   
-  const { user, userRole, isPatient, isStaff, isAdmin, profile } = useAuth();
+  const { user, userRole, isPatient, isStaff, isAdmin } = useAuth();
 
-  // ✅ Enhanced dashboard data fetching with role-specific analytics
+  // ✅ OPTIMIZED: Debounced fetch with caching
   const fetchDashboardData = useCallback(async (userId = null, forceRefresh = false) => {
     try {
-      // ✅ Prevent spam requests
       const now = Date.now();
-      if (!forceRefresh && (now - lastFetch) < 30000) { // 30 seconds throttle
-        return dashboardData ? { success: true, data: dashboardData, fromCache: true } : null;
+      const cacheKey = `${user?.id}-${userRole}`;
+      
+      // ✅ AGGRESSIVE CACHING - 5 minutes for dashboard data
+      if (!forceRefresh && (now - lastFetchRef.current) < 300000) {
+        const cachedData = cacheRef.current.get(cacheKey);
+        if (cachedData) {
+          return { success: true, data: cachedData, fromCache: true };
+        }
       }
 
       setLoading(true);
@@ -27,25 +33,22 @@ export const useDashboardAnalytics = () => {
         throw new Error('User not authenticated');
       }
 
-      // ✅ Get user's internal ID
+      // ✅ SINGLE REQUEST - Get user's internal ID first
       const { data: userRow, error: userError } = await supabase
         .from('users')
         .select('id')
         .eq('auth_user_id', targetUserId)
-        .maybeSingle();
+        .single();
 
       if (userError) throw userError;
-      if (!userRow) throw new Error('User profile not found');
 
       const { data, error: rpcError } = await supabase.rpc('get_dashboard_data', {
         p_user_id: userRow.id
       });
 
-      if (rpcError) {
-        throw new Error(rpcError.message);
-      }
+      if (rpcError) throw new Error(rpcError.message);
 
-      // ✅ Handle different response structures based on role
+      // ✅ LIGHTWEIGHT PROCESSING - Minimal data transformation
       let processedData = null;
 
       if (isPatient()) {
@@ -74,8 +77,10 @@ export const useDashboardAnalytics = () => {
         };
       }
 
+      // ✅ CACHE RESULTS
+      cacheRef.current.set(cacheKey, processedData);
+      lastFetchRef.current = now;
       setDashboardData(processedData);
-      setLastFetch(now);
 
       return {
         success: true,
@@ -93,32 +98,28 @@ export const useDashboardAnalytics = () => {
     } finally {
       setLoading(false);
     }
-  }, [user, userRole, isPatient, isStaff, isAdmin, lastFetch, dashboardData]);
+  }, [user, userRole, isPatient, isStaff, isAdmin]);
 
-  // ✅ Role-specific dashboard refresh
+  // ✅ SMART REFRESH - Clear cache and refetch
   const refreshDashboard = useCallback(() => {
-    setLastFetch(0); // Reset throttle
+    cacheRef.current.clear();
+    lastFetchRef.current = 0;
     return fetchDashboardData(null, true);
   }, [fetchDashboardData]);
 
-  // ✅ Auto-fetch on mount and role change
+  // ✅ CONDITIONAL AUTO-FETCH - Only when needed
   useEffect(() => {
-    if (user && userRole) {
+    if (user && userRole && !dashboardData) {
       fetchDashboardData();
     }
-  }, [user, userRole]);
+  }, [user, userRole, dashboardData, fetchDashboardData]);
 
   return {
-    // State
     dashboardData,
     loading,
     error,
-    
-    // Derived state
     hasData: !!dashboardData,
     dashboardType: dashboardData?.type,
-    
-    // Actions
     fetchDashboardData,
     refreshDashboard
   };

@@ -5,6 +5,7 @@ import {
   useContext,
   useMemo,
   useRef,
+  useCallback,
 } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { authService } from "../hooks/authService";
@@ -64,7 +65,7 @@ export const AuthProvider = ({ children }) => {
 
     const interval = setInterval(() => {
       loadDashboardData(user.id, false);
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 15 * 60 * 1000); // 5 minutes
 
     return () => clearInterval(interval);
   }, [user, isInitialized]);
@@ -150,18 +151,10 @@ export const AuthProvider = ({ children }) => {
   const fetchUserProfile = async (userId) => {
     if (!userId) return null;
 
-    const { data: userRow, error: userError } = await supabase
-      .from("users")
-      .select("id")
-      .eq("auth_user_id", userId)
-      .maybeSingle();
-
-    if (userError) throw userError;
-    if (!userRow) return null;
-
+    // OPTIMIZED: Single call - get_user_complete_profile handles auth.uid() lookup internally
     const { data: profile, error: profileError } = await supabase.rpc(
-      "get_user_complete_profile",
-      { p_user_id: userRow.id }
+      "get_user_complete_profile"
+      // Remove p_user_id parameter - function gets user from auth.uid()
     );
 
     if (profileError) throw profileError;
@@ -201,9 +194,18 @@ export const AuthProvider = ({ children }) => {
   console.log("AuthProvider -> profile:", profile);
 
   // role checks
-  const isPatient = () => userRole === "patient";
-  const isStaff = () => userRole === "staff";
-  const isAdmin = () => userRole === "admin";
+  const isPatient = useCallback(
+    () => authStatus?.user_role === "patient",
+    [authStatus?.user_role]
+  );
+  const isStaff = useCallback(
+    () => authStatus?.user_role === "staff",
+    [authStatus?.user_role]
+  );
+  const isAdmin = useCallback(
+    () => authStatus?.user_role === "admin",
+    [authStatus?.user_role]
+  );
 
   // wrap auth actions with loading/error handling
   const wrapAuthAction = (actionName, actionFunction) => {

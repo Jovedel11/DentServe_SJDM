@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from '../../auth/context/AuthProvider';
 import { supabase } from '../../lib/supabaseClient';
 
@@ -6,6 +6,8 @@ export const useAppointmentBooking = () => {
   const { user, profile, isPatient } = useAuth();
   
   const [loading, setLoading] = useState(false);
+  const [checkingAvailability, setCheckingAvailability] = useState(false);
+  const [availableTimes, setAvailableTimes] = useState([]);
   const [error, setError] = useState(null);
   const [bookingStep, setBookingStep] = useState('clinic');
   const [bookingData, setBookingData] = useState({
@@ -28,6 +30,7 @@ export const useAppointmentBooking = () => {
       symptoms: '',
     });
     setBookingStep('clinic');
+    setAvailableTimes([]);
     setError(null);
   }, []);
 
@@ -167,50 +170,67 @@ export const useAppointmentBooking = () => {
     }
   }, []);
 
-  // Check slot availability with enhanced validation
-  const checkSlotAvailability = useCallback(async (doctorId, date, time, serviceIds = []) => {
-    if (!doctorId || !date || !time) {
-      return { available: false, error: 'Missing required parameters' };
+  // Check all available time slots (optimized batch call)
+  const checkAllAvailableTimes = useCallback(async (doctorId, date, serviceIds = []) => {
+    if (!doctorId || !date) {
+      return { success: false, slots: [], error: 'Missing required parameters' };
     }
 
     try {
-      // Calculate total duration from selected services
-      let totalDuration = 60; // Default
-      
-      if (serviceIds.length > 0) {
-        const { data: services, error: servicesError } = await supabase
-          .from('services')
-          .select('duration_minutes')
-          .eq('is_active', true)
-          .in('id', serviceIds);
-          
-        if (!servicesError && services) {
-          totalDuration = services.reduce((sum, service) => sum + (service.duration_minutes || 0), 0);
-        }
-      }
-
-      const { data, error } = await supabase.rpc('check_appointment_availability', {
+      const { data, error } = await supabase.rpc('get_available_time_slots', {
         p_doctor_id: doctorId,
         p_appointment_date: date,
-        p_appointment_time: time,
-        p_duration_minutes: totalDuration
+        p_service_ids: serviceIds
       });
 
-      if (error) throw new Error(error.message);
+      if (error) throw error;
       
-      return { 
-        available: data || false, 
-        duration: totalDuration,
-        error: null 
-      };
-
+      return data;
     } catch (err) {
       return { 
-        available: false, 
+        success: false, 
+        slots: [], 
         error: err.message 
       };
     }
   }, []);
+
+  // ✅ AUTO-CHECK AVAILABILITY when doctor, date, or services change
+  useEffect(() => {
+    const checkAvailability = async () => {
+      if (!bookingData.doctor?.id || !bookingData.date || bookingData.services.length === 0) {
+        setAvailableTimes([]);
+        return;
+      }
+
+      setCheckingAvailability(true);
+      
+      try {
+        const result = await checkAllAvailableTimes(
+          bookingData.doctor.id,
+          bookingData.date,
+          bookingData.services
+        );
+
+        if (result.success) {
+          const availableSlots = result.slots
+            .filter(slot => slot.available)
+            .map(slot => slot.time);
+          
+          setAvailableTimes(availableSlots);
+        } else {
+          setAvailableTimes([]);
+        }
+      } catch (err) {
+        console.error('Error checking availability:', err);
+        setAvailableTimes([]);
+      } finally {
+        setCheckingAvailability(false);
+      }
+    };
+
+    checkAvailability();
+  }, [bookingData.doctor?.id, bookingData.date, bookingData.services, checkAllAvailableTimes]);
 
   // Book appointment with comprehensive validation
   const bookAppointment = useCallback(async () => {
@@ -301,17 +321,21 @@ export const useAppointmentBooking = () => {
   const validateStep = useCallback((step) => {
     switch (step) {
       case 'clinic':
-        return bookingData.clinic?.id;
+        return Boolean(bookingData.clinic?.id);
       case 'services':
-        return bookingData.services?.length > 0;
+        return Boolean(bookingData.services?.length > 0);
       case 'doctor':
-        return bookingData.doctor?.id;
+        return Boolean(bookingData.doctor?.id);
       case 'datetime':
-        return bookingData.date && bookingData.time;
+        return Boolean(bookingData.date && bookingData.time);
       case 'confirm':
-        return bookingData.clinic && bookingData.doctor && 
-              bookingData.date && bookingData.time && 
-              bookingData.services?.length > 0;
+        return Boolean(
+          bookingData.clinic?.id && 
+          bookingData.doctor?.id && 
+          bookingData.date && 
+          bookingData.time && 
+          bookingData.services?.length > 0
+        );
       default:
         return false;
     }
@@ -327,6 +351,7 @@ export const useAppointmentBooking = () => {
     const steps = ['clinic', 'services', 'doctor', 'datetime', 'confirm'];
     const currentIndex = steps.indexOf(bookingStep);
     
+    // Only proceed if current step is valid and not on last step
     if (currentIndex < steps.length - 1 && validateStep(bookingStep)) {
       setBookingStep(steps[currentIndex + 1]);
       setError(null);
@@ -335,6 +360,7 @@ export const useAppointmentBooking = () => {
     }
   }, [bookingStep, validateStep]);
 
+  // ✅ ADDED: Previous step function
   const previousStep = useCallback(() => {
     const steps = ['clinic', 'services', 'doctor', 'datetime', 'confirm'];
     const currentIndex = steps.indexOf(bookingStep);
@@ -345,12 +371,31 @@ export const useAppointmentBooking = () => {
     }
   }, [bookingStep]);
 
+  // ✅ MEMOIZED: Computed values for performance
+  const computedValues = useMemo(() => {
+    const steps = ['clinic', 'services', 'doctor', 'datetime', 'confirm'];
+    const currentStepIndex = steps.indexOf(bookingStep);
+    
+    return {
+      canProceed: validateStep(bookingStep),
+      isComplete: bookingStep === 'confirm' && validateStep('confirm'),
+      allDataValid: validateStep('confirm'),
+      currentStepIndex,
+      totalSteps: steps.length,
+      stepProgress: ((currentStepIndex + 1) / steps.length) * 100,
+      totalServices: bookingData.services?.length || 0,
+      maxServicesReached: bookingData.services?.length >= 3,
+    };
+  }, [bookingStep, validateStep, bookingData.services]);
+
   return {
     // State
     loading,
     error,
     bookingStep,
     bookingData,
+    checkingAvailability,
+    availableTimes,
 
     // Actions
     updateBookingData,
@@ -360,23 +405,17 @@ export const useAppointmentBooking = () => {
     // Step navigation
     goToStep,
     nextStep,
-    previousStep,
-    validateStep,
+    previousStep, // ✅ ADDED
 
     // Data fetching
     getAvailableDoctors,
     getServices,
-    checkSlotAvailability,
+    checkAllAvailableTimes,
 
-    // Computed values
-    canProceed: validateStep(bookingStep),
-    isComplete: validateStep('confirm'),
-    totalServices: bookingData.services?.length || 0,
-    maxServicesReached: bookingData.services?.length >= 3,
+    // Computed values (memoized)
+    ...computedValues,
     
-    // Step info
-    currentStepIndex: ['clinic', 'services', 'doctor', 'datetime', 'confirm'].indexOf(bookingStep),
-    totalSteps: 5,
-    stepProgress: ((['clinic', 'services', 'doctor', 'datetime', 'confirm'].indexOf(bookingStep) + 1) / 5) * 100
+    // Helper functions
+    validateStep,
   };
 };

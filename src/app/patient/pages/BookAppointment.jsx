@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { useAppointmentBooking } from "@/core/hooks/useAppointmentBooking";
-import { supabase } from "@/lib/supabaseClient"
+import { supabase } from "@/lib/supabaseClient";
 
 const BookAppointment = () => {
   const { profile, isPatient } = useAuth();
 
-  // ✅ USING REAL VALIDATED HOOKS
+  // ✅ OPTIMIZED: Using all functions from hook
   const {
     loading,
     error,
@@ -17,34 +17,32 @@ const BookAppointment = () => {
     bookAppointment,
     getAvailableDoctors,
     getServices,
-    checkSlotAvailability,
     nextStep,
-    previousStep,
-    validateStep,
+    previousStep, // ✅ NOW AVAILABLE
     canProceed,
     isComplete,
     currentStepIndex,
     totalSteps,
     stepProgress,
+    checkingAvailability,
+    availableTimes, // ✅ FROM HOOK
   } = useAppointmentBooking();
 
+  // ✅ OPTIMIZED: Local state only for what's not in hook
   const [clinics, setClinics] = useState([]);
   const [clinicsLoading, setCliicsLoading] = useState(false);
   const [doctors, setDoctors] = useState([]);
   const [services, setServices] = useState([]);
-  const [availableTimes, setAvailableTimes] = useState([]);
-  const [checkingAvailability, setCheckingAvailability] = useState(false);
 
-  // ✅ REAL CLINIC DISCOVERY
+  // ✅ OPTIMIZED: Clinic fetch - runs once on mount
   useEffect(() => {
     const fetchClinics = async () => {
       if (!isPatient()) return;
 
       setCliicsLoading(true);
       try {
-        // Using find_nearest_clinics function through supabase
         const { data, error } = await supabase.rpc("find_nearest_clinics", {
-          user_location: null, // Will get all clinics
+          user_location: null,
           max_distance_km: 50,
           limit_count: 20,
         });
@@ -61,13 +59,16 @@ const BookAppointment = () => {
     };
 
     fetchClinics();
-  }, [isPatient]);
+  }, []); // ✅ EMPTY DEPS - runs once
 
-  // ✅ REAL DOCTORS FETCH
+  // ✅ OPTIMIZED: Memoized clinic ID to prevent unnecessary calls
+  const clinicId = bookingData.clinic?.id;
+
+  // ✅ OPTIMIZED: Doctors fetch
   useEffect(() => {
     const fetchDoctors = async () => {
-      if (bookingData.clinic?.id) {
-        const result = await getAvailableDoctors(bookingData.clinic.id);
+      if (clinicId) {
+        const result = await getAvailableDoctors(clinicId);
         if (result.success) {
           setDoctors(result.doctors);
         }
@@ -77,13 +78,13 @@ const BookAppointment = () => {
     };
 
     fetchDoctors();
-  }, [bookingData.clinic?.id, getAvailableDoctors]);
+  }, [clinicId, getAvailableDoctors]);
 
-  // ✅ REAL SERVICES FETCH
+  // ✅ OPTIMIZED: Services fetch
   useEffect(() => {
     const fetchServices = async () => {
-      if (bookingData.clinic?.id) {
-        const result = await getServices(bookingData.clinic.id);
+      if (clinicId) {
+        const result = await getServices(clinicId);
         if (result.success) {
           setServices(result.services);
         }
@@ -93,62 +94,48 @@ const BookAppointment = () => {
     };
 
     fetchServices();
-  }, [bookingData.clinic?.id, getServices]);
+  }, [clinicId, getServices]);
 
-  // ✅ REAL AVAILABILITY CHECK
-  useEffect(() => {
-    const checkAvailableTimes = async () => {
-      if (
-        !bookingData.doctor?.id ||
-        !bookingData.date ||
-        bookingData.services.length === 0
-      ) {
-        setAvailableTimes([]);
-        return;
-      }
-
-      setCheckingAvailability(true);
-      const allTimes = generateTimeSlots();
-      const availableSlots = [];
-
-      for (const time of allTimes) {
-        const result = await checkSlotAvailability(
-          bookingData.doctor.id,
-          bookingData.date,
-          time,
-          bookingData.services
-        );
-
-        if (result.available) {
-          availableSlots.push(time);
-        }
-      }
-
-      setAvailableTimes(availableSlots);
-      setCheckingAvailability(false);
-    };
-
-    checkAvailableTimes();
-  }, [
-    bookingData.doctor?.id,
-    bookingData.date,
-    bookingData.services,
-    checkSlotAvailability,
-  ]);
-
-  const generateTimeSlots = useCallback(() => {
-    const slots = [];
-    for (let hour = 9; hour < 17; hour++) {
-      for (let minutes of [0, 30]) {
-        const time = `${hour.toString().padStart(2, "0")}:${minutes
-          .toString()
-          .padStart(2, "0")}`;
-        slots.push(time);
-      }
+  // ✅ MEMOIZED: Step validation message
+  const stepValidationMessage = useMemo(() => {
+    switch (bookingStep) {
+      case "clinic":
+        return !bookingData.clinic ? "Please select a clinic" : null;
+      case "services":
+        return !bookingData.services?.length
+          ? "Please select at least one service"
+          : null;
+      case "doctor":
+        return !bookingData.doctor ? "Please select a doctor" : null;
+      case "datetime":
+        if (!bookingData.date) return "Please select a date";
+        if (!bookingData.time) return "Please select a time";
+        return null;
+      default:
+        return null;
     }
-    return slots;
-  }, []);
+  }, [bookingStep, bookingData]);
 
+  // ✅ MEMOIZED: Cost and duration calculations
+  const { totalDuration, totalCost, selectedServices } = useMemo(() => {
+    const selected = services.filter((service) =>
+      bookingData.services.includes(service.id)
+    );
+
+    return {
+      totalDuration: selected.reduce(
+        (total, service) => total + (service.duration_minutes || 0),
+        0
+      ),
+      totalCost: selected.reduce(
+        (total, service) => total + (parseFloat(service.max_price) || 0),
+        0
+      ),
+      selectedServices: selected,
+    };
+  }, [services, bookingData.services]);
+
+  // ✅ OPTIMIZED: Handler functions
   const handleClinicSelect = useCallback(
     (clinic) => {
       updateBookingData({
@@ -165,16 +152,16 @@ const BookAppointment = () => {
   const handleServiceToggle = useCallback(
     (serviceId) => {
       const currentServices = bookingData.services || [];
-      let newServices;
 
       if (currentServices.includes(serviceId)) {
-        newServices = currentServices.filter((id) => id !== serviceId);
-      } else {
-        if (currentServices.length >= 3) return;
-        newServices = [...currentServices, serviceId];
+        updateBookingData({
+          services: currentServices.filter((id) => id !== serviceId),
+        });
+      } else if (currentServices.length < 3) {
+        updateBookingData({
+          services: [...currentServices, serviceId],
+        });
       }
-
-      updateBookingData({ services: newServices });
     },
     [bookingData.services, updateBookingData]
   );
@@ -205,27 +192,7 @@ const BookAppointment = () => {
     }
   }, [isPatient, bookAppointment]);
 
-  const getTotalDuration = () => {
-    const selectedServices = services.filter((service) =>
-      bookingData.services.includes(service.id)
-    );
-    return selectedServices.reduce(
-      (total, service) => total + (service.duration_minutes || 0),
-      0
-    );
-  };
-
-  const getTotalCost = () => {
-    const selectedServices = services.filter((service) =>
-      bookingData.services.includes(service.id)
-    );
-    return selectedServices.reduce(
-      (total, service) => total + (parseFloat(service.max_price) || 0),
-      0
-    );
-  };
-
-  // ✅ RENDER FUNCTIONS - NO STYLING
+  // ✅ RENDER FUNCTIONS
   const renderClinicStep = () => (
     <div>
       <h2>
@@ -324,8 +291,8 @@ const BookAppointment = () => {
               }}
             >
               <h4>Selected Services Summary:</h4>
-              <p>Total Duration: {getTotalDuration()} minutes</p>
-              <p>Estimated Total Cost: ₱{getTotalCost()}</p>
+              <p>Total Duration: {totalDuration} minutes</p>
+              <p>Estimated Total Cost: ₱{totalCost}</p>
             </div>
           )}
         </div>
@@ -361,9 +328,6 @@ const BookAppointment = () => {
               <p>Rating: {doctor.rating || "N/A"}</p>
               <p>Consultation Fee: ₱{doctor.consultation_fee}</p>
               {doctor.education && <p>Education: {doctor.education}</p>}
-              {doctor.certifications && (
-                <p>Certifications: {JSON.stringify(doctor.certifications)}</p>
-              )}
             </div>
           ))}
         </div>
@@ -443,110 +407,93 @@ const BookAppointment = () => {
     </div>
   );
 
-  const renderConfirmStep = () => {
-    const selectedServices = services.filter((service) =>
-      bookingData.services.includes(service.id)
-    );
+  const renderConfirmStep = () => (
+    <div>
+      <h2>Review & Confirm Your Appointment</h2>
 
-    return (
-      <div>
-        <h2>Review & Confirm Your Appointment</h2>
+      <div
+        style={{
+          padding: "15px",
+          marginBottom: "20px",
+          backgroundColor: "#fff3cd",
+          border: "1px solid #ffeaa7",
+        }}
+      >
+        <h4>Payment Information</h4>
+        <p>
+          This booking does not include online payment. Please prepare cash
+          payment for your appointment.
+        </p>
+      </div>
 
-        <div
-          style={{
-            padding: "15px",
-            marginBottom: "20px",
-            backgroundColor: "#fff3cd",
-            border: "1px solid #ffeaa7",
-          }}
-        >
-          <h4>Payment Information</h4>
+      <div
+        style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "30px" }}
+      >
+        <div>
+          <h3>Appointment Details</h3>
           <p>
-            This booking does not include online payment. Please prepare cash
-            payment for your appointment. The clinic has been notified of your
-            booking.
+            <strong>Clinic:</strong> {bookingData.clinic?.name}
+          </p>
+          <p>
+            <strong>Address:</strong> {bookingData.clinic?.address}
+          </p>
+          <p>
+            <strong>Phone:</strong> {bookingData.clinic?.phone}
+          </p>
+
+          <h4>Services:</h4>
+          {selectedServices.map((service) => (
+            <div key={service.id}>
+              <p>
+                • {service.name} - ₱{service.min_price}-₱{service.max_price}
+              </p>
+            </div>
+          ))}
+          <p>
+            <strong>Estimated Total: ₱{totalCost}</strong>
+          </p>
+
+          <p>
+            <strong>Doctor:</strong> {bookingData.doctor?.name}
+          </p>
+          <p>
+            <strong>Specialization:</strong>{" "}
+            {bookingData.doctor?.specialization}
+          </p>
+          <p>
+            <strong>Date:</strong>{" "}
+            {new Date(bookingData.date).toLocaleDateString()}
+          </p>
+          <p>
+            <strong>Time:</strong> {bookingData.time}
+          </p>
+          <p>
+            <strong>Duration:</strong> {totalDuration} minutes
+          </p>
+
+          {bookingData.symptoms && (
+            <div>
+              <strong>Your Notes:</strong>
+              <p>{bookingData.symptoms}</p>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <h3>Patient Information</h3>
+          <p>
+            <strong>Name:</strong> {profile?.first_name} {profile?.last_name}
+          </p>
+          <p>
+            <strong>Email:</strong> {profile?.email}
+          </p>
+          <p>
+            <strong>Phone:</strong> {profile?.phone || "Not provided"}
           </p>
         </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: "30px",
-          }}
-        >
-          <div>
-            <h3>Appointment Details</h3>
-            <p>
-              <strong>Clinic:</strong> {bookingData.clinic?.name}
-            </p>
-            <p>
-              <strong>Address:</strong> {bookingData.clinic?.address}
-            </p>
-            <p>
-              <strong>Phone:</strong> {bookingData.clinic?.phone}
-            </p>
-
-            <h4>Services:</h4>
-            {selectedServices.map((service) => (
-              <div key={service.id}>
-                <p>
-                  • {service.name} - ₱{service.min_price}-₱{service.max_price}
-                </p>
-              </div>
-            ))}
-            <p>
-              <strong>Estimated Total: ₱{getTotalCost()}</strong>
-            </p>
-
-            <p>
-              <strong>Doctor:</strong> {bookingData.doctor?.name}
-            </p>
-            <p>
-              <strong>Specialization:</strong>{" "}
-              {bookingData.doctor?.specialization}
-            </p>
-
-            <p>
-              <strong>Date:</strong>{" "}
-              {new Date(bookingData.date).toLocaleDateString()}
-            </p>
-            <p>
-              <strong>Time:</strong> {bookingData.time}
-            </p>
-            <p>
-              <strong>Duration:</strong> {getTotalDuration()} minutes
-            </p>
-
-            {bookingData.symptoms && (
-              <div>
-                <strong>Your Notes:</strong>
-                <p>{bookingData.symptoms}</p>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <h3>Patient Information</h3>
-            <p>
-              <strong>Name:</strong> {profile?.first_name} {profile?.last_name}
-            </p>
-            <p>
-              <strong>Email:</strong> {profile?.email}
-            </p>
-            <p>
-              <strong>Phone:</strong> {profile?.phone || "Not provided"}
-            </p>
-
-            <p style={{ fontSize: "14px", color: "#666", marginTop: "15px" }}>
-              Your contact information is from your profile. Update it in
-              settings if needed.
-            </p>
-          </div>
-        </div>
       </div>
-    );
-  };
+    </div>
+  );
 
   const renderCurrentStep = () => {
     switch (bookingStep) {
@@ -587,6 +534,13 @@ const BookAppointment = () => {
         <div>Progress: {Math.round(stepProgress)}%</div>
       </div>
 
+      {/* Validation Message */}
+      {stepValidationMessage && (
+        <div style={{ marginTop: "10px", color: "orange" }}>
+          {stepValidationMessage}
+        </div>
+      )}
+
       {/* Error Display */}
       {error && (
         <div style={{ color: "red", padding: "10px", margin: "10px 0" }}>
@@ -605,7 +559,7 @@ const BookAppointment = () => {
         {loading ? <p>Loading...</p> : renderCurrentStep()}
       </div>
 
-      {/* Navigation */}
+      {/* ✅ FIXED: Navigation with proper step logic */}
       <div
         style={{
           display: "flex",
@@ -621,7 +575,7 @@ const BookAppointment = () => {
           Previous
         </button>
 
-        {isComplete ? (
+        {bookingStep === "confirm" ? (
           <button
             onClick={handleSubmit}
             disabled={!canProceed || loading}
@@ -647,18 +601,6 @@ const BookAppointment = () => {
           </button>
         )}
       </div>
-
-      {/* Debug Info */}
-      <details style={{ marginTop: "20px" }}>
-        <summary>Debug Info</summary>
-        <pre>{JSON.stringify(bookingData, null, 2)}</pre>
-        <p>Current Step: {bookingStep}</p>
-        <p>Can proceed: {canProceed ? "Yes" : "No"}</p>
-        <p>Is complete: {isComplete ? "Yes" : "No"}</p>
-        <p>Selected services: {bookingData.services?.length || 0}</p>
-        <p>Total duration: {getTotalDuration()} minutes</p>
-        <p>Total cost: ₱{getTotalCost()}</p>
-      </details>
     </div>
   );
 };

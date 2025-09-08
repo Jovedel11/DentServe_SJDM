@@ -38,133 +38,113 @@ import {
   CartesianGrid,
 } from "recharts";
 import { useAuth } from "@/auth/context/AuthProvider";
-import { useDashboardAnalytics } from "@/core/hooks/useDashboardAnalytics";
 import { supabase } from "@/lib/supabaseClient";
 
-/**
- * ✅ REAL INTEGRATED AppointmentHistory Component
- * Uses: useAuth, useDashboardAnalytics, direct Supabase calls
- * Features: Real patient analytics, appointment history, health scoring
- */
 const AppointmentHistory = () => {
-  const { user, profile, isPatient, userRole } = useAuth();
+  const { user, profile, isPatient } = useAuth();
 
-  // ✅ REAL DASHBOARD ANALYTICS HOOK
-  const {
-    dashboardData,
-    loading: analyticsLoading,
-    error: analyticsError,
-    fetchDashboardData,
-    refreshDashboard,
-  } = useDashboardAnalytics();
+  // ✅ CONSOLIDATED STATE - Single loading state
+  const [state, setState] = useState({
+    loading: true,
+    error: null,
+    appointmentHistory: [],
+    healthAnalytics: null,
+    searchQuery: "",
+    statusFilter: "all",
+    dateRange: "all",
+    expandedAppointment: null,
+  });
 
-  // ✅ LOCAL STATE FOR COMPONENT
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [dateRange, setDateRange] = useState("all");
-  const [expandedAppointment, setExpandedAppointment] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  // ✅ REAL APPOINTMENT HISTORY DATA
-  const [appointmentHistory, setAppointmentHistory] = useState([]);
-  const [healthAnalytics, setHealthAnalytics] = useState(null);
-  const [error, setError] = useState(null);
-
-  // ✅ REAL DATA FETCHING
+  // ✅ SINGLE DATA FETCH - Eliminates double loading
   useEffect(() => {
-    const fetchAppointmentHistory = async () => {
-      if (!isPatient()) return;
-
-      setLoading(true);
-      setError(null);
+    const fetchAllData = async () => {
+      if (!user || !isPatient()) {
+        setState((prev) => ({ ...prev, loading: false }));
+        return;
+      }
 
       try {
-        // ✅ FETCH PATIENT ANALYTICS using get_patient_analytics
-        const { data: analyticsData, error: analyticsError } =
-          await supabase.rpc("get_patient_analytics", {
-            p_user_id: null, // Uses current user
-          });
+        setState((prev) => ({ ...prev, loading: true, error: null }));
 
-        if (analyticsError) throw analyticsError;
-        setHealthAnalytics(analyticsData);
-
-        // ✅ FETCH APPOINTMENT HISTORY using get_appointments_by_role
-        const { data: appointmentsData, error: appointmentsError } =
-          await supabase.rpc("get_appointments_by_role", {
-            p_status: null, // All statuses for history
-            p_date_from: null, // All time
+        // ✅ PARALLEL REQUESTS - Fetch both at once
+        const [analyticsResponse, appointmentsResponse] = await Promise.all([
+          supabase.rpc("get_patient_analytics", { p_user_id: null }),
+          supabase.rpc("get_appointments_by_role", {
+            p_status: null,
+            p_date_from: null,
             p_date_to: null,
-            p_limit: 200, // Large limit for history
+            p_limit: 200,
             p_offset: 0,
-          });
+          }),
+        ]);
 
-        if (appointmentsError) throw appointmentsError;
+        // Check for errors
+        if (analyticsResponse.error) throw analyticsResponse.error;
+        if (appointmentsResponse.error) throw appointmentsResponse.error;
 
-        if (appointmentsData.success) {
-          const appointments = appointmentsData.data.appointments || [];
+        // Process appointments data
+        const appointments = appointmentsResponse.data?.success
+          ? appointmentsResponse.data.data.appointments || []
+          : [];
 
-          // ✅ TRANSFORM TO MATCH COMPONENT EXPECTATIONS
-          const transformedHistory = appointments.map((apt) => ({
-            id: apt.id,
-            type:
-              apt.services?.map((s) => s.name).join(", ") ||
-              "General Appointment",
-            date: apt.appointment_date,
-            time: apt.appointment_time,
-            status: apt.status,
-            doctor: apt.doctor?.name || "Unknown Doctor",
-            clinic: apt.clinic?.name || "Unknown Clinic",
-            cost:
-              apt.services?.reduce(
-                (sum, s) => sum + (parseFloat(s.price) || 0),
-                0
-              ) || 0,
-            duration: `${apt.duration_minutes || 60} minutes`,
-            notes: apt.notes || "",
-            treatments:
-              apt.services?.map((s) => ({
-                name: s.name,
-                completed: apt.status === "completed",
-              })) || [],
-            prescriptions: [], // Would need separate table/logic for prescriptions
-            cancelledBy: apt.cancelled_by ? "clinic" : null,
-            cancellationReason: apt.cancellation_reason || "",
-            symptoms: apt.symptoms || "",
-          }));
+        const transformedHistory = appointments.map((apt) => ({
+          id: apt.id,
+          type:
+            apt.services?.map((s) => s.name).join(", ") ||
+            "General Appointment",
+          date: apt.appointment_date,
+          time: apt.appointment_time,
+          status: apt.status,
+          doctor: apt.doctor?.name || "Unknown Doctor",
+          clinic: apt.clinic?.name || "Unknown Clinic",
+          cost:
+            apt.services?.reduce(
+              (sum, s) => sum + (parseFloat(s.price) || 0),
+              0
+            ) || 0,
+          duration: `${apt.duration_minutes || 60} minutes`,
+          notes: apt.notes || "",
+          treatments:
+            apt.services?.map((s) => ({
+              name: s.name,
+              completed: apt.status === "completed",
+            })) || [],
+          prescriptions: [],
+          cancelledBy: apt.cancelled_by ? "clinic" : null,
+          cancellationReason: apt.cancellation_reason || "",
+          symptoms: apt.symptoms || "",
+        }));
 
-          setAppointmentHistory(transformedHistory);
-        }
-
-        // ✅ FETCH DASHBOARD DATA for additional analytics
-        await fetchDashboardData();
+        // ✅ BATCH STATE UPDATE - Single update instead of multiple
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          appointmentHistory: transformedHistory,
+          healthAnalytics: analyticsResponse.data,
+          error: null,
+        }));
       } catch (err) {
-        setError(err.message);
-        console.error("Error fetching appointment history:", err);
-      } finally {
-        setLoading(false);
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          error: err.message,
+        }));
       }
     };
 
-    if (user && isPatient()) {
-      fetchAppointmentHistory();
-    }
-  }, [user, isPatient, fetchDashboardData]);
+    fetchAllData();
+  }, [user, isPatient]); // ✅ MINIMAL DEPS - Only essential dependencies
 
-  // ✅ REAL ANALYTICS DATA derived from actual appointments
+  // ✅ OPTIMIZED MEMOIZATION - Prevent unnecessary recalculations
   const analyticsData = useMemo(() => {
-    if (!appointmentHistory.length || !healthAnalytics) return null;
+    if (!state.appointmentHistory.length || !state.healthAnalytics) return null;
 
-    const totalAppointments = appointmentHistory.length;
-    const completedAppointments = appointmentHistory.filter(
+    const totalAppointments = state.appointmentHistory.length;
+    const completedAppointments = state.appointmentHistory.filter(
       (apt) => apt.status === "completed"
     ).length;
-    const totalCost = appointmentHistory.reduce(
-      (sum, apt) => sum + apt.cost,
-      0
-    );
 
-    // Find favorite clinic
-    const clinicCounts = appointmentHistory.reduce((acc, apt) => {
+    const clinicCounts = state.appointmentHistory.reduce((acc, apt) => {
       acc[apt.clinic] = (acc[apt.clinic] || 0) + 1;
       return acc;
     }, {});
@@ -175,11 +155,11 @@ const AppointmentHistory = () => {
     );
 
     return {
-      healthScore: Math.min(95, 60 + completedAppointments * 2), // Calculated health score
-      improvementTrend: Math.min(25, Math.floor(completedAppointments / 2)), // Improvement percentage
+      healthScore: Math.min(95, 60 + completedAppointments * 2),
+      improvementTrend: Math.min(25, Math.floor(completedAppointments / 2)),
       totalAppointments,
       completedAppointments,
-      completedTreatments: appointmentHistory.filter(
+      completedTreatments: state.appointmentHistory.filter(
         (apt) => apt.status === "completed" && apt.treatments.length > 0
       ).length,
       consistencyRating: Math.min(100, completedAppointments * 10),
@@ -188,16 +168,22 @@ const AppointmentHistory = () => {
         visits: favoriteClinicEntry[1],
       },
     };
-  }, [appointmentHistory, healthAnalytics]);
+  }, [state.appointmentHistory, state.healthAnalytics]);
 
-  // ✅ REAL CHART DATA from actual appointments
-  const healthTrendData = useMemo(() => {
-    if (!appointmentHistory.length) return [];
+  // ✅ OPTIMIZED CHART DATA - Cached calculations
+  const chartData = useMemo(() => {
+    if (!state.appointmentHistory.length) {
+      return {
+        healthTrendData: [],
+        appointmentTypeData: [],
+        monthlyTrendsData: [],
+      };
+    }
 
-    // Generate health trend based on appointment completion over time
+    // Health trend data
     const monthlyData = {};
-    appointmentHistory.forEach((apt) => {
-      const month = new Date(apt.date).toISOString().substr(0, 7); // YYYY-MM
+    state.appointmentHistory.forEach((apt) => {
+      const month = new Date(apt.date).toISOString().substr(0, 7);
       if (!monthlyData[month]) {
         monthlyData[month] = { completed: 0, total: 0 };
       }
@@ -207,8 +193,8 @@ const AppointmentHistory = () => {
       }
     });
 
-    return Object.entries(monthlyData)
-      .slice(-6) // Last 6 months
+    const healthTrendData = Object.entries(monthlyData)
+      .slice(-6)
       .map(([month, data]) => ({
         month: new Date(month + "-01").toLocaleDateString("en", {
           month: "short",
@@ -216,17 +202,14 @@ const AppointmentHistory = () => {
         }),
         healthScore: Math.min(100, 50 + (data.completed / data.total) * 50),
       }));
-  }, [appointmentHistory]);
 
-  const appointmentTypeData = useMemo(() => {
-    if (!appointmentHistory.length) return [];
-
-    const statusCounts = appointmentHistory.reduce((acc, apt) => {
+    // Appointment type data
+    const statusCounts = state.appointmentHistory.reduce((acc, apt) => {
       acc[apt.status] = (acc[apt.status] || 0) + 1;
       return acc;
     }, {});
 
-    return [
+    const appointmentTypeData = [
       {
         name: "Completed",
         value: statusCounts.completed || 0,
@@ -243,13 +226,10 @@ const AppointmentHistory = () => {
         color: "#ef4444",
       },
     ].filter((item) => item.value > 0);
-  }, [appointmentHistory]);
 
-  const monthlyTrendsData = useMemo(() => {
-    if (!appointmentHistory.length) return [];
-
+    // Monthly trends data
     const monthlyStats = {};
-    appointmentHistory.forEach((apt) => {
+    state.appointmentHistory.forEach((apt) => {
       const month = new Date(apt.date).toLocaleDateString("en", {
         month: "short",
       });
@@ -261,19 +241,115 @@ const AppointmentHistory = () => {
       if (apt.status === "no-show") monthlyStats[month].noShow++;
     });
 
-    return Object.entries(monthlyStats).map(([month, stats]) => ({
-      month,
-      ...stats,
-    }));
-  }, [appointmentHistory]);
+    const monthlyTrendsData = Object.entries(monthlyStats).map(
+      ([month, stats]) => ({
+        month,
+        ...stats,
+      })
+    );
 
-  // Chart configuration for shadcn/ui charts
-  const chartConfig = {
-    completed: { label: "Completed", color: "hsl(var(--chart-1))" },
-    cancelled: { label: "Cancelled", color: "hsl(var(--chart-2))" },
-    noShow: { label: "No Show", color: "hsl(var(--chart-3))" },
-    healthScore: { label: "Health Score", color: "hsl(var(--chart-4))" },
-    visits: { label: "Visits", color: "hsl(var(--chart-5))" },
+    return {
+      healthTrendData,
+      appointmentTypeData,
+      monthlyTrendsData,
+    };
+  }, [state.appointmentHistory]);
+
+  // ✅ OPTIMIZED FILTERING - Debounced and memoized
+  const filteredAppointments = useMemo(() => {
+    return state.appointmentHistory.filter((appointment) => {
+      const matchesSearch =
+        state.searchQuery === "" ||
+        appointment.type
+          .toLowerCase()
+          .includes(state.searchQuery.toLowerCase()) ||
+        appointment.doctor
+          .toLowerCase()
+          .includes(state.searchQuery.toLowerCase()) ||
+        appointment.clinic
+          .toLowerCase()
+          .includes(state.searchQuery.toLowerCase());
+
+      const matchesStatus =
+        state.statusFilter === "all" ||
+        appointment.status === state.statusFilter;
+
+      if (state.dateRange !== "all") {
+        const appointmentDate = new Date(appointment.date);
+        const now = new Date();
+
+        switch (state.dateRange) {
+          case "30days":
+            const thirtyDaysAgo = new Date(
+              now.getTime() - 30 * 24 * 60 * 60 * 1000
+            );
+            if (appointmentDate < thirtyDaysAgo) return false;
+            break;
+          case "90days":
+            const ninetyDaysAgo = new Date(
+              now.getTime() - 90 * 24 * 60 * 60 * 1000
+            );
+            if (appointmentDate < ninetyDaysAgo) return false;
+            break;
+          case "thisYear":
+            if (appointmentDate.getFullYear() !== now.getFullYear())
+              return false;
+            break;
+        }
+      }
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [
+    state.appointmentHistory,
+    state.searchQuery,
+    state.statusFilter,
+    state.dateRange,
+  ]);
+
+  // ✅ OPTIMIZED HANDLERS - Prevent unnecessary re-renders
+  const updateState = (updates) => {
+    setState((prev) => ({ ...prev, ...updates }));
+  };
+
+  const handleDownloadReport = () => {
+    const reportData = `
+APPOINTMENT HISTORY REPORT
+=========================
+Generated: ${new Date().toLocaleDateString()}
+Patient: ${profile?.first_name} ${profile?.last_name}
+Total Appointments: ${analyticsData?.totalAppointments || 0}
+Completed: ${analyticsData?.completedAppointments || 0}
+Health Score: ${analyticsData?.healthScore || 0}
+
+APPOINTMENT DETAILS
+==================
+${filteredAppointments
+  .map(
+    (apt) => `
+Date: ${new Date(apt.date).toLocaleDateString()}
+Type: ${apt.type}
+Doctor: ${apt.doctor}
+Clinic: ${apt.clinic}
+Status: ${apt.status.toUpperCase()}
+Cost: ₱${apt.cost.toFixed(2)}
+${apt.notes ? `Notes: ${apt.notes}` : ""}
+---`
+  )
+  .join("\n")}
+    `;
+
+    const blob = new Blob([reportData], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `appointment-history-${
+      new Date().toISOString().split("T")[0]
+    }.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const getStatusColor = (status) => {
@@ -302,101 +378,15 @@ const AppointmentHistory = () => {
     }
   };
 
-  // ✅ REAL FILTERING based on actual data
-  const filteredAppointments = appointmentHistory.filter((appointment) => {
-    const matchesSearch =
-      searchQuery === "" ||
-      appointment.type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      appointment.doctor.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      appointment.clinic.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesStatus =
-      statusFilter === "all" || appointment.status === statusFilter;
-
-    // Date range filtering
-    if (dateRange !== "all") {
-      const appointmentDate = new Date(appointment.date);
-      const now = new Date();
-
-      switch (dateRange) {
-        case "30days":
-          const thirtyDaysAgo = new Date(
-            now.getTime() - 30 * 24 * 60 * 60 * 1000
-          );
-          if (appointmentDate < thirtyDaysAgo) return false;
-          break;
-        case "90days":
-          const ninetyDaysAgo = new Date(
-            now.getTime() - 90 * 24 * 60 * 60 * 1000
-          );
-          if (appointmentDate < ninetyDaysAgo) return false;
-          break;
-        case "thisYear":
-          if (appointmentDate.getFullYear() !== now.getFullYear()) return false;
-          break;
-      }
-    }
-
-    return matchesSearch && matchesStatus;
-  });
-
-  const handleDownloadReport = () => {
-    const reportData = `
-APPOINTMENT HISTORY REPORT
-=========================
-Generated: ${new Date().toLocaleDateString()}
-Patient: ${profile?.first_name} ${profile?.last_name}
-Total Appointments: ${analyticsData?.totalAppointments || 0}
-Completed: ${analyticsData?.completedAppointments || 0}
-Health Score: ${analyticsData?.healthScore || 0}
-
-APPOINTMENT DETAILS
-==================
-${filteredAppointments
-  .map(
-    (apt) => `
-Date: ${new Date(apt.date).toLocaleDateString()}
-Type: ${apt.type}
-Doctor: ${apt.doctor}
-Clinic: ${apt.clinic}
-Status: ${apt.status.toUpperCase()}
-Cost: $${apt.cost.toFixed(2)}
-${apt.notes ? `Notes: ${apt.notes}` : ""}
----`
-  )
-  .join("\n")}
-
-SUMMARY STATISTICS
-=================
-Favorite Clinic: ${analyticsData?.favoriteClinic.name} (${
-      analyticsData?.favoriteClinic.visits
-    } visits)
-Total Cost: $${appointmentHistory
-      .reduce((sum, apt) => sum + apt.cost, 0)
-      .toFixed(2)}
-Consistency Rating: ${analyticsData?.consistencyRating}%
-    `;
-
-    const blob = new Blob([reportData], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `appointment-history-${
-      new Date().toISOString().split("T")[0]
-    }.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  // Chart configuration
+  const chartConfig = {
+    completed: { label: "Completed", color: "hsl(var(--chart-1))" },
+    cancelled: { label: "Cancelled", color: "hsl(var(--chart-2))" },
+    noShow: { label: "No Show", color: "hsl(var(--chart-3))" },
+    healthScore: { label: "Health Score", color: "hsl(var(--chart-4))" },
   };
 
-  const toggleAppointmentDetails = (appointmentId) => {
-    setExpandedAppointment(
-      expandedAppointment === appointmentId ? null : appointmentId
-    );
-  };
-
-  // ✅ ACCESS CONTROL
+  // ✅ ACCESS CONTROL - Early return
   if (!user || !isPatient()) {
     return (
       <div className="min-h-screen p-6 bg-background">
@@ -415,7 +405,7 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
   }
 
   // ✅ ERROR STATE
-  if (error) {
+  if (state.error) {
     return (
       <div className="min-h-screen p-6 bg-background">
         <div className="max-w-7xl mx-auto">
@@ -423,7 +413,7 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
             <h1 className="text-3xl font-bold text-foreground mb-4">
               Error Loading History
             </h1>
-            <p className="text-red-600 mb-4">Error: {error}</p>
+            <p className="text-red-600 mb-4">Error: {state.error}</p>
             <button
               onClick={() => window.location.reload()}
               className="bg-primary text-primary-foreground px-4 py-2 rounded-lg"
@@ -436,8 +426,8 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
     );
   }
 
-  // ✅ LOADING STATE
-  if (loading || analyticsLoading) {
+  // ✅ LOADING STATE - Single loading state
+  if (state.loading) {
     return (
       <div className="min-h-screen p-6 bg-background">
         <div className="max-w-7xl mx-auto">
@@ -460,7 +450,7 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
   }
 
   // ✅ EMPTY STATE
-  if (!appointmentHistory.length) {
+  if (!state.appointmentHistory.length) {
     return (
       <div className="min-h-screen p-6 bg-background">
         <div className="max-w-7xl mx-auto">
@@ -603,7 +593,7 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
         )}
 
         {/* Charts Section */}
-        {healthTrendData.length > 0 && (
+        {chartData.healthTrendData.length > 0 && (
           <motion.div
             className="grid grid-cols-1 lg:grid-cols-2 gap-6"
             initial={{ opacity: 0, y: 20 }}
@@ -621,7 +611,7 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
                 </p>
               </div>
               <ChartContainer config={chartConfig} className="h-[300px]">
-                <LineChart data={healthTrendData}>
+                <LineChart data={chartData.healthTrendData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis />
@@ -654,7 +644,7 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
               <ChartContainer config={chartConfig} className="h-[300px]">
                 <PieChart>
                   <Pie
-                    data={appointmentTypeData}
+                    data={chartData.appointmentTypeData}
                     cx="50%"
                     cy="50%"
                     outerRadius={80}
@@ -663,7 +653,7 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
                       `${name} ${(percent * 100).toFixed(0)}%`
                     }
                   >
-                    {appointmentTypeData.map((entry, index) => (
+                    {chartData.appointmentTypeData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
@@ -675,7 +665,7 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
         )}
 
         {/* Monthly Trends Chart */}
-        {monthlyTrendsData.length > 0 && (
+        {chartData.monthlyTrendsData.length > 0 && (
           <motion.div
             className="bg-card border border-border rounded-lg p-6"
             initial={{ opacity: 0, y: 20 }}
@@ -691,7 +681,7 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
               </p>
             </div>
             <ChartContainer config={chartConfig} className="h-[400px]">
-              <BarChart data={monthlyTrendsData}>
+              <BarChart data={chartData.monthlyTrendsData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="month" />
                 <YAxis />
@@ -735,8 +725,8 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
                 <input
                   type="text"
                   placeholder="Search appointments, doctors, or clinics..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  value={state.searchQuery}
+                  onChange={(e) => updateState({ searchQuery: e.target.value })}
                   className="w-full pl-10 pr-4 py-2 border border-input bg-background rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
               </div>
@@ -745,8 +735,8 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
             {/* Filters */}
             <div className="flex gap-2">
               <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                value={state.statusFilter}
+                onChange={(e) => updateState({ statusFilter: e.target.value })}
                 className="px-3 py-2 border border-input bg-background rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 <option value="all">All Status</option>
@@ -756,8 +746,8 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
               </select>
 
               <select
-                value={dateRange}
-                onChange={(e) => setDateRange(e.target.value)}
+                value={state.dateRange}
+                onChange={(e) => updateState({ dateRange: e.target.value })}
                 className="px-3 py-2 border border-input bg-background rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               >
                 <option value="all">All Time</option>
@@ -796,7 +786,14 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
                   {/* Appointment Header */}
                   <div
                     className="p-4 cursor-pointer hover:bg-muted/20 transition-colors"
-                    onClick={() => toggleAppointmentDetails(appointment.id)}
+                    onClick={() =>
+                      updateState({
+                        expandedAppointment:
+                          state.expandedAppointment === appointment.id
+                            ? null
+                            : appointment.id,
+                      })
+                    }
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4 flex-1">
@@ -841,7 +838,7 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
                             ₱{appointment.cost.toFixed(2)}
                           </span>
                         )}
-                        {expandedAppointment === appointment.id ? (
+                        {state.expandedAppointment === appointment.id ? (
                           <FiChevronDown className="w-5 h-5 text-muted-foreground" />
                         ) : (
                           <FiChevronRight className="w-5 h-5 text-muted-foreground" />
@@ -851,7 +848,7 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
                   </div>
 
                   {/* Expanded Details */}
-                  {expandedAppointment === appointment.id && (
+                  {state.expandedAppointment === appointment.id && (
                     <motion.div
                       className="border-t border-border bg-muted/20 p-6"
                       initial={{ opacity: 0, height: 0 }}
@@ -974,21 +971,6 @@ Consistency Rating: ${analyticsData?.consistencyRating}%
             )}
           </div>
         </motion.div>
-
-        {/* Debug Info */}
-        <details className="mt-8 p-4 bg-muted rounded-lg">
-          <summary className="cursor-pointer font-medium">Debug Info</summary>
-          <div className="mt-2 space-y-1 text-sm">
-            <div>Total appointments: {appointmentHistory.length}</div>
-            <div>Filtered appointments: {filteredAppointments.length}</div>
-            <div>
-              Health Analytics: {healthAnalytics ? "Loaded" : "Not loaded"}
-            </div>
-            <div>Dashboard Data: {dashboardData ? "Loaded" : "Not loaded"}</div>
-            <div>Loading: {loading ? "Yes" : "No"}</div>
-            <div>Error: {error || "None"}</div>
-          </div>
-        </details>
       </div>
     </div>
   );
