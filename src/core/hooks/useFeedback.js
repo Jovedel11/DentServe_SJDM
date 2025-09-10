@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { useAuth } from '.@/auth/context/AuthProvider';
+import { useAuth } from '@/auth/context/AuthProvider';
 
 export const useFeedback = () => {
   const [loading, setLoading] = useState(false);

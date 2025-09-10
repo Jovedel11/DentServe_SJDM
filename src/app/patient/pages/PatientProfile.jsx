@@ -497,9 +497,8 @@ const PatientProfile = () => {
                   onImageUpdate={handleImageUpdate}
                   variant="avatar"
                   size="lg"
-                  className="w-32 h-32 md:w-40 md:h-40"
-                  showFileInfo={true}
-                  showGuidelines={true}
+                  showFileInfo={false}
+                  showGuidelines={false}
                 />
                 <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-blue-600 text-white border-4 border-white dark:border-gray-800 flex items-center justify-center shadow-lg">
                   <FiCamera className="text-sm" />

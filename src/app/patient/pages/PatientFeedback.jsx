@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   FiStar,
   FiMessageSquare,
@@ -12,260 +12,181 @@ import {
   FiEye,
   FiEyeOff,
   FiAward,
+  FiArchive,
+  FiTrash2,
+  FiAlertTriangle,
+  FiRotateCcw,
+  FiFolder,
+  FiDownload,
+  FiUser,
+  FiActivity,
 } from "react-icons/fi";
 import { FaBuilding } from "react-icons/fa";
-/**
- * Enhanced Feedback component with proper clinic → doctor selection flow
- */
+import { useAuth } from "@/auth/context/AuthProvider";
+import { usePatientFeedback } from "@/core/hooks/usePatientFeedback";
+
+// ✅ DELETE CONFIRMATION MODAL
+const DeleteConfirmationModal = ({
+  isOpen,
+  onClose,
+  onConfirm,
+  feedbackDetails,
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div
+        className="fixed inset-0 bg-black/20 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="relative bg-card border border-border rounded-lg shadow-lg max-w-md w-full mx-4 p-6"
+      >
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-2 bg-red-100 rounded-full dark:bg-red-900/20">
+            <FiAlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-foreground">
+            Delete Feedback
+          </h3>
+        </div>
+
+        <div className="mb-6">
+          <p className="text-muted-foreground mb-4">
+            Are you sure you want to permanently delete this feedback? This
+            action cannot be undone.
+          </p>
+
+          <div className="bg-muted/50 rounded-lg p-3 text-sm">
+            <div className="font-medium text-foreground">
+              {feedbackDetails?.rating}/5 stars •{" "}
+              {feedbackDetails?.clinic?.name}
+            </div>
+            <div className="text-muted-foreground">
+              {new Date(feedbackDetails?.created_at).toLocaleDateString()} •{" "}
+              {feedbackDetails?.doctor?.name}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3 justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
+          >
+            <FiTrash2 className="w-4 h-4" />
+            Delete Permanently
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const PatientFeedback = () => {
+  const { user, profile, isPatient } = useAuth();
+  const {
+    // State
+    loading,
+    error,
+    availableClinics,
+    feedbackHistory,
+    archivedFeedback,
+    selectedClinic,
+    selectedDoctor,
+    selectedAppointment,
+    feedbackForm,
+    showArchived,
+    totalFeedback,
+    activeFeedback,
+    archivedCount,
+    averageRating,
+    canSubmitFeedback,
+    formProgress,
+    doctorsForSelectedClinic,
+    appointmentsForSelectedDoctor,
+
+    // Actions
+    handleSubmitFeedback,
+    archiveFeedback,
+    unarchiveFeedback,
+    deleteArchivedFeedback,
+    downloadFeedbackDetails,
+    updateFeedbackForm,
+    selectClinic,
+    selectDoctor,
+    selectAppointment,
+    toggleArchiveView,
+    resetForm,
+  } = usePatientFeedback();
+
   const [activeTab, setActiveTab] = useState("new");
-  const [selectedClinic, setSelectedClinic] = useState("");
-  const [selectedDoctor, setSelectedDoctor] = useState("");
-  const [newFeedback, setNewFeedback] = useState({
-    rating: 0,
-    message: "",
-    anonymous: false,
-  });
   const [hoverRating, setHoverRating] = useState(0);
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    feedback: null,
+  });
 
-  // Mock data for clinics with completed appointments
-  const availableClinics = [
-    {
-      id: 1,
-      name: "SmileCare Dental Center",
-      location: "Downtown Branch",
-      address: "123 Main Street, Downtown",
-      image:
-        "https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=400&h=300&fit=crop",
-      completedAppointments: 3,
-      lastVisit: "2025-08-15",
-    },
-    {
-      id: 2,
-      name: "Advanced Dental Care",
-      location: "North Plaza",
-      address: "456 North Ave, Plaza District",
-      image:
-        "https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=400&h=300&fit=crop",
-      completedAppointments: 2,
-      lastVisit: "2025-08-10",
-    },
-    {
-      id: 3,
-      name: "OrthoSmile Clinic",
-      location: "West Side",
-      address: "789 West Boulevard",
-      image:
-        "https://images.unsplash.com/photo-1551601651-2a8555f1a136?w=400&h=300&fit=crop",
-      completedAppointments: 1,
-      lastVisit: "2025-08-05",
-    },
-  ];
-
-  // Mock data for doctors based on selected clinic
-  const availableDoctors = {
-    1: [
-      // SmileCare Dental Center
-      {
-        id: 1,
-        name: "Dr. Sarah Martinez",
-        specialty: "General Dentist",
-        avatar:
-          "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=400&h=400&fit=crop&crop=face",
-        completedAppointments: [
-          {
-            id: 1,
-            date: "2025-08-15",
-            time: "10:30 AM",
-            service: "Regular Dental Checkup",
-          },
-          {
-            id: 2,
-            date: "2025-07-20",
-            time: "2:00 PM",
-            service: "Teeth Cleaning",
-          },
-        ],
-      },
-      {
-        id: 2,
-        name: "Dr. Michael Johnson",
-        specialty: "Oral Surgeon",
-        avatar:
-          "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=400&h=400&fit=crop&crop=face",
-        completedAppointments: [
-          {
-            id: 3,
-            date: "2025-08-01",
-            time: "9:15 AM",
-            service: "Cavity Filling",
-          },
-        ],
-      },
-    ],
-    2: [
-      // Advanced Dental Care
-      {
-        id: 3,
-        name: "Dr. Emily Chen",
-        specialty: "Orthodontist",
-        avatar:
-          "https://images.unsplash.com/photo-1594824804732-ca8db5ac6b9e?w=400&h=400&fit=crop&crop=face",
-        completedAppointments: [
-          {
-            id: 4,
-            date: "2025-08-10",
-            time: "11:00 AM",
-            service: "Orthodontic Consultation",
-          },
-          {
-            id: 5,
-            date: "2025-07-25",
-            time: "3:30 PM",
-            service: "Braces Adjustment",
-          },
-        ],
-      },
-    ],
-    3: [
-      // OrthoSmile Clinic
-      {
-        id: 4,
-        name: "Dr. James Wilson",
-        specialty: "Cosmetic Dentist",
-        avatar:
-          "https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=400&h=400&fit=crop&crop=face",
-        completedAppointments: [
-          {
-            id: 6,
-            date: "2025-08-05",
-            time: "1:00 PM",
-            service: "Teeth Whitening Consultation",
-          },
-        ],
-      },
-    ],
+  // ✅ HANDLERS
+  const handleArchive = async (feedbackId) => {
+    const result = await archiveFeedback(feedbackId);
+    if (result.success) {
+      console.log("Archived successfully");
+    } else {
+      console.error("Archive failed:", result.error);
+    }
   };
 
-  // Mock feedback history (removed pending status, only show anonymous indicator)
-  const feedbackHistory = [
-    {
-      id: 1,
-      clinic: {
-        name: "SmileCare Dental Center",
-        location: "Downtown Branch",
-      },
-      doctor: {
-        name: "Dr. Robert Smith",
-        specialty: "Periodontist",
-        avatar:
-          "https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=400&h=400&fit=crop&crop=face",
-      },
-      appointment: {
-        date: "2025-07-28",
-        time: "9:00 AM",
-        service: "Deep Teeth Cleaning",
-      },
-      rating: 5,
-      message:
-        "Outstanding service! Dr. Smith was incredibly thorough and professional. The deep cleaning was done with great care, and the staff was very accommodating. The clinic environment was spotless and modern. Highly recommend for anyone needing periodontal care.",
-      anonymous: false,
-      submittedAt: "2025-07-30T14:30:00Z",
-      likes: 8,
-      helpful: true,
-      clinicResponse:
-        "Thank you for your wonderful feedback! We're thrilled that you had such a positive experience with Dr. Smith and our team.",
-    },
-    {
-      id: 2,
-      clinic: {
-        name: "Advanced Dental Care",
-        location: "North Plaza",
-      },
-      doctor: {
-        name: "Dr. Lisa Brown",
-        specialty: "Endodontist",
-        avatar:
-          "https://images.unsplash.com/photo-1607990281513-2c110a25bd8c?w=400&h=400&fit=crop&crop=face",
-      },
-      appointment: {
-        date: "2025-07-15",
-        time: "3:30 PM",
-        service: "Root Canal Treatment",
-      },
-      rating: 4,
-      message:
-        "The root canal procedure went smoothly overall. Dr. Brown explained each step clearly and the pain management was effective. The only minor issue was the longer than expected waiting time, but the quality of care made up for it.",
-      anonymous: true,
-      submittedAt: "2025-07-17T10:15:00Z",
-      likes: 5,
-      helpful: true,
-      clinicResponse:
-        "We appreciate your honest feedback and are glad the procedure went well. We're working on improving our scheduling to reduce wait times.",
-    },
-    {
-      id: 3,
-      clinic: {
-        name: "OrthoSmile Clinic",
-        location: "West Side",
-      },
-      doctor: {
-        name: "Dr. James Wilson",
-        specialty: "Cosmetic Dentist",
-        avatar:
-          "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=400&h=400&fit=crop&crop=face",
-      },
-      appointment: {
-        date: "2025-07-02",
-        time: "1:00 PM",
-        service: "Dental Consultation",
-      },
-      rating: 5,
-      message:
-        "Excellent consultation experience! Dr. Wilson took the time to thoroughly explain my treatment options and answer all my questions. Very professional and knowledgeable.",
-      anonymous: false,
-      submittedAt: "2025-07-04T16:45:00Z",
-      likes: 12,
-      helpful: true,
-    },
-  ];
+  const handleUnarchive = async (feedbackId) => {
+    const result = await unarchiveFeedback(feedbackId);
+    if (result.success) {
+      console.log("Unarchived successfully");
+    } else {
+      console.error("Unarchive failed:", result.error);
+    }
+  };
+
+  const handleDeleteClick = (feedback) => {
+    setDeleteModal({ isOpen: true, feedback });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteModal.feedback) return;
+
+    const result = await deleteArchivedFeedback(deleteModal.feedback.id);
+    if (result.success) {
+      console.log("Deleted successfully");
+    } else {
+      console.error("Delete failed:", result.error);
+    }
+
+    setDeleteModal({ isOpen: false, feedback: null });
+  };
 
   const handleRatingClick = (rating) => {
-    setNewFeedback((prev) => ({ ...prev, rating }));
+    updateFeedbackForm({ rating });
   };
 
-  const handleSubmitFeedback = (e) => {
+  const handleSubmitForm = async (e) => {
     e.preventDefault();
+    const result = await handleSubmitFeedback();
 
-    const selectedClinicData = availableClinics.find(
-      (c) => c.id === parseInt(selectedClinic)
-    );
-    const selectedDoctorData = availableDoctors[selectedClinic]?.find(
-      (d) => d.id === parseInt(selectedDoctor)
-    );
-
-    const feedbackData = {
-      clinicId: selectedClinic,
-      doctorId: selectedDoctor,
-      clinic: selectedClinicData,
-      doctor: selectedDoctorData,
-      rating: newFeedback.rating,
-      message: newFeedback.message,
-      anonymous: newFeedback.anonymous,
-      submittedAt: new Date().toISOString(),
-    };
-
-    console.log("Submitting feedback:", feedbackData);
-
-    // Reset form
-    setSelectedClinic("");
-    setSelectedDoctor("");
-    setNewFeedback({
-      rating: 0,
-      message: "",
-      anonymous: false,
-    });
-    setHoverRating(0);
+    if (result.success) {
+      setActiveTab("history");
+      console.log("✅ Feedback submitted and staff notified");
+    } else {
+      console.error("❌ Feedback submission failed:", result.error);
+    }
   };
 
   const renderStars = (rating, interactive = false, size = "normal") => {
@@ -278,7 +199,8 @@ const PatientFeedback = () => {
     return [...Array(5)].map((_, index) => {
       const starValue = index + 1;
       const isActive =
-        starValue <= (interactive ? hoverRating || newFeedback.rating : rating);
+        starValue <=
+        (interactive ? hoverRating || feedbackForm.rating : rating);
 
       return (
         <FiStar
@@ -314,23 +236,59 @@ const PatientFeedback = () => {
     return texts[rating];
   };
 
-  const selectedClinicData = availableClinics.find(
-    (c) => c.id === parseInt(selectedClinic)
-  );
-  const doctorsForClinic = availableDoctors[selectedClinic] || [];
-  const selectedDoctorData = doctorsForClinic.find(
-    (d) => d.id === parseInt(selectedDoctor)
-  );
+  // ✅ ACCESS CONTROL
+  if (!user || !isPatient()) {
+    return (
+      <div className="min-h-screen p-6 bg-background">
+        <div className="max-w-7xl mx-auto text-center">
+          <h1 className="text-3xl font-bold text-foreground mb-4">
+            Access Denied
+          </h1>
+          <p className="text-muted-foreground">
+            Only patients can submit and manage feedback.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
-  // Calculate progress for the multi-step form
-  const getProgress = () => {
-    let steps = 0;
-    if (selectedClinic) steps++;
-    if (selectedDoctor) steps++;
-    if (newFeedback.rating > 0) steps++;
-    if (newFeedback.message.trim()) steps++;
-    return (steps / 4) * 100;
-  };
+  // ✅ ERROR STATE
+  if (error) {
+    return (
+      <div className="min-h-screen p-6 bg-background">
+        <div className="max-w-7xl mx-auto text-center">
+          <h1 className="text-3xl font-bold text-foreground mb-4">
+            Error Loading Feedback
+          </h1>
+          <p className="text-red-600 mb-4">Error: {error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ LOADING STATE
+  if (loading) {
+    return (
+      <div className="min-h-screen p-6 bg-background">
+        <div className="max-w-6xl mx-auto animate-pulse space-y-6">
+          <div className="text-center">
+            <div className="h-8 bg-muted rounded w-1/3 mx-auto mb-4"></div>
+            <div className="h-4 bg-muted rounded w-2/3 mx-auto"></div>
+          </div>
+          <div className="h-12 bg-muted rounded"></div>
+          <div className="h-96 bg-muted rounded"></div>
+        </div>
+      </div>
+    );
+  }
+
+  const currentList = showArchived ? archivedFeedback : feedbackHistory;
 
   return (
     <div className="min-h-screen bg-background p-6 md:p-8">
@@ -354,7 +312,83 @@ const PatientFeedback = () => {
           </p>
         </motion.div>
 
-        {/* Enhanced Tabs */}
+        {/* Analytics Cards */}
+        <motion.div
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+        >
+          <div className="bg-card border border-border rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-blue-100 rounded-lg dark:bg-blue-900/20">
+                <FiMessageSquare className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-2xl font-bold text-foreground">
+                {totalFeedback}
+              </h3>
+              <p className="text-sm text-muted-foreground">Total Reviews</p>
+              <p className="text-xs text-muted-foreground">
+                {activeFeedback} active
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-yellow-100 rounded-lg dark:bg-yellow-900/20">
+                <FiStar className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-2xl font-bold text-foreground">
+                {averageRating}
+              </h3>
+              <p className="text-sm text-muted-foreground">Average Rating</p>
+              <div className="flex items-center">
+                {renderStars(
+                  Math.round(parseFloat(averageRating)),
+                  false,
+                  "small"
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-purple-100 rounded-lg dark:bg-purple-900/20">
+                <FiFolder className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-2xl font-bold text-foreground">
+                {archivedCount}
+              </h3>
+              <p className="text-sm text-muted-foreground">Archived Reviews</p>
+              <p className="text-xs text-muted-foreground">Personal archive</p>
+            </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 bg-green-100 rounded-lg dark:bg-green-900/20">
+                <FiActivity className="w-5 h-5 text-green-600 dark:text-green-400" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-2xl font-bold text-foreground">
+                {availableClinics.length}
+              </h3>
+              <p className="text-sm text-muted-foreground">Clinics Visited</p>
+              <p className="text-xs text-muted-foreground">Can review</p>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Enhanced Tabs with Archive Toggle */}
         <motion.div
           className="mb-8"
           initial={{ opacity: 0, y: -10 }}
@@ -384,7 +418,7 @@ const PatientFeedback = () => {
                   onClick={() => setActiveTab("history")}
                 >
                   <FiCheckCircle className="w-4 h-4" />
-                  <span>My Reviews</span>
+                  <span>{showArchived ? "Archived" : "My Reviews"}</span>
                   <span
                     className={`px-2 py-1 text-xs font-bold rounded-full ${
                       activeTab === "history"
@@ -392,9 +426,33 @@ const PatientFeedback = () => {
                         : "bg-primary/10 text-primary"
                     }`}
                   >
-                    {feedbackHistory.length}
+                    {showArchived ? archivedCount : activeFeedback}
                   </span>
                 </button>
+
+                {/* Archive Toggle - Only show in history tab */}
+                {activeTab === "history" && (
+                  <button
+                    onClick={toggleArchiveView}
+                    className={`flex items-center space-x-2 px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
+                      showArchived
+                        ? "bg-secondary text-secondary-foreground"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {showArchived ? (
+                      <>
+                        <FiEye className="w-4 h-4" />
+                        <span>Active</span>
+                      </>
+                    ) : (
+                      <>
+                        <FiArchive className="w-4 h-4" />
+                        <span>Archive ({archivedCount})</span>
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -409,6 +467,7 @@ const PatientFeedback = () => {
           transition={{ delay: 0.1 }}
         >
           {activeTab === "new" ? (
+            // ✅ NEW FEEDBACK FORM
             <div className="max-w-4xl mx-auto">
               <div className="bg-card border border-border rounded-2xl shadow-xl overflow-hidden">
                 {/* Progress Bar */}
@@ -418,31 +477,19 @@ const PatientFeedback = () => {
                       Progress
                     </span>
                     <span className="text-sm font-medium text-primary">
-                      {Math.round(getProgress())}%
+                      {Math.round(formProgress)}%
                     </span>
                   </div>
                   <div className="w-full bg-muted/30 rounded-full h-2">
                     <div
                       className="bg-primary h-2 rounded-full transition-all duration-300 ease-out"
-                      style={{ width: `${getProgress()}%` }}
+                      style={{ width: `${formProgress}%` }}
                     />
                   </div>
                 </div>
 
-                {/* Form Header */}
-                <div className="px-8 py-6 border-b border-border">
-                  <div className="text-center">
-                    <h2 className="text-2xl font-bold text-foreground mb-2">
-                      Share Your Experience
-                    </h2>
-                    <p className="text-muted-foreground">
-                      Follow the steps below to submit your feedback
-                    </p>
-                  </div>
-                </div>
-
                 <div className="p-8">
-                  <form onSubmit={handleSubmitFeedback} className="space-y-8">
+                  <form onSubmit={handleSubmitForm} className="space-y-8">
                     {/* Step 1: Clinic Selection */}
                     <div className="space-y-4">
                       <div className="flex items-center space-x-3">
@@ -463,52 +510,37 @@ const PatientFeedback = () => {
                           <div
                             key={clinic.id}
                             className={`border rounded-xl p-4 cursor-pointer transition-all duration-200 ${
-                              selectedClinic === clinic.id.toString()
+                              selectedClinic?.id === clinic.id
                                 ? "border-primary bg-primary/5 shadow-md"
                                 : "border-border hover:border-primary/50 hover:bg-muted/30"
                             }`}
-                            onClick={() => {
-                              setSelectedClinic(clinic.id.toString());
-                              setSelectedDoctor(""); // Reset doctor selection
-                            }}
+                            onClick={() => selectClinic(clinic)}
                           >
                             <div className="flex items-start space-x-4">
-                              <img
-                                src={clinic.image}
-                                alt={clinic.name}
-                                className="w-16 h-16 rounded-lg object-cover border border-border"
-                              />
+                              <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center">
+                                <FaBuilding className="w-8 h-8 text-muted-foreground" />
+                              </div>
                               <div className="flex-1 min-w-0">
                                 <h3 className="font-semibold text-foreground text-base mb-1">
                                   {clinic.name}
                                 </h3>
-                                <p className="text-sm text-muted-foreground mb-2">
-                                  {clinic.location}
-                                </p>
                                 <div className="flex items-center text-xs text-muted-foreground mb-2">
                                   <FiMapPin className="w-3 h-3 mr-1" />
                                   {clinic.address}
                                 </div>
                                 <div className="flex items-center justify-between text-xs">
                                   <span className="text-primary font-medium">
-                                    {clinic.completedAppointments} completed
-                                    visits
+                                    {clinic.totalAppointments} completed visits
                                   </span>
                                   <span className="text-muted-foreground">
-                                    Last:{" "}
-                                    {new Date(
-                                      clinic.lastVisit
-                                    ).toLocaleDateString()}
+                                    {clinic.doctors?.length || 0} doctors
                                   </span>
                                 </div>
                               </div>
                               <input
                                 type="radio"
                                 name="clinic"
-                                value={clinic.id}
-                                checked={
-                                  selectedClinic === clinic.id.toString()
-                                }
+                                checked={selectedClinic?.id === clinic.id}
                                 onChange={() => {}}
                                 className="w-5 h-5 text-primary mt-2"
                               />
@@ -519,7 +551,7 @@ const PatientFeedback = () => {
                     </div>
 
                     {/* Step 2: Doctor Selection */}
-                    {selectedClinic && (
+                    {selectedClinic && doctorsForSelectedClinic.length > 0 && (
                       <motion.div
                         className="space-y-4"
                         initial={{ opacity: 0, y: 20 }}
@@ -535,65 +567,40 @@ const PatientFeedback = () => {
                         </div>
                         <p className="text-sm text-muted-foreground ml-11">
                           Choose the doctor you want to provide feedback for at{" "}
-                          {selectedClinicData?.name}
+                          {selectedClinic.name}
                         </p>
 
                         <div className="ml-11 space-y-3">
-                          {doctorsForClinic.map((doctor) => (
+                          {doctorsForSelectedClinic.map((doctor) => (
                             <div
                               key={doctor.id}
                               className={`border rounded-xl p-4 cursor-pointer transition-all duration-200 ${
-                                selectedDoctor === doctor.id.toString()
+                                selectedDoctor?.id === doctor.id
                                   ? "border-primary bg-primary/5 shadow-md"
                                   : "border-border hover:border-primary/50 hover:bg-muted/30"
                               }`}
-                              onClick={() =>
-                                setSelectedDoctor(doctor.id.toString())
-                              }
+                              onClick={() => selectDoctor(doctor)}
                             >
                               <div className="flex items-start space-x-4">
-                                <img
-                                  src={doctor.avatar}
-                                  alt={doctor.name}
-                                  className="w-12 h-12 rounded-full object-cover border-2 border-border"
-                                />
+                                <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                                  <FiUser className="w-6 h-6 text-muted-foreground" />
+                                </div>
                                 <div className="flex-1">
                                   <h3 className="font-semibold text-foreground text-base">
                                     {doctor.name}
                                   </h3>
                                   <p className="text-sm text-primary mb-2">
-                                    {doctor.specialty}
+                                    {doctor.specialization}
                                   </p>
-                                  <div className="space-y-1">
-                                    {doctor.completedAppointments.map(
-                                      (apt, idx) => (
-                                        <div
-                                          key={idx}
-                                          className="flex items-center justify-between text-sm text-muted-foreground"
-                                        >
-                                          <span>{apt.service}</span>
-                                          <div className="flex items-center space-x-2">
-                                            <FiCalendar className="w-3 h-3" />
-                                            <span>
-                                              {new Date(
-                                                apt.date
-                                              ).toLocaleDateString()}
-                                            </span>
-                                            <FiClock className="w-3 h-3 ml-2" />
-                                            <span>{apt.time}</span>
-                                          </div>
-                                        </div>
-                                      )
-                                    )}
+                                  <div className="text-sm text-muted-foreground">
+                                    {doctor.appointments?.length || 0} completed
+                                    appointments
                                   </div>
                                 </div>
                                 <input
                                   type="radio"
                                   name="doctor"
-                                  value={doctor.id}
-                                  checked={
-                                    selectedDoctor === doctor.id.toString()
-                                  }
+                                  checked={selectedDoctor?.id === doctor.id}
                                   onChange={() => {}}
                                   className="w-5 h-5 text-primary"
                                 />
@@ -604,7 +611,7 @@ const PatientFeedback = () => {
                       </motion.div>
                     )}
 
-                    {/* Step 3: Overall Rating */}
+                    {/* Step 3: Appointment Selection */}
                     {selectedDoctor && (
                       <motion.div
                         className="space-y-4"
@@ -616,39 +623,62 @@ const PatientFeedback = () => {
                             3
                           </div>
                           <label className="text-lg font-semibold text-foreground">
-                            Overall Rating
+                            Select Appointment
                           </label>
                         </div>
                         <p className="text-sm text-muted-foreground ml-11">
-                          Rate your overall experience with{" "}
-                          {selectedDoctorData?.name}
+                          Choose which appointment you'd like to review
                         </p>
 
-                        <div className="ml-11">
-                          <div className="bg-muted/30 border border-border rounded-xl p-6">
-                            <div className="text-center space-y-4">
-                              <div className="flex items-center justify-center space-x-2">
-                                {renderStars(newFeedback.rating, true, "large")}
-                              </div>
-                              <p className="text-lg font-medium text-foreground">
-                                {getRatingText(newFeedback.rating)}
-                              </p>
-                              {newFeedback.rating > 0 && (
-                                <div className="inline-flex items-center px-4 py-2 bg-primary/10 rounded-full">
-                                  <FiAward className="w-4 h-4 text-primary mr-2" />
-                                  <span className="text-sm font-medium text-primary">
-                                    {newFeedback.rating}/5 Stars
-                                  </span>
+                        <div className="ml-11 space-y-3">
+                          {selectedDoctor.appointments?.map((appointment) => (
+                            <div
+                              key={appointment.id}
+                              className={`border rounded-xl p-4 cursor-pointer transition-all duration-200 ${
+                                selectedAppointment?.id === appointment.id
+                                  ? "border-primary bg-primary/5 shadow-md"
+                                  : "border-border hover:border-primary/50 hover:bg-muted/30"
+                              }`}
+                              onClick={() => selectAppointment(appointment)}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <h4 className="font-medium text-foreground">
+                                    {appointment.services
+                                      ?.map((s) => s.name || s)
+                                      .join(", ") || "General Appointment"}
+                                  </h4>
+                                  <div className="flex items-center space-x-4 mt-2 text-sm text-muted-foreground">
+                                    <div className="flex items-center">
+                                      <FiCalendar className="w-4 h-4 mr-1" />
+                                      {new Date(
+                                        appointment.appointment_date
+                                      ).toLocaleDateString()}
+                                    </div>
+                                    <div className="flex items-center">
+                                      <FiClock className="w-4 h-4 mr-1" />
+                                      {appointment.appointment_time}
+                                    </div>
+                                  </div>
                                 </div>
-                              )}
+                                <input
+                                  type="radio"
+                                  name="appointment"
+                                  checked={
+                                    selectedAppointment?.id === appointment.id
+                                  }
+                                  onChange={() => {}}
+                                  className="w-5 h-5 text-primary"
+                                />
+                              </div>
                             </div>
-                          </div>
+                          ))}
                         </div>
                       </motion.div>
                     )}
 
-                    {/* Step 4: Experience Message */}
-                    {newFeedback.rating > 0 && (
+                    {/* Step 4: Rating */}
+                    {selectedAppointment && (
                       <motion.div
                         className="space-y-4"
                         initial={{ opacity: 0, y: 20 }}
@@ -659,48 +689,43 @@ const PatientFeedback = () => {
                             4
                           </div>
                           <label className="text-lg font-semibold text-foreground">
-                            Share Your Experience
+                            Overall Rating
                           </label>
                         </div>
                         <p className="text-sm text-muted-foreground ml-11">
-                          Tell us about your experience in detail
+                          Rate your overall experience with{" "}
+                          {selectedDoctor?.name}
                         </p>
 
-                        <div className="ml-11 space-y-2">
-                          <textarea
-                            value={newFeedback.message}
-                            onChange={(e) =>
-                              setNewFeedback((prev) => ({
-                                ...prev,
-                                message: e.target.value,
-                              }))
-                            }
-                            placeholder="Tell us about your experience with the doctor, staff, and clinic. What did you like? What could be improved? Your detailed feedback helps us serve you better."
-                            className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
-                            rows="6"
-                            maxLength="500"
-                            required
-                          />
-                          <div className="flex justify-between items-center text-xs text-muted-foreground">
-                            <span>
-                              Be specific and constructive in your feedback
-                            </span>
-                            <span
-                              className={
-                                newFeedback.message.length > 450
-                                  ? "text-warning"
-                                  : ""
-                              }
-                            >
-                              {newFeedback.message.length}/500
-                            </span>
+                        <div className="ml-11">
+                          <div className="bg-muted/30 border border-border rounded-xl p-6">
+                            <div className="text-center space-y-4">
+                              <div className="flex items-center justify-center space-x-2">
+                                {renderStars(
+                                  feedbackForm.rating,
+                                  true,
+                                  "large"
+                                )}
+                              </div>
+                              <p className="text-lg font-medium text-foreground">
+                                {getRatingText(feedbackForm.rating)}
+                              </p>
+                              {feedbackForm.rating > 0 && (
+                                <div className="inline-flex items-center px-4 py-2 bg-primary/10 rounded-full">
+                                  <FiAward className="w-4 h-4 text-primary mr-2" />
+                                  <span className="text-sm font-medium text-primary">
+                                    {feedbackForm.rating}/5 Stars
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </motion.div>
                     )}
 
-                    {/* Step 5: Anonymous Option */}
-                    {newFeedback.message.trim() && (
+                    {/* Step 5: Message */}
+                    {feedbackForm.rating > 0 && (
                       <motion.div
                         className="space-y-4"
                         initial={{ opacity: 0, y: 20 }}
@@ -711,23 +736,54 @@ const PatientFeedback = () => {
                             5
                           </div>
                           <label className="text-lg font-semibold text-foreground">
-                            Privacy Settings
+                            Share Your Experience
                           </label>
                         </div>
+                        <p className="text-sm text-muted-foreground ml-11">
+                          Tell us about your experience in detail
+                        </p>
 
-                        <div className="ml-11">
-                          <div className="bg-muted/30 border border-border rounded-xl p-6">
+                        <div className="ml-11 space-y-4">
+                          <textarea
+                            value={feedbackForm.feedback_text}
+                            onChange={(e) =>
+                              updateFeedbackForm({
+                                feedback_text: e.target.value,
+                              })
+                            }
+                            placeholder="Tell us about your experience with the doctor, staff, and clinic. What did you like? What could be improved?"
+                            className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                            rows="6"
+                            maxLength="1000"
+                            required
+                          />
+                          <div className="flex justify-between items-center text-xs text-muted-foreground">
+                            <span>
+                              Be specific and constructive in your feedback
+                            </span>
+                            <span
+                              className={
+                                feedbackForm.feedback_text.length > 900
+                                  ? "text-warning"
+                                  : ""
+                              }
+                            >
+                              {feedbackForm.feedback_text.length}/1000
+                            </span>
+                          </div>
+
+                          {/* Privacy Settings */}
+                          <div className="bg-muted/30 border border-border rounded-xl p-4">
                             <div className="flex items-start space-x-4">
                               <div className="flex items-center mt-1">
                                 <input
                                   type="checkbox"
                                   id="anonymous"
-                                  checked={newFeedback.anonymous}
+                                  checked={feedbackForm.is_anonymous}
                                   onChange={(e) =>
-                                    setNewFeedback((prev) => ({
-                                      ...prev,
-                                      anonymous: e.target.checked,
-                                    }))
+                                    updateFeedbackForm({
+                                      is_anonymous: e.target.checked,
+                                    })
                                   }
                                   className="w-5 h-5 text-primary rounded border-border focus:ring-2 focus:ring-primary/20"
                                 />
@@ -738,7 +794,7 @@ const PatientFeedback = () => {
                                   className="cursor-pointer"
                                 >
                                   <div className="flex items-center space-x-2 mb-2">
-                                    {newFeedback.anonymous ? (
+                                    {feedbackForm.is_anonymous ? (
                                       <FiEyeOff className="w-4 h-4 text-muted-foreground" />
                                     ) : (
                                       <FiEye className="w-4 h-4 text-muted-foreground" />
@@ -747,12 +803,59 @@ const PatientFeedback = () => {
                                       Submit as anonymous review
                                     </span>
                                   </div>
-                                  <p className="text-sm text-muted-foreground leading-relaxed">
-                                    {newFeedback.anonymous
-                                      ? "Your review will be published without your name or profile information. Only clinic staff will see your identity for internal purposes."
-                                      : "Your name and profile will be visible with this review to help other patients make informed decisions."}
+                                  <p className="text-sm text-muted-foreground">
+                                    {feedbackForm.is_anonymous
+                                      ? "Your review will be published without your name. Staff will still see your identity for internal purposes."
+                                      : "Your name will be visible with this review to help other patients make informed decisions."}
                                   </p>
                                 </label>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Recommend Toggle */}
+                          <div className="bg-muted/30 border border-border rounded-xl p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="font-medium text-foreground mb-1">
+                                  Would you recommend this clinic to others?
+                                </h4>
+                                <p className="text-sm text-muted-foreground">
+                                  Help other patients discover great dental care
+                                </p>
+                              </div>
+                              <div className="flex items-center space-x-4">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateFeedbackForm({
+                                      recommend_to_others: true,
+                                    })
+                                  }
+                                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                    feedbackForm.recommend_to_others === true
+                                      ? "bg-green-100 text-green-700 border border-green-200"
+                                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                  }`}
+                                >
+                                  <FiThumbsUp className="w-4 h-4 inline mr-1" />
+                                  Yes
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateFeedbackForm({
+                                      recommend_to_others: false,
+                                    })
+                                  }
+                                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                    feedbackForm.recommend_to_others === false
+                                      ? "bg-red-100 text-red-700 border border-red-200"
+                                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                  }`}
+                                >
+                                  No
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -761,7 +864,7 @@ const PatientFeedback = () => {
                     )}
 
                     {/* Submit Button */}
-                    {newFeedback.message.trim() && (
+                    {canSubmitFeedback && (
                       <motion.div
                         className="pt-4"
                         initial={{ opacity: 0, y: 20 }}
@@ -769,10 +872,15 @@ const PatientFeedback = () => {
                       >
                         <button
                           type="submit"
-                          className="w-full flex items-center justify-center space-x-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg transition-all duration-200 hover:bg-primary/90 hover:shadow-lg hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          disabled={loading}
+                          className="w-full flex items-center justify-center space-x-3 px-8 py-4 bg-primary text-primary-foreground rounded-xl font-semibold text-lg transition-all duration-200 hover:bg-primary/90 hover:shadow-lg hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <FiSend className="w-5 h-5" />
-                          <span>Submit Feedback</span>
+                          <span>
+                            {loading
+                              ? "Submitting..."
+                              : "Submit Feedback & Notify Staff"}
+                          </span>
                         </button>
                       </motion.div>
                     )}
@@ -781,10 +889,40 @@ const PatientFeedback = () => {
               </div>
             </div>
           ) : (
-            /* Review History - Simplified without pending status */
+            // ✅ FEEDBACK HISTORY WITH ARCHIVE FUNCTIONALITY
             <div className="max-w-5xl mx-auto space-y-6">
-              {feedbackHistory.length > 0 ? (
-                feedbackHistory.map((review, index) => (
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-semibold text-foreground">
+                  {showArchived ? "Archived" : "Active"} Reviews (
+                  {currentList.length} records)
+                </h3>
+              </div>
+
+              {currentList.length === 0 ? (
+                <div className="text-center py-16">
+                  <div className="bg-muted/20 rounded-full p-6 w-24 h-24 mx-auto mb-6">
+                    <FiMessageSquare className="w-12 h-12 text-muted-foreground mx-auto" />
+                  </div>
+                  <h3 className="text-2xl font-semibold text-foreground mb-3">
+                    {showArchived ? "No Archived Reviews" : "No Reviews Yet"}
+                  </h3>
+                  <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                    {showArchived
+                      ? "Reviews you archive will appear here"
+                      : "You haven't submitted any feedback yet. Share your experience to help us improve!"}
+                  </p>
+                  {!showArchived && (
+                    <button
+                      className="inline-flex items-center space-x-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors"
+                      onClick={() => setActiveTab("new")}
+                    >
+                      <FiSend className="w-4 h-4" />
+                      <span>Write Your First Review</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                currentList.map((review, index) => (
                   <motion.div
                     key={review.id}
                     className="bg-card border border-border rounded-2xl shadow-lg overflow-hidden"
@@ -796,22 +934,22 @@ const PatientFeedback = () => {
                     <div className="bg-gradient-to-r from-muted/30 to-muted/10 px-6 py-4 border-b border-border">
                       <div className="flex items-start justify-between">
                         <div className="flex items-start space-x-4">
-                          <img
-                            src={review.doctor.avatar}
-                            alt={review.doctor.name}
-                            className="w-12 h-12 rounded-full object-cover border-2 border-border"
-                          />
+                          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                            <FiUser className="w-6 h-6 text-muted-foreground" />
+                          </div>
                           <div>
                             <h3 className="font-semibold text-foreground text-lg">
-                              {review.appointment.service}
+                              {review.appointment.services
+                                ?.map((s) => s.name || s)
+                                .join(", ") || "General Appointment"}
                             </h3>
                             <div className="flex items-center space-x-2 text-primary">
                               <span className="font-medium">
-                                {review.doctor.name}
+                                {review.doctor?.name}
                               </span>
                               <span className="text-muted-foreground">•</span>
                               <span className="text-sm text-muted-foreground">
-                                {review.doctor.specialty}
+                                {review.doctor?.specialization}
                               </span>
                             </div>
                             <div className="flex items-center space-x-4 mt-2 text-sm text-muted-foreground">
@@ -825,6 +963,13 @@ const PatientFeedback = () => {
                                   review.appointment.date
                                 ).toLocaleDateString()}
                               </div>
+                              // ✅ CONTINUING FROM WHERE IT WAS CUT OFF...
+                              <div className="flex items-center">
+                                <FiCalendar className="w-4 h-4 mr-1" />
+                                {new Date(
+                                  review.appointment.date
+                                ).toLocaleDateString()}
+                              </div>
                               <div className="flex items-center">
                                 <FiClock className="w-4 h-4 mr-1" />
                                 {review.appointment.time}
@@ -832,8 +977,10 @@ const PatientFeedback = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="text-right">
-                          {review.anonymous ? (
+
+                        <div className="flex items-center gap-2">
+                          {/* Privacy Indicator */}
+                          {review.is_anonymous ? (
                             <div className="inline-flex items-center space-x-2 px-3 py-1 bg-muted/50 rounded-full text-sm font-medium">
                               <FiEyeOff className="w-4 h-4" />
                               <span>Anonymous</span>
@@ -844,13 +991,21 @@ const PatientFeedback = () => {
                               <span>Public</span>
                             </div>
                           )}
+
+                          {/* Archive Status */}
+                          {showArchived && (
+                            <div className="inline-flex items-center space-x-2 px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-sm font-medium dark:bg-orange-900/20 dark:text-orange-400">
+                              <FiArchive className="w-4 h-4" />
+                              <span>Archived</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
 
                     {/* Review Content */}
                     <div className="p-6 space-y-4">
-                      {/* Rating */}
+                      {/* Rating and Date */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-3">
                           <div className="flex items-center space-x-1">
@@ -865,7 +1020,7 @@ const PatientFeedback = () => {
                         </div>
                         <div className="text-sm text-muted-foreground">
                           Submitted{" "}
-                          {new Date(review.submittedAt).toLocaleDateString()}
+                          {new Date(review.created_at).toLocaleDateString()}
                         </div>
                       </div>
 
@@ -876,8 +1031,44 @@ const PatientFeedback = () => {
                         </p>
                       </div>
 
+                      {/* Recommendation */}
+                      {review.recommend_to_others !== null && (
+                        <div className="flex items-center space-x-2">
+                          {review.recommend_to_others ? (
+                            <div className="inline-flex items-center space-x-2 px-3 py-1 bg-green-50 text-green-700 rounded-full text-sm font-medium dark:bg-green-900/20 dark:text-green-400">
+                              <FiThumbsUp className="w-4 h-4" />
+                              <span>Recommends this clinic</span>
+                            </div>
+                          ) : (
+                            <div className="inline-flex items-center space-x-2 px-3 py-1 bg-red-50 text-red-700 rounded-full text-sm font-medium dark:bg-red-900/20 dark:text-red-400">
+                              <span>Does not recommend</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Feedback Categories */}
+                      {review.feedback_categories &&
+                        review.feedback_categories.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            <span className="text-sm text-muted-foreground">
+                              Categories:
+                            </span>
+                            {review.feedback_categories.map((category, idx) => (
+                              <span
+                                key={idx}
+                                className="px-2 py-1 bg-primary/10 text-primary rounded-md text-xs font-medium"
+                              >
+                                {category
+                                  .replace("_", " ")
+                                  .replace(/\b\w/g, (l) => l.toUpperCase())}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
                       {/* Clinic Response */}
-                      {review.clinicResponse && (
+                      {review.clinic_response && (
                         <div className="bg-primary/5 border border-primary/10 rounded-xl p-4">
                           <div className="flex items-start space-x-3">
                             <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
@@ -888,56 +1079,85 @@ const PatientFeedback = () => {
                                 Response from {review.clinic.name}
                               </div>
                               <p className="text-foreground leading-relaxed">
-                                {review.clinicResponse}
+                                {review.clinic_response}
                               </p>
+                              {review.responded_at && (
+                                <div className="text-xs text-muted-foreground mt-2">
+                                  Responded on{" "}
+                                  {new Date(
+                                    review.responded_at
+                                  ).toLocaleDateString()}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
                       )}
 
-                      {/* Review Stats */}
+                      {/* Action Buttons */}
                       <div className="flex items-center justify-between pt-4 border-t border-border">
-                        <div className="flex items-center space-x-6">
-                          <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                            <FiThumbsUp className="w-4 h-4 text-success" />
-                            <span>{review.likes} found this helpful</span>
-                          </div>
-                          {review.helpful && (
-                            <div className="flex items-center space-x-2 px-3 py-1 bg-success/10 text-success rounded-full text-sm font-medium">
-                              <FiAward className="w-4 h-4" />
-                              <span>Helpful Review</span>
-                            </div>
+                        <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                          <FiMessageSquare className="w-4 h-4" />
+                          <span>Review ID: {review.id}</span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {/* Download Button */}
+                          <button
+                            onClick={() => downloadFeedbackDetails(review)}
+                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                            title="Download feedback details"
+                          >
+                            <FiDownload className="w-4 h-4" />
+                          </button>
+
+                          {/* Archive/Unarchive Button */}
+                          {!showArchived ? (
+                            <button
+                              onClick={() => handleArchive(review.id)}
+                              className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                              title="Archive feedback"
+                            >
+                              <FiArchive className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleUnarchive(review.id)}
+                                className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors dark:text-blue-400 dark:hover:bg-blue-900/20"
+                                title="Unarchive feedback"
+                              >
+                                <FiRotateCcw className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteClick(review)}
+                                className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors dark:text-red-400 dark:hover:bg-red-900/20"
+                                title="Delete permanently"
+                              >
+                                <FiTrash2 className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
                         </div>
                       </div>
                     </div>
                   </motion.div>
                 ))
-              ) : (
-                <div className="text-center py-16">
-                  <div className="bg-muted/20 rounded-full p-6 w-24 h-24 mx-auto mb-6">
-                    <FiMessageSquare className="w-12 h-12 text-muted-foreground mx-auto" />
-                  </div>
-                  <h3 className="text-2xl font-semibold text-foreground mb-3">
-                    No Reviews Yet
-                  </h3>
-                  <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                    You haven't submitted any feedback yet. Share your
-                    experience to help us improve our services!
-                  </p>
-                  <button
-                    className="inline-flex items-center space-x-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors"
-                    onClick={() => setActiveTab("new")}
-                  >
-                    <FiSend className="w-4 h-4" />
-                    <span>Write Your First Review</span>
-                  </button>
-                </div>
               )}
             </div>
           )}
         </motion.div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        <DeleteConfirmationModal
+          isOpen={deleteModal.isOpen}
+          onClose={() => setDeleteModal({ isOpen: false, feedback: null })}
+          onConfirm={handleDeleteConfirm}
+          feedbackDetails={deleteModal.feedback}
+        />
+      </AnimatePresence>
     </div>
   );
 };

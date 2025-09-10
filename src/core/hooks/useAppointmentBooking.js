@@ -19,6 +19,45 @@ export const useAppointmentBooking = () => {
     symptoms: '',
   });
 
+  // ✅ BROWSER BACK BUTTON HANDLER
+  useEffect(() => {
+    const handlePopState = (event) => {
+      event.preventDefault();
+      
+      const steps = ['clinic', 'services', 'doctor', 'datetime', 'confirm'];
+      const currentIndex = steps.indexOf(bookingStep);
+      
+      if (currentIndex > 0) {
+        setBookingStep(steps[currentIndex - 1]);
+        setError(null);
+        
+        // Update browser state without causing navigation
+        window.history.pushState(
+          { step: steps[currentIndex - 1] }, 
+          '', 
+          window.location.pathname
+        );
+      } else {
+        // On first step, allow normal back navigation
+        window.history.back();
+      }
+    };
+
+    // Push initial state
+    window.history.pushState({ step: bookingStep }, '', window.location.pathname);
+    
+    window.addEventListener('popstate', handlePopState);
+    
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [bookingStep]);
+
+  // ✅ SYNC BROWSER STATE WITH STEP CHANGES
+  useEffect(() => {
+    window.history.replaceState({ step: bookingStep }, '', window.location.pathname);
+  }, [bookingStep]);
+
   // Reset booking state
   const resetBooking = useCallback(() => {
     setBookingData({
@@ -32,6 +71,9 @@ export const useAppointmentBooking = () => {
     setBookingStep('clinic');
     setAvailableTimes([]);
     setError(null);
+    
+    // Reset browser state
+    window.history.replaceState({ step: 'clinic' }, '', window.location.pathname);
   }, []);
 
   // Update booking data with enhanced validation
@@ -232,7 +274,7 @@ export const useAppointmentBooking = () => {
     checkAvailability();
   }, [bookingData.doctor?.id, bookingData.date, bookingData.services, checkAllAvailableTimes]);
 
-  // Book appointment with comprehensive validation
+  // ✅ ENHANCED: Book appointment with staff notification
   const bookAppointment = useCallback(async () => {
     // Role validation
     if (!isPatient()) {
@@ -262,60 +304,144 @@ export const useAppointmentBooking = () => {
       return { success: false, error: 'Too many services' };
     }
 
-    try {
-      setLoading(true);
-      setError(null);
+  try {
+    setLoading(true);
+    setError(null);
 
-      const { data, error } = await supabase.rpc('book_appointment', {
-        p_clinic_id: clinic.id,
-        p_doctor_id: doctor.id,
-        p_appointment_date: date,
-        p_appointment_time: time,
-        p_service_ids: services,
-        p_symptoms: symptoms || null,
-      });
+    const { data, error } = await supabase.rpc('book_appointment', {
+      p_clinic_id: clinic.id,
+      p_doctor_id: doctor.id,
+      p_appointment_date: date,
+      p_appointment_time: time,
+      p_service_ids: services,
+      p_symptoms: symptoms || null,
+    });
 
-      if (error) throw new Error(error.message);
+    if (error) throw new Error(error.message);
 
-      // Handle function response properly
-      if (data?.authenticated === false) {
-        setError('Please log in to continue');
-        return { success: false, error: 'Authentication required' };
-      }
-
-      if (!data?.success) {
-        setError(data?.error || 'Booking failed');
-        return { success: false, error: data?.error };
-      }
-
-      // Success - reset booking
-      resetBooking();
-      
-      return {
-        success: true,
-        appointment: {
-          id: data.data?.appointment_id,
-          details: data.data,
-          clinic_name: clinic.name,
-          doctor_name: doctor.name,
-          date: date,
-          time: time,
-          status: 'pending'
-        },
-        message: data.message
-      };
-
-    } catch (err) {
-      const errorMsg = err?.message || 'Failed to book appointment';
-      setError(errorMsg);
-      return { 
-        success: false, 
-        error: errorMsg 
-      };
-    } finally {
-      setLoading(false);
+    if (data?.authenticated === false) {
+      setError('Please log in to continue');
+      return { success: false, error: 'Authentication required' };
     }
-  }, [bookingData, isPatient, resetBooking]);
+
+    if (!data?.success) {
+      setError(data?.error || 'Booking failed');
+      return { success: false, error: data?.error };
+    }
+
+    // ✅ NEW: Send condition report if symptoms provided
+    let conditionReportSent = false;
+    if (symptoms && symptoms.trim()) {
+      try {
+        console.log('📧 Sending condition report with appointment details...');
+        
+        const reportResult = await supabase.rpc('send_condition_report', {
+          p_clinic_id: clinic.id,
+          p_subject: `New Appointment Booking - ${profile?.first_name} ${profile?.last_name}`,
+          p_message: `A new appointment has been booked with symptoms/notes:
+
+APPOINTMENT DETAILS:
+- Date: ${new Date(date).toLocaleDateString()}
+- Time: ${time}
+- Doctor: ${doctor.name}
+- Services: ${services.map(s => s.name || s).join(', ')}
+
+PATIENT SYMPTOMS/NOTES:
+${symptoms}
+
+PATIENT INFO:
+- Name: ${profile?.first_name} ${profile?.last_name}
+- Email: ${profile?.email || user?.email}
+- Phone: ${profile?.phone || 'Not provided'}
+
+Please review and prepare for the appointment accordingly.`,
+          p_urgency_level: 'normal',
+          p_attachment_urls: null
+        });
+
+        if (reportResult.data?.success) {
+          console.log('✅ Condition report sent successfully to staff');
+          conditionReportSent = true;
+        } else {
+          console.warn('⚠️ Failed to send condition report:', reportResult.data?.error);
+        }
+      } catch (reportError) {
+        console.error('❌ Error sending condition report:', reportError);
+        // Don't fail the booking if report fails
+      }
+    }
+
+    // ✅ NEW: Create staff notification for all bookings (not just with symptoms)
+    try {
+      console.log('🔔 Creating staff notification for new booking...');
+      
+      // Get staff members of the clinic
+      const { data: staffData } = await supabase
+        .from('staff_profiles')
+        .select(`
+          user_profile_id,
+          user_profiles!inner(
+            user_id,
+            users!inner(id)
+          )
+        `)
+        .eq('clinic_id', clinic.id)
+        .eq('is_active', true);
+
+      if (staffData && staffData.length > 0) {
+        // Create notification for each staff member
+        for (const staff of staffData) {
+          const staffUserId = staff.user_profiles.users.id;
+          
+          await supabase
+            .from('notifications')
+            .insert({
+              user_id: staffUserId,
+              notification_type: 'appointment_confirmed',
+              title: 'New Appointment Booking',
+              message: `${profile?.first_name} ${profile?.last_name} has booked an appointment for ${new Date(date).toLocaleDateString()} at ${time}.${symptoms ? ' Patient has provided symptoms/notes.' : ''}`,
+              related_appointment_id: data.data?.appointment_id,
+              is_read: false,
+              scheduled_for: new Date(),
+              created_at: new Date()
+            });
+        }
+        console.log(`✅ Created notifications for ${staffData.length} staff members`);
+      }
+    } catch (notificationError) {
+      console.error('❌ Error creating staff notifications:', notificationError);
+      // Don't fail the booking if notification fails
+    }
+
+    // Success - reset booking and browser state
+    resetBooking();
+    
+    return {
+      success: true,
+      appointment: {
+        id: data.data?.appointment_id,
+        details: data.data,
+        clinic_name: clinic.name,
+        doctor_name: doctor.name,
+        date: date,
+        time: time,
+        status: 'pending',
+        symptoms_sent: conditionReportSent
+      },
+      message: data.message
+    };
+
+  } catch (err) {
+    const errorMsg = err?.message || 'Failed to book appointment';
+    setError(errorMsg);
+    return { 
+      success: false, 
+      error: errorMsg 
+    };
+  } finally {
+    setLoading(false);
+  }
+}, [bookingData, isPatient, resetBooking, profile, user]);
 
   // Step validation
   const validateStep = useCallback((step) => {
@@ -345,6 +471,7 @@ export const useAppointmentBooking = () => {
   const goToStep = useCallback((step) => {
     setBookingStep(step);
     setError(null);
+    window.history.replaceState({ step }, '', window.location.pathname);
   }, []);
 
   const nextStep = useCallback(() => {
@@ -353,21 +480,25 @@ export const useAppointmentBooking = () => {
     
     // Only proceed if current step is valid and not on last step
     if (currentIndex < steps.length - 1 && validateStep(bookingStep)) {
-      setBookingStep(steps[currentIndex + 1]);
+      const nextStepName = steps[currentIndex + 1];
+      setBookingStep(nextStepName);
       setError(null);
+      window.history.pushState({ step: nextStepName }, '', window.location.pathname);
     } else if (!validateStep(bookingStep)) {
       setError(`Please complete the ${bookingStep} selection`);
     }
   }, [bookingStep, validateStep]);
 
-  // ✅ ADDED: Previous step function
+  // ✅ ENHANCED: Previous step with browser state management
   const previousStep = useCallback(() => {
     const steps = ['clinic', 'services', 'doctor', 'datetime', 'confirm'];
     const currentIndex = steps.indexOf(bookingStep);
     
     if (currentIndex > 0) {
-      setBookingStep(steps[currentIndex - 1]);
+      const prevStepName = steps[currentIndex - 1];
+      setBookingStep(prevStepName);
       setError(null);
+      window.history.pushState({ step: prevStepName }, '', window.location.pathname);
     }
   }, [bookingStep]);
 
@@ -405,7 +536,7 @@ export const useAppointmentBooking = () => {
     // Step navigation
     goToStep,
     nextStep,
-    previousStep, // ✅ ADDED
+    previousStep,
 
     // Data fetching
     getAvailableDoctors,

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from "react";
-import { motion } from "framer-motion";
+import React, { useState, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   FiCalendar,
   FiClock,
@@ -16,20 +16,23 @@ import {
   FiHeart,
   FiChevronDown,
   FiChevronRight,
+  FiArchive,
+  FiTrash2,
+  FiAlertTriangle,
+  FiRotateCcw,
+  FiEye,
+  FiFolder,
+  FiRefreshCw,
+  FiLoader,
 } from "react-icons/fi";
-import { LuPill } from "react-icons/lu";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-  ChartLegend,
-  ChartLegendContent,
 } from "@/core/components/ui/chart";
 import {
   LineChart,
   Line,
-  BarChart,
-  Bar,
   PieChart,
   Pie,
   Cell,
@@ -38,141 +41,259 @@ import {
   CartesianGrid,
 } from "recharts";
 import { useAuth } from "@/auth/context/AuthProvider";
-import { supabase } from "@/lib/supabaseClient";
+import { usePatientAppointmentHistory } from "@/core/hooks/usePatientAppointmentHistory";
+import { Toast } from "@/app/shared/components/toast";
+import Loader from "@/core/components/Loader";
+import { DeleteConfirmationModal } from "@/app/shared/components/delete-modal";
 
+// ✅ MAIN COMPONENT - FULLY REFACTORED
 const AppointmentHistory = () => {
-  const { user, profile, isPatient } = useAuth();
+  const { user, isPatient } = useAuth();
 
-  // ✅ CONSOLIDATED STATE - Single loading state
-  const [state, setState] = useState({
-    loading: true,
-    error: null,
-    appointmentHistory: [],
-    healthAnalytics: null,
-    searchQuery: "",
-    statusFilter: "all",
-    dateRange: "all",
-    expandedAppointment: null,
+  // ✅ FIXED: Use the corrected hook with all proper integrations
+  const {
+    // State from hook
+    loading,
+    error,
+    appointments,
+    archivedAppointments,
+    healthAnalytics,
+    searchQuery,
+    statusFilter,
+    dateRange,
+    showArchived,
+    pagination,
+
+    // Computed data from hook
+    filteredAppointments,
+    totalAppointments,
+    activeAppointments,
+    completedAppointments,
+    archivedCount,
+    canArchiveCount,
+    pendingCount,
+    confirmedCount,
+    healthScore,
+    improvementTrend,
+    consistencyRating,
+    totalSpent,
+    avgAppointmentCost,
+
+    // Actions from hook
+    fetchAppointmentData,
+    loadMoreAppointments,
+    archiveAppointment,
+    unarchiveAppointment,
+    deleteArchivedAppointment,
+    downloadAppointmentDetails,
+    downloadAllReport,
+    toggleArchiveView,
+    setSearchQuery,
+    setStatusFilter,
+    setDateRange,
+
+    // Utilities from hook
+    isEmpty: isEmptyList,
+    hasMore: paginationHasMore,
+  } = usePatientAppointmentHistory();
+
+  // ✅ LOCAL STATE for UI interactions
+  const [expandedAppointment, setExpandedAppointment] = useState(null);
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    appointment: null,
+  });
+  const [toast, setToast] = useState({
+    show: false,
+    message: "",
+    type: "success",
+  });
+  const [actionLoading, setActionLoading] = useState({
+    archiving: null,
+    unarchiving: null,
+    deleting: null,
+    refreshing: false,
   });
 
-  // ✅ SINGLE DATA FETCH - Eliminates double loading
-  useEffect(() => {
-    const fetchAllData = async () => {
-      if (!user || !isPatient()) {
-        setState((prev) => ({ ...prev, loading: false }));
-        return;
+  // ✅ UTILITY: Show toast helper
+  const showToast = (message, type = "success") => {
+    setToast({ show: true, message, type });
+  };
+
+  // ✅ UTILITY: Prevent default event behavior
+  const preventDefaults = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
+  // ✅ FIXED: Archive handler with proper state management
+  const handleArchive = async (appointmentId, e = null) => {
+    preventDefaults(e);
+
+    if (actionLoading.archiving === appointmentId) return false;
+
+    setActionLoading((prev) => ({ ...prev, archiving: appointmentId }));
+
+    try {
+      console.log("🔄 UI: Starting archive for appointment:", appointmentId);
+
+      const result = await archiveAppointment(appointmentId);
+
+      if (result.success) {
+        console.log("✅ UI: Archive successful");
+        showToast("Appointment archived successfully");
+        setExpandedAppointment(null); // Collapse expanded view
+      } else {
+        console.error("❌ UI: Archive failed:", result.error);
+        showToast(result.error || "Failed to archive appointment", "error");
       }
+    } catch (err) {
+      console.error("❌ UI: Archive error:", err);
+      showToast("Failed to archive appointment", "error");
+    } finally {
+      setActionLoading((prev) => ({ ...prev, archiving: null }));
+    }
 
-      try {
-        setState((prev) => ({ ...prev, loading: true, error: null }));
+    return false;
+  };
 
-        // ✅ PARALLEL REQUESTS - Fetch both at once
-        const [analyticsResponse, appointmentsResponse] = await Promise.all([
-          supabase.rpc("get_patient_analytics", { p_user_id: null }),
-          supabase.rpc("get_appointments_by_role", {
-            p_status: null,
-            p_date_from: null,
-            p_date_to: null,
-            p_limit: 200,
-            p_offset: 0,
-          }),
-        ]);
+  // ✅ FIXED: Unarchive handler
+  const handleUnarchive = async (appointmentId, e = null) => {
+    preventDefaults(e);
 
-        // Check for errors
-        if (analyticsResponse.error) throw analyticsResponse.error;
-        if (appointmentsResponse.error) throw appointmentsResponse.error;
+    if (actionLoading.unarchiving === appointmentId) return false;
 
-        // Process appointments data
-        const appointments = appointmentsResponse.data?.success
-          ? appointmentsResponse.data.data.appointments || []
-          : [];
+    setActionLoading((prev) => ({ ...prev, unarchiving: appointmentId }));
 
-        const transformedHistory = appointments.map((apt) => ({
-          id: apt.id,
-          type:
-            apt.services?.map((s) => s.name).join(", ") ||
-            "General Appointment",
-          date: apt.appointment_date,
-          time: apt.appointment_time,
-          status: apt.status,
-          doctor: apt.doctor?.name || "Unknown Doctor",
-          clinic: apt.clinic?.name || "Unknown Clinic",
-          cost:
-            apt.services?.reduce(
-              (sum, s) => sum + (parseFloat(s.price) || 0),
-              0
-            ) || 0,
-          duration: `${apt.duration_minutes || 60} minutes`,
-          notes: apt.notes || "",
-          treatments:
-            apt.services?.map((s) => ({
-              name: s.name,
-              completed: apt.status === "completed",
-            })) || [],
-          prescriptions: [],
-          cancelledBy: apt.cancelled_by ? "clinic" : null,
-          cancellationReason: apt.cancellation_reason || "",
-          symptoms: apt.symptoms || "",
-        }));
+    try {
+      console.log("🔄 UI: Starting unarchive for appointment:", appointmentId);
 
-        // ✅ BATCH STATE UPDATE - Single update instead of multiple
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          appointmentHistory: transformedHistory,
-          healthAnalytics: analyticsResponse.data,
-          error: null,
-        }));
-      } catch (err) {
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          error: err.message,
-        }));
+      const result = await unarchiveAppointment(appointmentId);
+
+      if (result.success) {
+        console.log("✅ UI: Unarchive successful");
+        showToast("Appointment restored successfully");
+        setExpandedAppointment(null);
+      } else {
+        console.error("❌ UI: Unarchive failed:", result.error);
+        showToast(result.error || "Failed to restore appointment", "error");
       }
-    };
+    } catch (err) {
+      console.error("❌ UI: Unarchive error:", err);
+      showToast("Failed to restore appointment", "error");
+    } finally {
+      setActionLoading((prev) => ({ ...prev, unarchiving: null }));
+    }
 
-    fetchAllData();
-  }, [user, isPatient]); // ✅ MINIMAL DEPS - Only essential dependencies
+    return false;
+  };
 
-  // ✅ OPTIMIZED MEMOIZATION - Prevent unnecessary recalculations
-  const analyticsData = useMemo(() => {
-    if (!state.appointmentHistory.length || !state.healthAnalytics) return null;
+  // ✅ FIXED: Delete modal handler
+  const handleDeleteClick = (appointment, e = null) => {
+    preventDefaults(e);
+    setDeleteModal({ isOpen: true, appointment });
+    return false;
+  };
 
-    const totalAppointments = state.appointmentHistory.length;
-    const completedAppointments = state.appointmentHistory.filter(
-      (apt) => apt.status === "completed"
-    ).length;
+  // ✅ FIXED: Delete confirmation handler
+  const handleDeleteConfirm = async () => {
+    if (!deleteModal.appointment) return;
 
-    const clinicCounts = state.appointmentHistory.reduce((acc, apt) => {
-      acc[apt.clinic] = (acc[apt.clinic] || 0) + 1;
-      return acc;
-    }, {});
+    const appointmentId = deleteModal.appointment.id;
+    setActionLoading((prev) => ({ ...prev, deleting: appointmentId }));
 
-    const favoriteClinicEntry = Object.entries(clinicCounts).reduce(
-      (max, current) => (current[1] > max[1] ? current : max),
-      ["Unknown", 0]
-    );
+    try {
+      console.log("🔄 UI: Starting delete for appointment:", appointmentId);
 
-    return {
-      healthScore: Math.min(95, 60 + completedAppointments * 2),
-      improvementTrend: Math.min(25, Math.floor(completedAppointments / 2)),
-      totalAppointments,
-      completedAppointments,
-      completedTreatments: state.appointmentHistory.filter(
-        (apt) => apt.status === "completed" && apt.treatments.length > 0
-      ).length,
-      consistencyRating: Math.min(100, completedAppointments * 10),
-      favoriteClinic: {
-        name: favoriteClinicEntry[0],
-        visits: favoriteClinicEntry[1],
-      },
-    };
-  }, [state.appointmentHistory, state.healthAnalytics]);
+      const result = await deleteArchivedAppointment(appointmentId);
 
-  // ✅ OPTIMIZED CHART DATA - Cached calculations
+      if (result.success) {
+        console.log("✅ UI: Delete successful");
+        showToast("Appointment permanently deleted");
+        setExpandedAppointment(null);
+      } else {
+        console.error("❌ UI: Delete failed:", result.error);
+        showToast(result.error || "Failed to delete appointment", "error");
+      }
+    } catch (err) {
+      console.error("❌ UI: Delete error:", err);
+      showToast("Failed to delete appointment", "error");
+    } finally {
+      setActionLoading((prev) => ({ ...prev, deleting: null }));
+      setDeleteModal({ isOpen: false, appointment: null });
+    }
+  };
+
+  // ✅ FIXED: Archive view toggle
+  const handleToggleArchiveView = async (e = null) => {
+    preventDefaults(e);
+
+    console.log("🔄 UI: Toggling archive view");
+    setExpandedAppointment(null); // Collapse any expanded items
+    await toggleArchiveView();
+    console.log("✅ UI: Archive view toggled");
+
+    return false;
+  };
+
+  // ✅ FIXED: Download handler
+  const handleDownload = (appointment, e = null) => {
+    preventDefaults(e);
+
+    try {
+      const result = downloadAppointmentDetails(appointment);
+      if (result.success) {
+        showToast("Appointment details downloaded");
+      }
+    } catch (err) {
+      console.error("Download error:", err);
+      showToast("Failed to download appointment details", "error");
+    }
+
+    return false;
+  };
+
+  // ✅ FIXED: Manual refresh handler
+  const handleManualRefresh = async (e = null) => {
+    preventDefaults(e);
+
+    if (actionLoading.refreshing) return false;
+
+    setActionLoading((prev) => ({ ...prev, refreshing: true }));
+
+    try {
+      console.log("🔄 UI: Manual refresh triggered");
+      await fetchAppointmentData(true);
+      showToast("Data refreshed");
+    } catch (err) {
+      console.error("Refresh error:", err);
+      showToast("Failed to refresh data", "error");
+    } finally {
+      setActionLoading((prev) => ({ ...prev, refreshing: false }));
+    }
+
+    return false;
+  };
+
+  // ✅ FIXED: Load more appointments
+  const handleLoadMore = async () => {
+    if (loading || !paginationHasMore) return;
+
+    try {
+      console.log("📥 Loading more appointments...");
+      await loadMoreAppointments();
+      showToast(`Loaded more appointments`);
+    } catch (err) {
+      console.error("Load more error:", err);
+      showToast("Failed to load more appointments", "error");
+    }
+  };
+
+  // ✅ ENHANCED: Chart data with proper error handling
   const chartData = useMemo(() => {
-    if (!state.appointmentHistory.length) {
+    if (!totalAppointments) {
       return {
         healthTrendData: [],
         appointmentTypeData: [],
@@ -180,186 +301,94 @@ const AppointmentHistory = () => {
       };
     }
 
-    // Health trend data
-    const monthlyData = {};
-    state.appointmentHistory.forEach((apt) => {
-      const month = new Date(apt.date).toISOString().substr(0, 7);
-      if (!monthlyData[month]) {
-        monthlyData[month] = { completed: 0, total: 0 };
-      }
-      monthlyData[month].total++;
-      if (apt.status === "completed") {
-        monthlyData[month].completed++;
-      }
-    });
+    try {
+      const allAppointments = [...appointments, ...archivedAppointments];
 
-    const healthTrendData = Object.entries(monthlyData)
-      .slice(-6)
-      .map(([month, data]) => ({
-        month: new Date(month + "-01").toLocaleDateString("en", {
-          month: "short",
-          year: "2-digit",
-        }),
-        healthScore: Math.min(100, 50 + (data.completed / data.total) * 50),
+      // Status distribution for pie chart
+      const statusCounts = allAppointments.reduce((acc, apt) => {
+        acc[apt.status] = (acc[apt.status] || 0) + 1;
+        return acc;
+      }, {});
+
+      const appointmentTypeData = [
+        {
+          name: "Completed",
+          value: statusCounts.completed || 0,
+          color: "#10b981",
+        },
+        {
+          name: "Cancelled",
+          value: statusCounts.cancelled || 0,
+          color: "#f59e0b",
+        },
+        {
+          name: "No Show",
+          value: statusCounts["no_show"] || 0,
+          color: "#ef4444",
+        },
+      ].filter((item) => item.value > 0);
+
+      // Monthly trends for line chart
+      const monthlyData = {};
+      allAppointments.forEach((apt) => {
+        const month = new Date(apt.date).toISOString().substr(0, 7);
+        if (!monthlyData[month]) {
+          monthlyData[month] = { completed: 0, cancelled: 0, noShow: 0 };
+        }
+        if (apt.status === "completed") monthlyData[month].completed++;
+        if (apt.status === "cancelled") monthlyData[month].cancelled++;
+        if (apt.status === "no_show") monthlyData[month].noShow++;
+      });
+
+      const monthlyTrendsData = Object.entries(monthlyData)
+        .slice(-6)
+        .map(([month, stats]) => ({
+          month: new Date(month + "-01").toLocaleDateString("en", {
+            month: "short",
+            year: "2-digit",
+          }),
+          ...stats,
+        }));
+
+      // Health trend calculation
+      const healthTrendData = monthlyTrendsData.map((item) => ({
+        month: item.month,
+        healthScore: Math.min(
+          100,
+          Math.max(
+            0,
+            50 +
+              (item.completed /
+                (item.completed + item.cancelled + item.noShow || 1)) *
+                50
+          )
+        ),
       }));
 
-    // Appointment type data
-    const statusCounts = state.appointmentHistory.reduce((acc, apt) => {
-      acc[apt.status] = (acc[apt.status] || 0) + 1;
-      return acc;
-    }, {});
+      return { healthTrendData, appointmentTypeData, monthlyTrendsData };
+    } catch (err) {
+      console.error("Chart data error:", err);
+      return {
+        healthTrendData: [],
+        appointmentTypeData: [],
+        monthlyTrendsData: [],
+      };
+    }
+  }, [appointments, archivedAppointments, totalAppointments]);
 
-    const appointmentTypeData = [
-      {
-        name: "Completed",
-        value: statusCounts.completed || 0,
-        color: "#10b981",
-      },
-      {
-        name: "Cancelled",
-        value: statusCounts.cancelled || 0,
-        color: "#f59e0b",
-      },
-      {
-        name: "No Show",
-        value: statusCounts["no-show"] || 0,
-        color: "#ef4444",
-      },
-    ].filter((item) => item.value > 0);
-
-    // Monthly trends data
-    const monthlyStats = {};
-    state.appointmentHistory.forEach((apt) => {
-      const month = new Date(apt.date).toLocaleDateString("en", {
-        month: "short",
-      });
-      if (!monthlyStats[month]) {
-        monthlyStats[month] = { completed: 0, cancelled: 0, noShow: 0 };
-      }
-      if (apt.status === "completed") monthlyStats[month].completed++;
-      if (apt.status === "cancelled") monthlyStats[month].cancelled++;
-      if (apt.status === "no-show") monthlyStats[month].noShow++;
-    });
-
-    const monthlyTrendsData = Object.entries(monthlyStats).map(
-      ([month, stats]) => ({
-        month,
-        ...stats,
-      })
-    );
-
-    return {
-      healthTrendData,
-      appointmentTypeData,
-      monthlyTrendsData,
-    };
-  }, [state.appointmentHistory]);
-
-  // ✅ OPTIMIZED FILTERING - Debounced and memoized
-  const filteredAppointments = useMemo(() => {
-    return state.appointmentHistory.filter((appointment) => {
-      const matchesSearch =
-        state.searchQuery === "" ||
-        appointment.type
-          .toLowerCase()
-          .includes(state.searchQuery.toLowerCase()) ||
-        appointment.doctor
-          .toLowerCase()
-          .includes(state.searchQuery.toLowerCase()) ||
-        appointment.clinic
-          .toLowerCase()
-          .includes(state.searchQuery.toLowerCase());
-
-      const matchesStatus =
-        state.statusFilter === "all" ||
-        appointment.status === state.statusFilter;
-
-      if (state.dateRange !== "all") {
-        const appointmentDate = new Date(appointment.date);
-        const now = new Date();
-
-        switch (state.dateRange) {
-          case "30days":
-            const thirtyDaysAgo = new Date(
-              now.getTime() - 30 * 24 * 60 * 60 * 1000
-            );
-            if (appointmentDate < thirtyDaysAgo) return false;
-            break;
-          case "90days":
-            const ninetyDaysAgo = new Date(
-              now.getTime() - 90 * 24 * 60 * 60 * 1000
-            );
-            if (appointmentDate < ninetyDaysAgo) return false;
-            break;
-          case "thisYear":
-            if (appointmentDate.getFullYear() !== now.getFullYear())
-              return false;
-            break;
-        }
-      }
-
-      return matchesSearch && matchesStatus;
-    });
-  }, [
-    state.appointmentHistory,
-    state.searchQuery,
-    state.statusFilter,
-    state.dateRange,
-  ]);
-
-  // ✅ OPTIMIZED HANDLERS - Prevent unnecessary re-renders
-  const updateState = (updates) => {
-    setState((prev) => ({ ...prev, ...updates }));
-  };
-
-  const handleDownloadReport = () => {
-    const reportData = `
-APPOINTMENT HISTORY REPORT
-=========================
-Generated: ${new Date().toLocaleDateString()}
-Patient: ${profile?.first_name} ${profile?.last_name}
-Total Appointments: ${analyticsData?.totalAppointments || 0}
-Completed: ${analyticsData?.completedAppointments || 0}
-Health Score: ${analyticsData?.healthScore || 0}
-
-APPOINTMENT DETAILS
-==================
-${filteredAppointments
-  .map(
-    (apt) => `
-Date: ${new Date(apt.date).toLocaleDateString()}
-Type: ${apt.type}
-Doctor: ${apt.doctor}
-Clinic: ${apt.clinic}
-Status: ${apt.status.toUpperCase()}
-Cost: ₱${apt.cost.toFixed(2)}
-${apt.notes ? `Notes: ${apt.notes}` : ""}
----`
-  )
-  .join("\n")}
-    `;
-
-    const blob = new Blob([reportData], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `appointment-history-${
-      new Date().toISOString().split("T")[0]
-    }.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
+  // ✅ UTILITY: Status styling helpers
   const getStatusColor = (status) => {
     switch (status) {
       case "completed":
         return "text-green-600 bg-green-50 border-green-200 dark:text-green-400 dark:bg-green-950 dark:border-green-800";
       case "cancelled":
         return "text-amber-600 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-950 dark:border-amber-800";
-      case "no-show":
+      case "no_show":
         return "text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-950 dark:border-red-800";
+      case "pending":
+        return "text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950 dark:border-blue-800";
+      case "confirmed":
+        return "text-purple-600 bg-purple-50 border-purple-200 dark:text-purple-400 dark:bg-purple-950 dark:border-purple-800";
       default:
         return "text-gray-600 bg-gray-50 border-gray-200 dark:text-gray-400 dark:bg-gray-950 dark:border-gray-800";
     }
@@ -371,145 +400,178 @@ ${apt.notes ? `Notes: ${apt.notes}` : ""}
         return <FiCheck className="w-4 h-4" />;
       case "cancelled":
         return <FiX className="w-4 h-4" />;
-      case "no-show":
+      case "no_show":
         return <FiAlertCircle className="w-4 h-4" />;
+      case "pending":
+        return <FiClock className="w-4 h-4" />;
+      case "confirmed":
+        return <FiCalendar className="w-4 h-4" />;
       default:
         return <FiClock className="w-4 h-4" />;
     }
   };
 
-  // Chart configuration
-  const chartConfig = {
-    completed: { label: "Completed", color: "hsl(var(--chart-1))" },
-    cancelled: { label: "Cancelled", color: "hsl(var(--chart-2))" },
-    noShow: { label: "No Show", color: "hsl(var(--chart-3))" },
-    healthScore: { label: "Health Score", color: "hsl(var(--chart-4))" },
-  };
-
-  // ✅ ACCESS CONTROL - Early return
+  // ✅ ACCESS CONTROL: Check user permissions
   if (!user || !isPatient()) {
     return (
-      <div className="min-h-screen p-6 bg-background">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center">
-            <h1 className="text-3xl font-bold text-foreground mb-4">
-              Access Denied
-            </h1>
-            <p className="text-muted-foreground">
-              Only patients can view appointment history.
-            </p>
+      <div className="min-h-screen p-6 bg-background flex items-center justify-center">
+        <motion.div
+          className="text-center max-w-md"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="p-4 bg-red-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center dark:bg-red-900/20">
+            <FiAlertTriangle className="w-8 h-8 text-red-600 dark:text-red-400" />
           </div>
-        </div>
+          <h1 className="text-2xl font-bold text-foreground mb-2">
+            Access Denied
+          </h1>
+          <p className="text-muted-foreground">
+            Only patients can view appointment history.
+          </p>
+        </motion.div>
       </div>
     );
   }
 
-  // ✅ ERROR STATE
-  if (state.error) {
+  // ✅ ERROR STATE: Show error with retry
+  if (error) {
     return (
-      <div className="min-h-screen p-6 bg-background">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center">
-            <h1 className="text-3xl font-bold text-foreground mb-4">
-              Error Loading History
-            </h1>
-            <p className="text-red-600 mb-4">Error: {state.error}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="bg-primary text-primary-foreground px-4 py-2 rounded-lg"
-            >
-              Try Again
-            </button>
+      <div className="min-h-screen p-6 bg-background flex items-center justify-center">
+        <motion.div
+          className="text-center max-w-md"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="p-4 bg-red-100 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center dark:bg-red-900/20">
+            <FiAlertCircle className="w-8 h-8 text-red-600 dark:text-red-400" />
           </div>
-        </div>
+          <h1 className="text-2xl font-bold text-foreground mb-2">
+            Error Loading History
+          </h1>
+          <p className="text-red-600 mb-4 text-sm">{error}</p>
+          <button
+            onClick={handleManualRefresh}
+            disabled={actionLoading.refreshing}
+            className="bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 flex items-center gap-2 mx-auto disabled:opacity-50"
+          >
+            <FiRefreshCw
+              className={`w-4 h-4 ${
+                actionLoading.refreshing ? "animate-spin" : ""
+              }`}
+            />
+            {actionLoading.refreshing ? "Retrying..." : "Try Again"}
+          </button>
+        </motion.div>
       </div>
     );
   }
 
-  // ✅ LOADING STATE - Single loading state
-  if (state.loading) {
-    return (
-      <div className="min-h-screen p-6 bg-background">
-        <div className="max-w-7xl mx-auto">
-          <div className="animate-pulse space-y-6">
-            <div className="h-8 bg-muted rounded w-1/3"></div>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="h-32 bg-muted rounded"></div>
-              ))}
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="h-80 bg-muted rounded"></div>
-              <div className="h-80 bg-muted rounded"></div>
-            </div>
-            <div className="h-96 bg-muted rounded"></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ✅ EMPTY STATE
-  if (!state.appointmentHistory.length) {
-    return (
-      <div className="min-h-screen p-6 bg-background">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center py-12">
-            <FiCalendar className="w-24 h-24 text-muted-foreground mx-auto mb-6" />
-            <h1 className="text-3xl font-bold text-foreground mb-4">
-              No Appointment History
-            </h1>
-            <p className="text-muted-foreground mb-8">
-              You haven't had any appointments yet.
-            </p>
-            <button className="bg-primary text-primary-foreground px-6 py-3 rounded-lg hover:bg-primary/90">
-              Book Your First Appointment
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+  // ✅ LOADING STATE: Show skeleton
+  if (loading && !appointments.length && !archivedAppointments.length) {
+    return <Loader />;
   }
 
   return (
     <div className="min-h-screen p-6 bg-background">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
+        {/* ✅ ENHANCED: Header Section with Better Controls */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
+          className="flex flex-col lg:flex-row justify-between items-start gap-6"
         >
-          <div className="flex justify-between items-start gap-6 mb-6 md:flex-row flex-col">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground mb-2">
-                Appointment History
-              </h1>
-              <p className="text-muted-foreground">
-                Complete overview of your dental appointments and health
-                progress
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold text-foreground">
+              {showArchived ? "Archived Appointments" : "Appointment History"}
+            </h1>
+            <p className="text-muted-foreground">
+              {showArchived
+                ? `${archivedCount} archived appointment${
+                    archivedCount !== 1 ? "s" : ""
+                  }`
+                : `Complete overview of your ${totalAppointments} dental appointment${
+                    totalAppointments !== 1 ? "s" : ""
+                  } and health progress`}
+            </p>
+            {/* ✅ NEW: Show pagination info if relevant */}
+            {paginationHasMore && (
+              <p className="text-xs text-muted-foreground">
+                Showing {filteredAppointments.length} of{" "}
+                {pagination?.totalCount || totalAppointments} total
               </p>
-            </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Refresh Button */}
             <button
-              onClick={handleDownloadReport}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+              type="button"
+              onClick={handleManualRefresh}
+              disabled={actionLoading.refreshing}
+              className="flex items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors disabled:opacity-50"
+              title="Refresh data"
+            >
+              <FiRefreshCw
+                className={`w-4 h-4 ${
+                  actionLoading.refreshing ? "animate-spin" : ""
+                }`}
+              />
+              {actionLoading.refreshing && (
+                <span className="text-xs">Refreshing...</span>
+              )}
+            </button>
+
+            {/* Archive Toggle */}
+            <button
+              type="button"
+              onClick={handleToggleArchiveView}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+                showArchived
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+              }`}
+            >
+              {showArchived ? (
+                <>
+                  <FiEye className="w-4 h-4" />
+                  <span>View Active</span>
+                </>
+              ) : (
+                <>
+                  <FiArchive className="w-4 h-4" />
+                  <span>Archives ({archivedCount})</span>
+                </>
+              )}
+            </button>
+
+            {/* Download Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                preventDefaults(e);
+                downloadAllReport();
+                showToast("Complete report downloaded");
+                return false;
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors"
             >
               <FiDownload className="w-4 h-4" />
-              Download Report
+              <span>Download Report</span>
             </button>
           </div>
         </motion.div>
 
-        {/* Analytics Cards */}
-        {analyticsData && (
+        {/* ✅ ENHANCED: Analytics Cards - Only for Active View */}
+        {!showArchived && (
           <motion.div
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+            transition={{ delay: 0.1 }}
           >
             {/* Health Score Card */}
-            <div className="bg-card border border-border rounded-lg p-6">
+            <div className="bg-card border border-border rounded-lg p-6 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-4">
                 <div className="p-2 bg-green-100 rounded-lg dark:bg-green-900/20">
                   <FiHeart className="w-5 h-5 text-green-600 dark:text-green-400" />
@@ -517,23 +579,23 @@ ${apt.notes ? `Notes: ${apt.notes}` : ""}
                 <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
                   <FiTrendingUp className="w-4 h-4" />
                   <span className="text-sm font-medium">
-                    +{analyticsData.improvementTrend}%
+                    +{improvementTrend.toFixed(1)}%
                   </span>
                 </div>
               </div>
               <div className="space-y-1">
                 <h3 className="text-2xl font-bold text-foreground">
-                  {analyticsData.healthScore}
+                  {healthScore}
                 </h3>
                 <p className="text-sm text-muted-foreground">Health Score</p>
                 <p className="text-xs text-muted-foreground">
-                  {analyticsData.consistencyRating}% consistency
+                  {consistencyRating}% consistency
                 </p>
               </div>
             </div>
 
-            {/* Total Appointments */}
-            <div className="bg-card border border-border rounded-lg p-6">
+            {/* Total Appointments Card */}
+            <div className="bg-card border border-border rounded-lg p-6 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-4">
                 <div className="p-2 bg-blue-100 rounded-lg dark:bg-blue-900/20">
                   <FiCalendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
@@ -541,80 +603,97 @@ ${apt.notes ? `Notes: ${apt.notes}` : ""}
               </div>
               <div className="space-y-1">
                 <h3 className="text-2xl font-bold text-foreground">
-                  {analyticsData.totalAppointments}
+                  {totalAppointments}
                 </h3>
                 <p className="text-sm text-muted-foreground">
                   Total Appointments
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {analyticsData.completedAppointments} completed
-                </p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>{completedAppointments} completed</span>
+                  <span>•</span>
+                  <span>{pendingCount + confirmedCount} active</span>
+                </div>
               </div>
             </div>
 
-            {/* Completed Treatments */}
-            <div className="bg-card border border-border rounded-lg p-6">
+            {/* Archive Status Card */}
+            <div className="bg-card border border-border rounded-lg p-6 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-4">
                 <div className="p-2 bg-purple-100 rounded-lg dark:bg-purple-900/20">
-                  <FiActivity className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                  <FiFolder className="w-5 h-5 text-purple-600 dark:text-purple-400" />
                 </div>
               </div>
               <div className="space-y-1">
                 <h3 className="text-2xl font-bold text-foreground">
-                  {analyticsData.completedTreatments}
+                  {archivedCount}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Treatments Completed
+                  Archived Records
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Across all visits
+                  {canArchiveCount} can be archived
                 </p>
               </div>
             </div>
 
-            {/* Favorite Clinic */}
-            <div className="bg-card border border-border rounded-lg p-6">
+            {/* Financial Summary Card */}
+            <div className="bg-card border border-border rounded-lg p-6 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-4">
                 <div className="p-2 bg-orange-100 rounded-lg dark:bg-orange-900/20">
-                  <FiMapPin className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                  <FiActivity className="w-5 h-5 text-orange-600 dark:text-orange-400" />
                 </div>
               </div>
               <div className="space-y-1">
-                <h3 className="text-lg font-semibold text-foreground truncate">
-                  {analyticsData.favoriteClinic.name}
+                <h3 className="text-2xl font-bold text-foreground">
+                  ₱{totalSpent.toLocaleString()}
                 </h3>
-                <p className="text-sm text-muted-foreground">Favorite Clinic</p>
+                <p className="text-sm text-muted-foreground">Total Spent</p>
                 <p className="text-xs text-muted-foreground">
-                  {analyticsData.favoriteClinic.visits} visits
+                  ₱{avgAppointmentCost.toFixed(0)} avg per visit
                 </p>
               </div>
             </div>
           </motion.div>
         )}
 
-        {/* Charts Section */}
-        {chartData.healthTrendData.length > 0 && (
+        {/* ✅ ENHANCED: Charts Section - Only for Active View with Data */}
+        {!showArchived && chartData.healthTrendData.length > 0 && (
           <motion.div
             className="grid grid-cols-1 lg:grid-cols-2 gap-6"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+            transition={{ delay: 0.2 }}
           >
-            {/* Health Score Trend */}
-            <div className="bg-card border border-border rounded-lg p-6">
+            {/* Health Score Trend Chart */}
+            <div className="bg-card border border-border rounded-lg p-6 hover:shadow-md transition-shadow">
               <div className="mb-6">
                 <h3 className="text-lg font-semibold text-foreground mb-2">
                   Health Score Progress
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Your dental health improvement over time
+                  Your dental health improvement over the last 6 months
                 </p>
               </div>
-              <ChartContainer config={chartConfig} className="h-[300px]">
+              <ChartContainer
+                config={{
+                  healthScore: {
+                    label: "Health Score",
+                    color: "hsl(var(--chart-1))",
+                  },
+                }}
+                className="h-[300px]"
+              >
                 <LineChart data={chartData.healthTrendData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fontSize: 12 }}
+                    tickLine={{ stroke: "hsl(var(--muted-foreground))" }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 12 }}
+                    tickLine={{ stroke: "hsl(var(--muted-foreground))" }}
+                  />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Line
                     type="monotone"
@@ -626,22 +705,27 @@ ${apt.notes ? `Notes: ${apt.notes}` : ""}
                       strokeWidth: 2,
                       r: 4,
                     }}
+                    activeDot={{
+                      r: 6,
+                      stroke: "var(--color-healthScore)",
+                      strokeWidth: 2,
+                    }}
                   />
                 </LineChart>
               </ChartContainer>
             </div>
 
             {/* Appointment Status Breakdown */}
-            <div className="bg-card border border-border rounded-lg p-6">
+            <div className="bg-card border border-border rounded-lg p-6 hover:shadow-md transition-shadow">
               <div className="mb-6">
                 <h3 className="text-lg font-semibold text-foreground mb-2">
-                  Appointment Status
+                  Appointment Status Distribution
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Breakdown of your appointment history
+                  Breakdown of your {totalAppointments} total appointments
                 </p>
               </div>
-              <ChartContainer config={chartConfig} className="h-[300px]">
+              <ChartContainer config={{}} className="h-[300px]">
                 <PieChart>
                   <Pie
                     data={chartData.appointmentTypeData}
@@ -649,329 +733,675 @@ ${apt.notes ? `Notes: ${apt.notes}` : ""}
                     cy="50%"
                     outerRadius={80}
                     dataKey="value"
-                    label={({ name, percent }) =>
-                      `${name} ${(percent * 100).toFixed(0)}%`
+                    label={({ name, percent, value }) =>
+                      `${name}: ${value} (${(percent * 100).toFixed(0)}%)`
                     }
+                    labelLine={false}
                   >
                     {chartData.appointmentTypeData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <ChartTooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0];
+                        return (
+                          <div className="bg-card border border-border rounded-lg p-3 shadow-lg">
+                            <p className="font-medium">{data.payload.name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {data.value} appointment
+                              {data.value !== 1 ? "s" : ""}
+                            </p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
                 </PieChart>
               </ChartContainer>
             </div>
           </motion.div>
         )}
 
-        {/* Monthly Trends Chart */}
-        {chartData.monthlyTrendsData.length > 0 && (
-          <motion.div
-            className="bg-card border border-border rounded-lg p-6"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold text-foreground mb-2">
-                Monthly Appointment Trends
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Your appointment patterns over time
-              </p>
-            </div>
-            <ChartContainer config={chartConfig} className="h-[400px]">
-              <BarChart data={chartData.monthlyTrendsData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <ChartLegend content={<ChartLegendContent />} />
-                <Bar
-                  dataKey="completed"
-                  fill="var(--color-completed)"
-                  name="Completed"
-                  radius={[4, 4, 0, 0]}
-                />
-                <Bar
-                  dataKey="cancelled"
-                  fill="var(--color-cancelled)"
-                  name="Cancelled"
-                  radius={[4, 4, 0, 0]}
-                />
-                <Bar
-                  dataKey="noShow"
-                  fill="var(--color-noShow)"
-                  name="No Show"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ChartContainer>
-          </motion.div>
-        )}
-
-        {/* Filters and Search */}
+        {/* ✅ ENHANCED: Filters and Search Section */}
         <motion.div
           className="bg-card border border-border rounded-lg p-6"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
+          transition={{ delay: 0.3 }}
         >
           <div className="flex flex-col md:flex-row gap-4 mb-6">
-            {/* Search */}
+            {/* Search Input */}
             <div className="flex-1">
               <div className="relative">
                 <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                 <input
                   type="text"
-                  placeholder="Search appointments, doctors, or clinics..."
-                  value={state.searchQuery}
-                  onChange={(e) => updateState({ searchQuery: e.target.value })}
-                  className="w-full pl-10 pr-4 py-2 border border-input bg-background rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  placeholder="Search appointments, doctors, clinics, or symptoms..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-input bg-background rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
                 />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <FiX className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Filters */}
-            <div className="flex gap-2">
+            {/* Filter Controls */}
+            <div className="flex gap-2 flex-wrap">
               <select
-                value={state.statusFilter}
-                onChange={(e) => updateState({ statusFilter: e.target.value })}
-                className="px-3 py-2 border border-input bg-background rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-3 py-2 border border-input bg-background rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
               >
                 <option value="all">All Status</option>
                 <option value="completed">Completed</option>
+                <option value="pending">Pending</option>
+                <option value="confirmed">Confirmed</option>
                 <option value="cancelled">Cancelled</option>
-                <option value="no-show">No Show</option>
+                <option value="no_show">No Show</option>
               </select>
 
               <select
-                value={state.dateRange}
-                onChange={(e) => updateState({ dateRange: e.target.value })}
-                className="px-3 py-2 border border-input bg-background rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                value={dateRange}
+                onChange={(e) => setDateRange(e.target.value)}
+                className="px-3 py-2 border border-input bg-background rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
               >
                 <option value="all">All Time</option>
+                <option value="7days">Last 7 Days</option>
                 <option value="30days">Last 30 Days</option>
                 <option value="90days">Last 90 Days</option>
                 <option value="thisYear">This Year</option>
               </select>
+
+              {/* Clear Filters Button */}
+              {(searchQuery ||
+                statusFilter !== "all" ||
+                dateRange !== "all") && (
+                <button
+                  onClick={() => {
+                    setSearchQuery("");
+                    setStatusFilter("all");
+                    setDateRange("all");
+                    showToast("Filters cleared");
+                  }}
+                  className="px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors text-sm"
+                  title="Clear all filters"
+                >
+                  Clear Filters
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Appointment List */}
+          {/* ✅ ENHANCED: Appointments List */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-foreground mb-4">
-              Appointment History ({filteredAppointments.length} records)
-            </h3>
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-foreground">
+                {showArchived ? "Archived" : "Active"} Appointments
+              </h3>
+              <span className="text-sm text-muted-foreground">
+                {filteredAppointments.length} of{" "}
+                {showArchived ? archivedCount : activeAppointments} records
+                {searchQuery && ` matching "${searchQuery}"`}
+              </span>
+            </div>
 
+            {/* Empty State */}
             {filteredAppointments.length === 0 ? (
-              <div className="text-center py-12">
-                <FiCalendar className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <motion.div
+                className="text-center py-12"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              >
+                <div className="p-4 bg-muted/20 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
+                  <FiCalendar className="w-8 h-8 text-muted-foreground" />
+                </div>
                 <h4 className="text-lg font-medium text-foreground mb-2">
-                  No appointments found
+                  {showArchived
+                    ? "No archived appointments"
+                    : searchQuery ||
+                      statusFilter !== "all" ||
+                      dateRange !== "all"
+                    ? "No appointments match your filters"
+                    : "No appointments found"}
                 </h4>
-                <p className="text-muted-foreground">
-                  Try adjusting your search or filters
+                <p className="text-muted-foreground mb-4">
+                  {showArchived
+                    ? "Completed appointments you archive will appear here"
+                    : searchQuery ||
+                      statusFilter !== "all" ||
+                      dateRange !== "all"
+                    ? "Try adjusting your search criteria or filters"
+                    : "Your appointment history will appear here once you have appointments"}
                 </p>
-              </div>
-            ) : (
-              filteredAppointments.map((appointment, index) => (
-                <motion.div
-                  key={appointment.id}
-                  className="border border-border rounded-lg overflow-hidden"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  {/* Appointment Header */}
-                  <div
-                    className="p-4 cursor-pointer hover:bg-muted/20 transition-colors"
-                    onClick={() =>
-                      updateState({
-                        expandedAppointment:
-                          state.expandedAppointment === appointment.id
-                            ? null
-                            : appointment.id,
-                      })
-                    }
+                {(searchQuery ||
+                  statusFilter !== "all" ||
+                  dateRange !== "all") && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setStatusFilter("all");
+                      setDateRange("all");
+                    }}
+                    className="text-primary hover:text-primary/80 text-sm font-medium"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4 flex-1">
-                        <div
-                          className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                            appointment.status
-                          )}`}
-                        >
-                          {getStatusIcon(appointment.status)}
-                          {appointment.status.charAt(0).toUpperCase() +
-                            appointment.status.slice(1)}
-                        </div>
-
-                        <div className="flex-1">
-                          <h4 className="font-medium text-foreground">
-                            {appointment.type}
-                          </h4>
-                          <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <FiCalendar className="w-3 h-3" />
-                              {new Date(appointment.date).toLocaleDateString()}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <FiClock className="w-3 h-3" />
-                              {appointment.time}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <FiUser className="w-3 h-3" />
-                              {appointment.doctor}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <FiMapPin className="w-3 h-3" />
-                              {appointment.clinic}
-                            </span>
+                    Clear all filters
+                  </button>
+                )}
+              </motion.div>
+            ) : (
+              <div className="space-y-4">
+                {/* Appointment Cards */}
+                {filteredAppointments.map((appointment, index) => (
+                  <motion.div
+                    key={`${appointment.id}-${
+                      showArchived ? "archived" : "active"
+                    }`}
+                    className="border border-border rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: Math.min(index * 0.05, 0.5) }}
+                  >
+                    {/* ✅ ENHANCED: Appointment Header */}
+                    <div className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                          {/* Status Badge */}
+                          <div
+                            className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                              appointment.status
+                            )} flex-shrink-0`}
+                          >
+                            {getStatusIcon(appointment.status)}
+                            {appointment.status.charAt(0).toUpperCase() +
+                              appointment.status.slice(1)}
+                            {showArchived && (
+                              <span className="ml-1 opacity-75">
+                                [ARCHIVED]
+                              </span>
+                            )}
                           </div>
-                        </div>
-                      </div>
 
-                      <div className="flex items-center gap-2">
-                        {appointment.cost > 0 && (
-                          <span className="text-sm font-medium text-foreground">
-                            ₱{appointment.cost.toFixed(2)}
-                          </span>
-                        )}
-                        {state.expandedAppointment === appointment.id ? (
-                          <FiChevronDown className="w-5 h-5 text-muted-foreground" />
-                        ) : (
-                          <FiChevronRight className="w-5 h-5 text-muted-foreground" />
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Expanded Details */}
-                  {state.expandedAppointment === appointment.id && (
-                    <motion.div
-                      className="border-t border-border bg-muted/20 p-6"
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                    >
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {/* Treatments */}
-                        <div>
-                          <h5 className="font-medium text-foreground mb-3 flex items-center gap-2">
-                            <FiActivity className="w-4 h-4" />
-                            Treatments
-                          </h5>
-                          <div className="space-y-2">
-                            {appointment.treatments.map((treatment, idx) => (
-                              <div
-                                key={idx}
-                                className="flex items-center gap-2 text-sm"
-                              >
-                                {treatment.completed ? (
-                                  <FiCheck className="w-3 h-3 text-green-600" />
-                                ) : (
-                                  <FiX className="w-3 h-3 text-red-600" />
-                                )}
-                                <span
-                                  className={
-                                    treatment.completed
-                                      ? "text-foreground"
-                                      : "text-muted-foreground line-through"
+                          {/* Appointment Info */}
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-foreground truncate">
+                              {appointment.type}
+                            </h4>
+                            <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground flex-wrap">
+                              <span className="flex items-center gap-1 flex-shrink-0">
+                                <FiCalendar className="w-3 h-3" />
+                                {new Date(appointment.date).toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
                                   }
-                                >
-                                  {treatment.name}
+                                )}
+                              </span>
+                              <span className="flex items-center gap-1 flex-shrink-0">
+                                <FiClock className="w-3 h-3" />
+                                {appointment.time}
+                              </span>
+                              <span className="flex items-center gap-1 truncate">
+                                <FiUser className="w-3 h-3 flex-shrink-0" />
+                                <span className="truncate">
+                                  {appointment.doctor}
                                 </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Prescriptions */}
-                        <div>
-                          <h5 className="font-medium text-foreground mb-3 flex items-center gap-2">
-                            <LuPill className="w-4 h-4" />
-                            Prescriptions
-                          </h5>
-                          {appointment.prescriptions.length > 0 ? (
-                            <div className="space-y-2">
-                              {appointment.prescriptions.map(
-                                (prescription, idx) => (
-                                  <div key={idx} className="text-sm">
-                                    <div className="font-medium text-foreground">
-                                      {prescription.name}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground">
-                                      {prescription.dosage} •{" "}
-                                      {prescription.duration}
-                                    </div>
-                                  </div>
-                                )
+                              </span>
+                              {appointment.cost > 0 && (
+                                <span className="flex items-center gap-1 flex-shrink-0 text-green-600 dark:text-green-400">
+                                  ₱{appointment.cost.toFixed(2)}
+                                </span>
                               )}
                             </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground">
-                              No prescriptions
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Notes & Details */}
-                        <div>
-                          <h5 className="font-medium text-foreground mb-3 flex items-center gap-2">
-                            <FiFileText className="w-4 h-4" />
-                            Details
-                          </h5>
-                          <div className="space-y-2 text-sm">
-                            <div>
-                              <span className="text-muted-foreground">
-                                Duration:{" "}
-                              </span>
-                              <span className="text-foreground">
-                                {appointment.duration}
-                              </span>
-                            </div>
-                            {appointment.cancelledBy && (
-                              <>
-                                <div>
-                                  <span className="text-muted-foreground">
-                                    Cancelled by:{" "}
-                                  </span>
-                                  <span className="text-foreground capitalize">
-                                    {appointment.cancelledBy}
-                                  </span>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground">
-                                    Reason:{" "}
-                                  </span>
-                                  <span className="text-foreground">
-                                    {appointment.cancellationReason}
-                                  </span>
-                                </div>
-                              </>
-                            )}
-                            {appointment.notes && (
-                              <div>
-                                <span className="text-muted-foreground">
-                                  Notes:{" "}
-                                </span>
-                                <p className="text-foreground mt-1">
-                                  {appointment.notes}
-                                </p>
-                              </div>
-                            )}
                           </div>
                         </div>
+
+                        {/* ✅ ENHANCED: Action Buttons */}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {/* Download Button */}
+                          <button
+                            onClick={(e) => handleDownload(appointment, e)}
+                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                            title="Download appointment details"
+                          >
+                            <FiDownload className="w-4 h-4" />
+                          </button>
+
+                          {/* Archive Button - Active view only for completed appointments */}
+                          {!showArchived &&
+                            appointment.status === "completed" && (
+                              <button
+                                onClick={(e) =>
+                                  handleArchive(appointment.id, e)
+                                }
+                                disabled={
+                                  actionLoading.archiving === appointment.id
+                                }
+                                className="p-2 text-muted-foreground hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors disabled:opacity-50 dark:hover:bg-orange-900/20"
+                                title="Archive appointment"
+                              >
+                                {actionLoading.archiving === appointment.id ? (
+                                  <FiLoader className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <FiArchive className="w-4 h-4" />
+                                )}
+                              </button>
+                            )}
+
+                          {/* Unarchive & Delete Buttons - Archived view only */}
+                          {showArchived && (
+                            <>
+                              <button
+                                onClick={(e) =>
+                                  handleUnarchive(appointment.id, e)
+                                }
+                                disabled={
+                                  actionLoading.unarchiving === appointment.id
+                                }
+                                className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                                title="Restore from archive"
+                              >
+                                {actionLoading.unarchiving ===
+                                appointment.id ? (
+                                  <FiLoader className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <FiRotateCcw className="w-4 h-4" />
+                                )}
+                              </button>
+                              <button
+                                onClick={(e) =>
+                                  handleDeleteClick(appointment, e)
+                                }
+                                disabled={
+                                  actionLoading.deleting === appointment.id
+                                }
+                                className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                                title="Delete permanently"
+                              >
+                                {actionLoading.deleting === appointment.id ? (
+                                  <FiLoader className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <FiTrash2 className="w-4 h-4" />
+                                )}
+                              </button>
+                            </>
+                          )}
+
+                          {/* Expand Button */}
+                          <button
+                            onClick={() =>
+                              setExpandedAppointment(
+                                expandedAppointment === appointment.id
+                                  ? null
+                                  : appointment.id
+                              )
+                            }
+                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                            title={
+                              expandedAppointment === appointment.id
+                                ? "Collapse details"
+                                : "Expand details"
+                            }
+                          >
+                            {expandedAppointment === appointment.id ? (
+                              <FiChevronDown className="w-5 h-5" />
+                            ) : (
+                              <FiChevronRight className="w-5 h-5" />
+                            )}
+                          </button>
+                        </div>
                       </div>
-                    </motion.div>
-                  )}
-                </motion.div>
-              ))
+                    </div>
+
+                    {/* ✅ ENHANCED: Expanded Details */}
+                    <AnimatePresence>
+                      {expandedAppointment === appointment.id && (
+                        <motion.div
+                          className="border-t border-border bg-muted/20 p-6"
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {/* ✅ Treatments Section */}
+                            <div>
+                              <h5 className="font-medium text-foreground mb-3 flex items-center gap-2">
+                                <FiActivity className="w-4 h-4" />
+                                Treatments & Services
+                              </h5>
+                              <div className="space-y-2">
+                                {appointment.treatments &&
+                                appointment.treatments.length > 0 ? (
+                                  appointment.treatments.map(
+                                    (treatment, idx) => (
+                                      <div
+                                        key={idx}
+                                        className="flex items-center gap-2 text-sm"
+                                      >
+                                        {treatment.completed ? (
+                                          <FiCheck className="w-3 h-3 text-green-600 flex-shrink-0" />
+                                        ) : (
+                                          <FiX className="w-3 h-3 text-red-600 flex-shrink-0" />
+                                        )}
+                                        <span
+                                          className={
+                                            treatment.completed
+                                              ? "text-foreground"
+                                              : "text-muted-foreground line-through"
+                                          }
+                                        >
+                                          {treatment.name}
+                                        </span>
+                                        {treatment.price > 0 && (
+                                          <span className="ml-auto text-xs text-muted-foreground">
+                                            ₱{treatment.price}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )
+                                  )
+                                ) : (
+                                  <p className="text-sm text-muted-foreground italic">
+                                    No specific treatments recorded
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* ✅ Clinic Details Section */}
+                            <div>
+                              <h5 className="font-medium text-foreground mb-3 flex items-center gap-2">
+                                <FiMapPin className="w-4 h-4" />
+                                Clinic Details
+                              </h5>
+                              <div className="space-y-2 text-sm">
+                                <div>
+                                  <span className="text-muted-foreground">
+                                    Name:{" "}
+                                  </span>
+                                  <span className="text-foreground font-medium">
+                                    {appointment.clinic}
+                                  </span>
+                                </div>
+                                {appointment.doctorSpecialization && (
+                                  <div>
+                                    <span className="text-muted-foreground">
+                                      Specialization:{" "}
+                                    </span>
+                                    <span className="text-foreground">
+                                      {appointment.doctorSpecialization}
+                                    </span>
+                                  </div>
+                                )}
+                                {appointment.clinicAddress && (
+                                  <div>
+                                    <span className="text-muted-foreground">
+                                      Address:{" "}
+                                    </span>
+                                    <span className="text-foreground">
+                                      {appointment.clinicAddress}
+                                    </span>
+                                  </div>
+                                )}
+                                {appointment.clinicPhone && (
+                                  <div>
+                                    <span className="text-muted-foreground">
+                                      Phone:{" "}
+                                    </span>
+                                    <a
+                                      href={`tel:${appointment.clinicPhone}`}
+                                      className="text-primary hover:text-primary/80 transition-colors"
+                                    >
+                                      {appointment.clinicPhone}
+                                    </a>
+                                  </div>
+                                )}
+                                <div>
+                                  <span className="text-muted-foreground">
+                                    Duration:{" "}
+                                  </span>
+                                  <span className="text-foreground">
+                                    {appointment.duration}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* ✅ Notes & Details Section */}
+                            <div>
+                              <h5 className="font-medium text-foreground mb-3 flex items-center gap-2">
+                                <FiFileText className="w-4 h-4" />
+                                Notes & Details
+                              </h5>
+                              <div className="space-y-3 text-sm">
+                                {appointment.cost > 0 && (
+                                  <div className="flex justify-between items-center p-2 bg-green-50 rounded-lg dark:bg-green-900/10">
+                                    <span className="text-muted-foreground">
+                                      Total Cost:
+                                    </span>
+                                    <span className="text-foreground font-semibold">
+                                      ₱{appointment.cost.toFixed(2)}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {appointment.symptoms && (
+                                  <div>
+                                    <span className="text-muted-foreground font-medium">
+                                      Symptoms:
+                                    </span>
+                                    <p className="text-foreground mt-1 p-2 bg-background rounded border">
+                                      {appointment.symptoms}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {appointment.notes && (
+                                  <div>
+                                    <span className="text-muted-foreground font-medium">
+                                      Notes:
+                                    </span>
+                                    <p className="text-foreground mt-1 p-2 bg-background rounded border">
+                                      {appointment.notes}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {appointment.cancellationReason && (
+                                  <div>
+                                    <span className="text-muted-foreground font-medium">
+                                      Cancellation Reason:
+                                    </span>
+                                    <p className="text-red-600 dark:text-red-400 mt-1 p-2 bg-red-50 dark:bg-red-900/10 rounded border border-red-200 dark:border-red-800">
+                                      {appointment.cancellationReason}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* Appointment Metadata */}
+                                <div className="pt-2 border-t border-border">
+                                  <div className="text-xs text-muted-foreground space-y-1">
+                                    <div>
+                                      Created:{" "}
+                                      {new Date(
+                                        appointment.createdAt
+                                      ).toLocaleString()}
+                                    </div>
+                                    {appointment.updatedAt &&
+                                      appointment.updatedAt !==
+                                        appointment.createdAt && (
+                                        <div>
+                                          Updated:{" "}
+                                          {new Date(
+                                            appointment.updatedAt
+                                          ).toLocaleString()}
+                                        </div>
+                                      )}
+                                    {appointment.cancelledAt && (
+                                      <div>
+                                        Cancelled:{" "}
+                                        {new Date(
+                                          appointment.cancelledAt
+                                        ).toLocaleString()}
+                                      </div>
+                                    )}
+                                    {appointment.isArchived && (
+                                      <div className="text-orange-600 dark:text-orange-400 font-medium">
+                                        Status: ARCHIVED
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* ✅ Quick Actions in Expanded View */}
+                          <div className="mt-6 pt-4 border-t border-border">
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                onClick={(e) => handleDownload(appointment, e)}
+                                className="flex items-center gap-2 px-3 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors text-sm"
+                              >
+                                <FiDownload className="w-3 h-3" />
+                                Download Details
+                              </button>
+
+                              {!showArchived &&
+                                appointment.status === "completed" && (
+                                  <button
+                                    onClick={(e) =>
+                                      handleArchive(appointment.id, e)
+                                    }
+                                    disabled={
+                                      actionLoading.archiving === appointment.id
+                                    }
+                                    className="flex items-center gap-2 px-3 py-2 bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors text-sm disabled:opacity-50 dark:bg-orange-900/20 dark:text-orange-300"
+                                  >
+                                    {actionLoading.archiving ===
+                                    appointment.id ? (
+                                      <FiLoader className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <FiArchive className="w-3 h-3" />
+                                    )}
+                                    Archive Appointment
+                                  </button>
+                                )}
+
+                              {showArchived && (
+                                <>
+                                  <button
+                                    onClick={(e) =>
+                                      handleUnarchive(appointment.id, e)
+                                    }
+                                    disabled={
+                                      actionLoading.unarchiving ===
+                                      appointment.id
+                                    }
+                                    className="flex items-center gap-2 px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm disabled:opacity-50 dark:bg-blue-900/20 dark:text-blue-300"
+                                  >
+                                    {actionLoading.unarchiving ===
+                                    appointment.id ? (
+                                      <FiLoader className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <FiRotateCcw className="w-3 h-3" />
+                                    )}
+                                    Restore from Archive
+                                  </button>
+                                  <button
+                                    onClick={(e) =>
+                                      handleDeleteClick(appointment, e)
+                                    }
+                                    disabled={
+                                      actionLoading.deleting === appointment.id
+                                    }
+                                    className="flex items-center gap-2 px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors text-sm disabled:opacity-50 dark:bg-red-900/20 dark:text-red-300"
+                                  >
+                                    {actionLoading.deleting ===
+                                    appointment.id ? (
+                                      <FiLoader className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <FiTrash2 className="w-3 h-3" />
+                                    )}
+                                    Delete Permanently
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                ))}
+
+                {/* ✅ ENHANCED: Load More Button */}
+                {paginationHasMore && !showArchived && (
+                  <motion.div
+                    className="flex justify-center pt-6"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                  >
+                    <button
+                      onClick={handleLoadMore}
+                      disabled={loading}
+                      className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                    >
+                      {loading ? (
+                        <>
+                          <FiLoader className="w-4 h-4 animate-spin" />
+                          Loading more...
+                        </>
+                      ) : (
+                        <>
+                          <FiChevronDown className="w-4 h-4" />
+                          Load More Appointments
+                        </>
+                      )}
+                    </button>
+                  </motion.div>
+                )}
+              </div>
             )}
           </div>
         </motion.div>
       </div>
+
+      {/* ✅ ENHANCED: Delete Confirmation Modal */}
+      <AnimatePresence>
+        <DeleteConfirmationModal
+          isOpen={deleteModal.isOpen}
+          onClose={() => setDeleteModal({ isOpen: false, appointment: null })}
+          onConfirm={handleDeleteConfirm}
+          appointmentDetails={deleteModal.appointment}
+          loading={actionLoading.deleting === deleteModal.appointment?.id}
+        />
+      </AnimatePresence>
+
+      {/* ✅ ENHANCED: Toast Notifications */}
+      <AnimatePresence>
+        {toast.show && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() =>
+              setToast({ show: false, message: "", type: "success" })
+            }
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

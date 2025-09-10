@@ -12,6 +12,7 @@ import { Button } from "@/core/components/ui/button";
 import { Separator } from "@/core/components/ui/separator";
 import { useSidebar } from "@/core/components/ui/sidebar";
 import { ModeToggle } from "@/core/components/ui/mode-toggle";
+import StaffNotificationCenter from "@/app/staff/components/staff-notification-center";
 
 export function SiteHeader() {
   const { toggleSidebar } = useSidebar();
@@ -54,6 +55,7 @@ export function SiteHeader() {
         {/* Right Side Actions */}
         <div className="ml-auto flex items-center gap-2">
           <SearchForm className="hidden sm:flex" />
+          <StaffNotificationCenter variant="icon" />
 
           <ModeToggle />
         </div>

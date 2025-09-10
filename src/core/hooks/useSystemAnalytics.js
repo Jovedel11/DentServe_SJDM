@@ -20,7 +20,7 @@ export const useSystemAnalytics = () => {
     try {
       setLoading(true);
       setError(null);
-
+      
       const {
         dateFrom = null,
         dateTo = null,

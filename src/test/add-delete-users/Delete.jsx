@@ -11,8 +11,8 @@ const Delete = () => {
 
   const handleAddStaff = async () => {
     const { data, error } = await adminSupabase.auth.admin.createUser({
-      email: "manoyd7@gmail.com",
-      password: "#staffPassword1",
+      email: "zeusdelosreyes9@gmail.com",
+      password: "#staffPassword2",
       email_confirm: true,
       phone_confirm_at: new Date().toISOString(),
       phone: "+639937683114",

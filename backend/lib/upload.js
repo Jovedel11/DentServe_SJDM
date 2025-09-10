@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 
 // rate-limit to upload 
 export const uploadLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 5 * 60 * 1000,
   max: 5, // limit each ip to upload request per window
   message: { error: 'Too many upload attempts, please try again' },
   standardHeaders: true,

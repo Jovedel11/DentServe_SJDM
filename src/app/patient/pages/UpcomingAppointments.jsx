@@ -4,11 +4,194 @@ import { usePatientAppointments } from "@/core/hooks/usePatientAppointment";
 import { useAppointmentCancellation } from "@/core/hooks/useAppointmentCancellation";
 import { useAppointmentRealtime } from "@/core/hooks/useAppointmentRealtime";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  Phone,
+  User,
+  Search,
+  Download,
+  Eye,
+  X,
+  AlertTriangle,
+  CheckCircle2,
+  RefreshCw,
+  Bell,
+  Activity,
+  Stethoscope,
+  Building,
+  FileText,
+  AlertCircle,
+  ChevronRight,
+  Wifi,
+  WifiOff,
+  Filter,
+  Star,
+  Mail,
+  Plus,
+} from "lucide-react";
+
+// Enhanced Toast Component
+const Toast = React.memo(({ message, type, onClose }) => {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 4000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  const toastConfig = {
+    error: {
+      bg: "bg-destructive",
+      text: "text-white",
+      icon: <AlertCircle className="w-5 h-5" />,
+    },
+    success: {
+      bg: "bg-success",
+      text: "text-white",
+      icon: <CheckCircle2 className="w-5 h-5" />,
+    },
+    info: {
+      bg: "bg-primary",
+      text: "text-primary-foreground",
+      icon: <AlertCircle className="w-5 h-5" />,
+    },
+    warning: {
+      bg: "bg-warning",
+      text: "text-white",
+      icon: <AlertTriangle className="w-5 h-5" />,
+    },
+  };
+
+  const config = toastConfig[type] || toastConfig.info;
+
+  return (
+    <div
+      className={`fixed top-6 right-6 z-50 p-4 rounded-lg shadow-lg max-w-sm border animate-fadeIn ${config.bg} ${config.text}`}
+    >
+      <div className="flex items-center gap-3">
+        {config.icon}
+        <span className="font-medium flex-1">{message}</span>
+        <button
+          onClick={onClose}
+          className="ml-2 hover:opacity-70 transition-opacity"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+});
+
+// Enhanced Loading Component
+const LoadingSpinner = React.memo(
+  ({ message = "Loading...", size = "default" }) => {
+    const sizeClasses = {
+      small: "h-4 w-4",
+      default: "h-8 w-8",
+      large: "h-12 w-12",
+    };
+
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="text-center">
+          <div
+            className={`animate-spin rounded-full border-4 border-muted border-t-primary mx-auto mb-4 ${sizeClasses[size]}`}
+          />
+          <p className="text-muted-foreground font-medium">{message}</p>
+        </div>
+      </div>
+    );
+  }
+);
+
+// Enhanced Stats Card Component
+const StatsCard = React.memo(
+  ({ title, value, icon, color = "primary", trend }) => (
+    <div className="bg-card rounded-xl p-6 border shadow-sm hover:shadow-md transition-shadow">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">{title}</p>
+          <p className="text-3xl font-bold text-foreground mt-1">{value}</p>
+          {trend && (
+            <p className="text-xs text-muted-foreground mt-1">{trend}</p>
+          )}
+        </div>
+        <div
+          className={`w-12 h-12 rounded-lg bg-${color}/10 flex items-center justify-center`}
+        >
+          {icon}
+        </div>
+      </div>
+    </div>
+  )
+);
+
+// Enhanced Status Badge Component
+const StatusBadge = React.memo(({ status, urgent = false }) => {
+  const statusConfig = {
+    pending: {
+      bg: "bg-warning/10",
+      text: "text-warning",
+      border: "border-warning/20",
+      icon: <Clock className="w-3 h-3" />,
+    },
+    confirmed: {
+      bg: "bg-success/10",
+      text: "text-success",
+      border: "border-success/20",
+      icon: <CheckCircle2 className="w-3 h-3" />,
+    },
+    cancelled: {
+      bg: "bg-destructive/10",
+      text: "text-destructive",
+      border: "border-destructive/20",
+      icon: <X className="w-3 h-3" />,
+    },
+  };
+
+  const config = statusConfig[status] || statusConfig.pending;
+
+  return (
+    <div
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border ${config.bg} ${config.text} ${config.border}`}
+    >
+      {config.icon}
+      <span className="capitalize">{status}</span>
+      {urgent && (
+        <span className="ml-1 px-1.5 py-0.5 bg-destructive text-white rounded-full text-xs">
+          URGENT
+        </span>
+      )}
+    </div>
+  );
+});
+
+// Enhanced Search Component
+const SearchBar = React.memo(({ value, onChange, onClear, placeholder }) => (
+  <div className="relative">
+    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+    <input
+      type="text"
+      placeholder={placeholder}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full pl-10 pr-10 py-3 border border-border rounded-lg bg-input text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
+    />
+    {value && (
+      <button
+        onClick={onClear}
+        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    )}
+  </div>
+));
 
 const UpcomingAppointments = () => {
   const { user, profile, isPatient } = useAuth();
 
-  // ✅ FIXED: Use proper hooks for upcoming appointments only
+  // Hook integrations
   const {
     appointments,
     loading: appointmentsLoading,
@@ -20,7 +203,6 @@ const UpcomingAppointments = () => {
     canCancelAppointment: hookCheckCanCancel,
   } = usePatientAppointments();
 
-  // ✅ FIXED: Use cancellation hook properly
   const {
     loading: cancelLoading,
     error: cancelError,
@@ -40,7 +222,10 @@ const UpcomingAppointments = () => {
       onAppointmentStatusChange: useCallback(
         (statusUpdate) => {
           console.log("Appointment status changed:", statusUpdate);
-          showToast(`Appointment status changed to ${statusUpdate.newStatus}`);
+          showToast(
+            `Appointment status changed to ${statusUpdate.newStatus}`,
+            "info"
+          );
           refreshAppointments();
         },
         [refreshAppointments]
@@ -49,7 +234,7 @@ const UpcomingAppointments = () => {
       enableNotifications: true,
     });
 
-  // ✅ STATE MANAGEMENT
+  // State management
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [ongoingTreatments, setOngoingTreatments] = useState([]);
@@ -64,7 +249,16 @@ const UpcomingAppointments = () => {
   });
   const [toastMessage, setToastMessage] = useState("");
 
-  // ✅ FIXED: Fetch ongoing treatments with proper error handling
+  // Toast helper
+  const showToast = useCallback((message, type = "info") => {
+    setToastMessage({ message, type });
+  }, []);
+
+  const closeToast = useCallback(() => {
+    setToastMessage("");
+  }, []);
+
+  // Fetch ongoing treatments
   const fetchOngoingTreatments = useCallback(async () => {
     if (!isPatient()) return;
 
@@ -97,7 +291,7 @@ const UpcomingAppointments = () => {
     }
   }, [isPatient]);
 
-  // ✅ INITIALIZATION
+  // Initialization
   useEffect(() => {
     if (!user || !isPatient()) {
       console.warn("Access denied: Not a patient or not authenticated");
@@ -116,12 +310,11 @@ const UpcomingAppointments = () => {
     disableRealtimeUpdates,
   ]);
 
-  // ✅ FILTER ONLY UPCOMING APPOINTMENTS (remove past appointments)
+  // Filter only upcoming appointments
   const upcomingAppointments = useMemo(() => {
     const today = new Date().toISOString().split("T")[0];
 
     return appointments.filter((apt) => {
-      // Only upcoming appointments (pending or confirmed, and future dates)
       const isUpcoming =
         ["pending", "confirmed"].includes(apt.status) &&
         apt.appointment_date >= today;
@@ -129,7 +322,7 @@ const UpcomingAppointments = () => {
     });
   }, [appointments]);
 
-  // ✅ SEARCH FILTERING
+  // Search filtering
   const filteredAppointments = useMemo(() => {
     let filtered = upcomingAppointments;
 
@@ -149,7 +342,7 @@ const UpcomingAppointments = () => {
     return filtered;
   }, [upcomingAppointments, searchTerm]);
 
-  // ✅ URGENT APPOINTMENTS (today and tomorrow)
+  // Urgent appointments (today and tomorrow)
   const urgentAppointments = useMemo(() => {
     const today = new Date().toISOString().split("T")[0];
     const tomorrow = new Date();
@@ -162,12 +355,7 @@ const UpcomingAppointments = () => {
     );
   }, [upcomingAppointments]);
 
-  // ✅ UTILITY FUNCTIONS
-  const showToast = useCallback((message) => {
-    setToastMessage(message);
-    setTimeout(() => setToastMessage(""), 3000);
-  }, []);
-
+  // Utility functions
   const formatDate = useCallback((dateString) => {
     return new Date(dateString).toLocaleDateString("en-US", {
       weekday: "long",
@@ -217,7 +405,7 @@ const UpcomingAppointments = () => {
     [formatDate, formatTime]
   );
 
-  // ✅ FIXED: Cancellation logic with proper eligibility checking
+  // Event handlers
   const handleCancelAppointment = useCallback(
     async (appointment) => {
       try {
@@ -226,7 +414,6 @@ const UpcomingAppointments = () => {
           appointment.id
         );
 
-        // Check eligibility using cancellation hook
         const eligibility = await checkCancellationEligibility(appointment.id);
         console.log("Eligibility result:", eligibility);
 
@@ -234,23 +421,22 @@ const UpcomingAppointments = () => {
           isOpen: true,
           appointment,
           canCancel: eligibility.canCancel,
-          reason: "", // Start with empty reason for input
+          reason: "",
           eligibilityMessage: eligibility.canCancel ? null : eligibility.reason,
           eligibilityChecked: true,
         });
       } catch (err) {
         console.error("Error checking cancellation eligibility:", err);
-        showToast("Failed to check cancellation eligibility");
+        showToast("Failed to check cancellation eligibility", "error");
       }
     },
     [checkCancellationEligibility, showToast]
   );
 
-  // ✅ FIXED: Actual cancellation with reason validation
   const confirmCancelAppointment = useCallback(
     async (appointmentId, cancellationReason) => {
       if (!cancellationReason || cancellationReason.trim() === "") {
-        showToast("Please provide a cancellation reason");
+        showToast("Please provide a cancellation reason", "warning");
         return;
       }
 
@@ -262,7 +448,6 @@ const UpcomingAppointments = () => {
           cancellationReason
         );
 
-        // Try the cancellation hook first
         const hookResult = await hookCancelAppointment(
           appointmentId,
           cancellationReason.trim()
@@ -277,12 +462,11 @@ const UpcomingAppointments = () => {
             reason: "",
             eligibilityChecked: false,
           });
-          showToast("Appointment cancelled successfully");
+          showToast("Appointment cancelled successfully", "success");
           refreshAppointments();
           return;
         }
 
-        // Fallback to cancellation hook
         const fallbackResult = await cancellationHookCancel(
           appointmentId,
           cancellationReason.trim()
@@ -297,14 +481,17 @@ const UpcomingAppointments = () => {
             reason: "",
             eligibilityChecked: false,
           });
-          showToast("Appointment cancelled successfully");
+          showToast("Appointment cancelled successfully", "success");
           refreshAppointments();
         } else {
-          showToast(fallbackResult?.error || "Failed to cancel appointment");
+          showToast(
+            fallbackResult?.error || "Failed to cancel appointment",
+            "error"
+          );
         }
       } catch (error) {
         console.error("Error cancelling appointment:", error);
-        showToast("An error occurred while cancelling");
+        showToast("An error occurred while cancelling", "error");
       }
     },
     [
@@ -361,618 +548,782 @@ Email: ${appointment.clinic?.email || "N/A"}
     [formatDate, formatTime]
   );
 
-  // ✅ ACCESS CONTROL
+  // Access control
   if (!user || !isPatient()) {
     return (
-      <div>
-        <h1>Access Denied</h1>
-        <p>You need to be a verified patient to view appointments.</p>
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="max-w-md mx-auto text-center p-8 glass-effect rounded-xl border shadow-lg">
+          <div className="w-16 h-16 mx-auto mb-4 bg-destructive/10 rounded-full flex items-center justify-center">
+            <AlertTriangle className="w-8 h-8 text-destructive" />
+          </div>
+          <h1 className="text-xl font-semibold text-foreground mb-2">
+            Access Denied
+          </h1>
+          <p className="text-muted-foreground">
+            You need to be a verified patient to view appointments.
+          </p>
+        </div>
       </div>
     );
   }
 
-  // ✅ ERROR STATE
+  // Error state
   if (appointmentsError) {
     return (
-      <div>
-        <h1>Error Loading Appointments</h1>
-        <p>Error: {appointmentsError}</p>
-        <button onClick={refreshAppointments}>Try Again</button>
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="max-w-md mx-auto text-center p-8 glass-effect rounded-xl border shadow-lg">
+          <div className="w-16 h-16 mx-auto mb-4 bg-destructive/10 rounded-full flex items-center justify-center">
+            <AlertTriangle className="w-8 h-8 text-destructive" />
+          </div>
+          <h1 className="text-xl font-semibold text-foreground mb-2">
+            Error Loading Appointments
+          </h1>
+          <p className="text-muted-foreground mb-6">{appointmentsError}</p>
+          <button
+            onClick={refreshAppointments}
+            className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
+          >
+            Try Again
+          </button>
+        </div>
       </div>
     );
   }
 
-  // ✅ LOADING STATE
+  // Loading state
   if (appointmentsLoading) {
-    return <div>Loading appointments...</div>;
+    return (
+      <div className="min-h-screen bg-background">
+        <LoadingSpinner message="Loading your appointments..." size="large" />
+      </div>
+    );
   }
 
-  // ✅ EMPTY STATE
+  // Empty state
   if (
     filteredAppointments.length === 0 &&
     ongoingTreatments.length === 0 &&
     !appointmentsLoading
   ) {
     return (
-      <div>
-        <h3>No Upcoming Appointments</h3>
-        <p>
-          {searchTerm
-            ? "Try adjusting your search terms."
-            : "You don't have any upcoming appointments scheduled."}
-        </p>
-        <button>Book New Appointment</button>
+      <div className="min-h-screen bg-background p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center py-16">
+            <div className="w-24 h-24 mx-auto mb-6 bg-muted/30 rounded-full flex items-center justify-center">
+              <Calendar className="w-12 h-12 text-muted-foreground" />
+            </div>
+            <h3 className="text-2xl font-bold text-foreground mb-4">
+              {searchTerm
+                ? "No appointments found"
+                : "No Upcoming Appointments"}
+            </h3>
+            <p className="text-muted-foreground mb-8 max-w-md mx-auto">
+              {searchTerm
+                ? "Try adjusting your search terms to find what you're looking for."
+                : "You don't have any upcoming appointments scheduled. Book your next dental visit today."}
+            </p>
+            <div className="flex items-center justify-center gap-4">
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="px-6 py-3 border border-border rounded-lg text-foreground hover:bg-muted transition-colors"
+                >
+                  Clear Search
+                </button>
+              )}
+              <button className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium">
+                <Plus className="w-4 h-4" />
+                Book New Appointment
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
-  // ✅ MAIN RENDER
   return (
-    <div>
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div
-          style={{
-            position: "fixed",
-            top: "20px",
-            right: "20px",
-            zIndex: 1000,
-            backgroundColor: "green",
-            color: "white",
-            padding: "10px 20px",
-            borderRadius: "5px",
-          }}
-        >
-          {toastMessage}
-        </div>
-      )}
+    <div className="min-h-screen bg-background">
+      <div className="max-w-7xl mx-auto p-6">
+        {/* Toast Notification */}
+        {toastMessage && (
+          <Toast
+            message={toastMessage.message}
+            type={toastMessage.type}
+            onClose={closeToast}
+          />
+        )}
 
-      {/* Header */}
-      <div>
-        <h1>Upcoming Appointments</h1>
-        <p>
-          Manage your scheduled appointments and ongoing treatments •{" "}
-          {upcomingAppointments.length} upcoming
-        </p>
-        <button onClick={refreshAppointments} disabled={appointmentsLoading}>
-          {appointmentsLoading ? "Refreshing..." : "Refresh"}
-        </button>
-        {isConnected && <span>Live Updates Active</span>}
-      </div>
-
-      {/* Stats */}
-      <div>
-        <div>
-          <h3>Total Upcoming</h3>
-          <p>{upcomingAppointments.length}</p>
-        </div>
-        <div>
-          <h3>Pending</h3>
-          <p>
-            {upcomingAppointments.filter((a) => a.status === "pending").length}
-          </p>
-        </div>
-        <div>
-          <h3>Confirmed</h3>
-          <p>
-            {
-              upcomingAppointments.filter((a) => a.status === "confirmed")
-                .length
-            }
-          </p>
-        </div>
-        <div>
-          <h3>Ongoing Treatments</h3>
-          <p>{ongoingTreatments.length}</p>
-        </div>
-      </div>
-
-      {/* ✅ ONGOING TREATMENTS SECTION */}
-      {treatmentsLoading && <div>Loading treatments...</div>}
-      {treatmentsError && (
-        <div>Error loading treatments: {treatmentsError}</div>
-      )}
-
-      {ongoingTreatments.length > 0 && (
-        <div>
-          <h2>Ongoing Treatments</h2>
-          {ongoingTreatments.map((treatment) => (
-            <div
-              key={treatment.id}
-              style={{
-                border: "1px solid #ccc",
-                padding: "15px",
-                margin: "10px 0",
-              }}
-            >
-              <h3>{treatment.treatment_type}</h3>
-              <p>Doctor: {treatment.doctor_name}</p>
-              <p>Clinic: {treatment.clinic_name}</p>
-              <p>
-                Progress: {treatment.completed_sessions}/
-                {treatment.total_sessions} sessions ({treatment.progress}%)
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-4xl font-bold text-foreground mb-2">
+                Upcoming Appointments
+              </h1>
+              <p className="text-muted-foreground text-lg flex items-center gap-2">
+                <Calendar className="w-5 h-5" />
+                Manage your scheduled appointments and ongoing treatments •{" "}
+                {upcomingAppointments.length} upcoming
               </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 rounded-lg">
+                {isConnected ? (
+                  <>
+                    <Wifi className="w-4 h-4 text-success" />
+                    <span className="text-sm font-medium text-success">
+                      Live Updates
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <WifiOff className="w-4 h-4 text-muted-foreground" />
+                    <span className="text-sm font-medium text-muted-foreground">
+                      Offline
+                    </span>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={refreshAppointments}
+                disabled={appointmentsLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors font-medium"
+              >
+                <RefreshCw
+                  className={`w-4 h-4 ${
+                    appointmentsLoading ? "animate-spin" : ""
+                  }`}
+                />
+                {appointmentsLoading ? "Refreshing..." : "Refresh"}
+              </button>
+            </div>
+          </div>
 
-              {treatment.next_appointment && (
-                <div
-                  style={{
-                    backgroundColor: "#f0f0f0",
-                    padding: "10px",
-                    marginTop: "10px",
-                  }}
-                >
-                  <strong>Next Session:</strong>
-                  <p>
-                    {formatDate(treatment.next_appointment.date)} at{" "}
-                    {formatTime(treatment.next_appointment.time)}
-                  </p>
-                  <p>Service: {treatment.next_appointment.service_name}</p>
-                  <p>Duration: {treatment.next_appointment.duration}</p>
-                  {treatment.next_appointment.cancellable && (
-                    <button>Cancel Next Session</button>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <StatsCard
+              title="Total Upcoming"
+              value={upcomingAppointments.length}
+              icon={<Calendar className="w-6 h-6 text-primary" />}
+              color="primary"
+            />
+            <StatsCard
+              title="Pending"
+              value={
+                upcomingAppointments.filter((a) => a.status === "pending")
+                  .length
+              }
+              icon={<Clock className="w-6 h-6 text-warning" />}
+              color="warning"
+            />
+            <StatsCard
+              title="Confirmed"
+              value={
+                upcomingAppointments.filter((a) => a.status === "confirmed")
+                  .length
+              }
+              icon={<CheckCircle2 className="w-6 h-6 text-success" />}
+              color="success"
+            />
+            <StatsCard
+              title="Ongoing Treatments"
+              value={ongoingTreatments.length}
+              icon={<Activity className="w-6 h-6 text-accent" />}
+              color="accent"
+            />
+          </div>
+
+          {/* Search Bar */}
+          <SearchBar
+            value={searchTerm}
+            onChange={setSearchTerm}
+            onClear={() => setSearchTerm("")}
+            placeholder="Search appointments, doctors, or clinics..."
+          />
+        </div>
+
+        {/* Urgent Reminders */}
+        {urgentAppointments.length > 0 && (
+          <div className="mb-8 p-6 bg-warning/10 border border-warning/20 rounded-xl animate-fadeIn">
+            <div className="flex items-center gap-3 mb-4">
+              <Bell className="w-6 h-6 text-warning" />
+              <h3 className="text-xl font-bold text-foreground">
+                Appointment Reminders
+              </h3>
+            </div>
+            <div className="space-y-3">
+              {urgentAppointments.map((appointment) => {
+                const reminder = getReminderMessage(appointment);
+                return (
+                  <div
+                    key={appointment.id}
+                    className="flex items-center justify-between p-4 bg-background rounded-lg border border-warning/30"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-3 h-3 rounded-full ${
+                          reminder.type === "today"
+                            ? "bg-destructive"
+                            : "bg-warning"
+                        }`}
+                      />
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {appointment.clinic?.name}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {reminder.message}
+                        </p>
+                      </div>
+                    </div>
+                    {reminder.urgent && (
+                      <StatusBadge status={appointment.status} urgent={true} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Ongoing Treatments Section */}
+        {(ongoingTreatments.length > 0 ||
+          treatmentsLoading ||
+          treatmentsError) && (
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-6">
+              <Activity className="w-6 h-6 text-primary" />
+              <h2 className="text-2xl font-bold text-foreground">
+                Ongoing Treatments
+              </h2>
+            </div>
+
+            {treatmentsLoading && (
+              <LoadingSpinner message="Loading treatments..." />
+            )}
+
+            {treatmentsError && (
+              <div className="p-6 bg-destructive/10 border border-destructive/20 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="w-5 h-5 text-destructive" />
+                  <span className="font-medium text-destructive">
+                    Error loading treatments: {treatmentsError}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {ongoingTreatments.length > 0 && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {ongoingTreatments.map((treatment) => (
+                  <div
+                    key={treatment.id}
+                    className="bg-card rounded-xl border p-6 hover:shadow-lg transition-shadow"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-xl font-bold text-foreground mb-1">
+                          {treatment.treatment_type}
+                        </h3>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <User className="w-4 h-4" />
+                          <span>{treatment.doctor_name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Building className="w-4 h-4" />
+                          <span>{treatment.clinic_name}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold text-primary">
+                          {treatment.progress}%
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {treatment.completed_sessions}/
+                          {treatment.total_sessions} sessions
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="mb-4">
+                      <div className="w-full bg-muted rounded-full h-2">
+                        <div
+                          className="bg-primary h-2 rounded-full transition-all duration-500"
+                          style={{ width: `${treatment.progress}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Next Appointment */}
+                    {treatment.next_appointment && (
+                      <div className="p-4 bg-accent/10 border border-accent/20 rounded-lg">
+                        <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-primary" />
+                          Next Session
+                        </h4>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-muted-foreground" />
+                            <span>
+                              {formatDate(treatment.next_appointment.date)} at{" "}
+                              {formatTime(treatment.next_appointment.time)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Stethoscope className="w-4 h-4 text-muted-foreground" />
+                            <span>
+                              {treatment.next_appointment.service_name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-muted-foreground" />
+                            <span>
+                              Duration: {treatment.next_appointment.duration}
+                            </span>
+                          </div>
+                        </div>
+                        {treatment.next_appointment.cancellable && (
+                          <button className="mt-3 px-4 py-2 bg-destructive/10 text-destructive border border-destructive/20 rounded-lg hover:bg-destructive/20 transition-colors text-sm font-medium">
+                            Cancel Next Session
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Appointments List */}
+        <div className="space-y-6">
+          {filteredAppointments.map((appointment) => {
+            const reminder = getReminderMessage(appointment);
+
+            return (
+              <div
+                key={appointment.id}
+                className={`bg-card rounded-xl border p-6 hover:shadow-lg transition-all duration-300 ${
+                  reminder.urgent ? "ring-2 ring-warning/50" : ""
+                }`}
+              >
+                {/* Header */}
+                <div className="flex items-start justify-between mb-6">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="text-xl font-bold text-foreground">
+                        {appointment.services?.map((s) => s.name).join(", ") ||
+                          "Appointment"}
+                      </h3>
+                      <StatusBadge
+                        status={appointment.status}
+                        urgent={reminder.urgent}
+                      />
+                    </div>
+                    <p className="text-muted-foreground flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      {reminder.message}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Details Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <User className="w-5 h-5 text-primary" />
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {appointment.doctor?.name || "N/A"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Doctor</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Building className="w-5 h-5 text-primary" />
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {appointment.clinic?.name || "N/A"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Clinic</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <MapPin className="w-5 h-5 text-primary mt-0.5" />
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {appointment.clinic?.address || "N/A"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Address</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      <Calendar className="w-5 h-5 text-primary" />
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {formatDate(appointment.appointment_date)}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Date</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Clock className="w-5 h-5 text-primary" />
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {formatTime(appointment.appointment_time)}
+                          {appointment.duration_minutes &&
+                            ` (${appointment.duration_minutes} min)`}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Time</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Phone className="w-5 h-5 text-primary" />
+                      <div>
+                        <p className="font-medium text-foreground">
+                          {appointment.clinic?.phone || "N/A"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Phone</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Notes */}
+                {appointment.notes && (
+                  <div className="mb-6 p-4 bg-muted/30 rounded-lg border">
+                    <div className="flex items-center gap-2 mb-2">
+                      <FileText className="w-4 h-4 text-primary" />
+                      <h4 className="font-semibold text-foreground">Notes:</h4>
+                    </div>
+                    <p className="text-muted-foreground text-sm">
+                      {appointment.notes}
+                    </p>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    onClick={() => handleViewDetails(appointment)}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg hover:bg-primary/20 transition-colors font-medium"
+                  >
+                    <Eye className="w-4 h-4" />
+                    View Details
+                  </button>
+                  <button
+                    onClick={() => handleDownloadDetails(appointment)}
+                    className="flex items-center gap-2 px-4 py-2 bg-muted text-foreground border border-border rounded-lg hover:bg-muted/80 transition-colors font-medium"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download
+                  </button>
+                  {["confirmed", "pending"].includes(appointment.status) && (
+                    <button
+                      onClick={() => handleCancelAppointment(appointment)}
+                      className="flex items-center gap-2 px-4 py-2 bg-destructive/10 text-destructive border border-destructive/20 rounded-lg hover:bg-destructive/20 transition-colors font-medium"
+                    >
+                      <X className="w-4 h-4" />
+                      Cancel
+                    </button>
                   )}
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Search */}
-      <div>
-        <input
-          type="text"
-          placeholder="Search appointments, doctors, or clinics..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        {searchTerm && (
-          <button onClick={() => setSearchTerm("")}>Clear search</button>
-        )}
-      </div>
-
-      {/* Urgent Reminders */}
-      {urgentAppointments.length > 0 && (
-        <div
-          style={{
-            backgroundColor: "#fff3cd",
-            padding: "15px",
-            border: "1px solid #ffeaa7",
-          }}
-        >
-          <h3>🔔 Appointment Reminders</h3>
-          {urgentAppointments.map((appointment) => {
-            const reminder = getReminderMessage(appointment);
-            return (
-              <div key={appointment.id}>
-                <span>{reminder.message}</span> - {appointment.clinic?.name}
-                {reminder.urgent && (
-                  <span style={{ color: "red" }}> [URGENT]</span>
-                )}
               </div>
             );
           })}
         </div>
-      )}
 
-      {/* Appointments List */}
-      <div>
-        {filteredAppointments.map((appointment) => {
-          const reminder = getReminderMessage(appointment);
+        {/* Cancel Modal */}
+        {cancelModal.isOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-card rounded-xl border shadow-xl max-w-md w-full p-6">
+              <div className="flex items-center gap-3 mb-6">
+                <AlertTriangle className="w-6 h-6 text-destructive" />
+                <h3 className="text-xl font-bold text-foreground">
+                  Cancel Appointment
+                </h3>
+              </div>
 
-          return (
-            <div
-              key={appointment.id}
-              style={{
-                border: "1px solid #ddd",
-                padding: "20px",
-                margin: "10px 0",
-                backgroundColor: reminder.urgent ? "#fff5f5" : "#fff",
-              }}
-            >
-              {/* Header */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
+              {!cancelModal.canCancel ? (
                 <div>
-                  <h3>
-                    {appointment.services?.map((s) => s.name).join(", ") ||
-                      "Appointment"}
-                  </h3>
-                  {reminder.urgent && (
-                    <span
-                      style={{
-                        backgroundColor:
-                          reminder.type === "today" ? "#ff6b6b" : "#ffa500",
-                        color: "white",
-                        padding: "2px 8px",
-                        borderRadius: "10px",
-                        fontSize: "12px",
-                      }}
+                  <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg mb-6">
+                    <p className="text-destructive font-medium">
+                      {cancelModal.eligibilityMessage ||
+                        "Outside cancellation window"}
+                    </p>
+                  </div>
+                  <p className="text-muted-foreground mb-6">
+                    Please contact the clinic directly to discuss cancellation
+                    options.
+                  </p>
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() =>
+                        setCancelModal({
+                          isOpen: false,
+                          appointment: null,
+                          canCancel: true,
+                          reason: "",
+                          eligibilityChecked: false,
+                        })
+                      }
+                      className="px-6 py-3 bg-muted text-foreground rounded-lg hover:bg-muted/80 transition-colors font-medium"
                     >
-                      {reminder.type === "today" ? "TODAY" : "TOMORROW"}
-                    </span>
-                  )}
-                  <p>{reminder.message}</p>
+                      Close
+                    </button>
+                  </div>
                 </div>
-                <span
-                  style={{
-                    backgroundColor:
-                      appointment.status === "confirmed"
-                        ? "#d4edda"
-                        : appointment.status === "pending"
-                        ? "#fff3cd"
-                        : "#f8f9fa",
-                    color:
-                      appointment.status === "confirmed"
-                        ? "#155724"
-                        : appointment.status === "pending"
-                        ? "#856404"
-                        : "#495057",
-                    padding: "4px 12px",
-                    borderRadius: "15px",
-                    fontSize: "12px",
-                  }}
-                >
-                  {appointment.status.toUpperCase()}
-                </span>
-              </div>
-
-              {/* Details */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "20px",
-                  marginTop: "15px",
-                }}
-              >
+              ) : (
                 <div>
-                  <p>
-                    <strong>Doctor:</strong> {appointment.doctor?.name || "N/A"}
+                  <p className="text-muted-foreground mb-6">
+                    Are you sure you want to cancel your appointment with{" "}
+                    <strong className="text-foreground">
+                      {cancelModal.appointment?.clinic?.name}
+                    </strong>
+                    ?
                   </p>
-                  <p>
-                    <strong>Clinic:</strong> {appointment.clinic?.name || "N/A"}
-                  </p>
-                  <p>
-                    <strong>Address:</strong>{" "}
-                    {appointment.clinic?.address || "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <p>
-                    <strong>Date:</strong>{" "}
-                    {formatDate(appointment.appointment_date)}
-                  </p>
-                  <p>
-                    <strong>Time:</strong>{" "}
-                    {formatTime(appointment.appointment_time)}
-                    {appointment.duration_minutes &&
-                      ` (${appointment.duration_minutes} min)`}
-                  </p>
-                  <p>
-                    <strong>Phone:</strong> {appointment.clinic?.phone || "N/A"}
-                  </p>
-                </div>
-              </div>
 
-              {/* Notes */}
-              {appointment.notes && (
-                <div
-                  style={{
-                    marginTop: "15px",
-                    padding: "10px",
-                    backgroundColor: "#f8f9fa",
-                    borderRadius: "5px",
-                  }}
-                >
-                  <h4>Notes:</h4>
-                  <p>{appointment.notes}</p>
+                  <div className="mb-6">
+                    <label className="block text-sm font-semibold text-foreground mb-3">
+                      Reason for cancellation: *
+                    </label>
+                    <textarea
+                      value={cancelModal.reason}
+                      onChange={(e) =>
+                        setCancelModal((prev) => ({
+                          ...prev,
+                          reason: e.target.value,
+                        }))
+                      }
+                      placeholder="Please provide a reason for cancellation..."
+                      rows={4}
+                      className="w-full px-4 py-3 border border-border rounded-lg bg-input text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors resize-none"
+                      required
+                    />
+                    {!cancelModal.reason.trim() && (
+                      <p className="text-destructive text-sm mt-1">
+                        Cancellation reason is required
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3 justify-end">
+                    <button
+                      onClick={() =>
+                        setCancelModal({
+                          isOpen: false,
+                          appointment: null,
+                          canCancel: true,
+                          reason: "",
+                          eligibilityChecked: false,
+                        })
+                      }
+                      className="px-6 py-3 border border-border rounded-lg text-foreground hover:bg-muted transition-colors font-medium"
+                    >
+                      Keep Appointment
+                    </button>
+                    <button
+                      onClick={() =>
+                        confirmCancelAppointment(
+                          cancelModal.appointment?.id,
+                          cancelModal.reason
+                        )
+                      }
+                      disabled={!cancelModal.reason.trim() || cancelLoading}
+                      className="flex items-center gap-2 px-6 py-3 bg-destructive text-white rounded-lg hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium"
+                    >
+                      {cancelLoading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                          Cancelling...
+                        </>
+                      ) : (
+                        <>
+                          <X className="w-4 h-4" />
+                          Confirm Cancel
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               )}
+            </div>
+          </div>
+        )}
 
-              {/* Actions */}
-              <div
-                style={{
-                  marginTop: "15px",
-                  display: "flex",
-                  gap: "10px",
-                  flexWrap: "wrap",
-                }}
-              >
-                <button onClick={() => handleViewDetails(appointment)}>
-                  View Details
+        {/* Details Modal */}
+        {selectedAppointment && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-card rounded-xl border shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+              <div className="flex items-center justify-between p-6 border-b border-border">
+                <h2 className="text-2xl font-bold text-foreground">
+                  Appointment Details
+                </h2>
+                <button
+                  onClick={() => setSelectedAppointment(null)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors"
+                >
+                  <X className="w-5 h-5" />
                 </button>
-                <button onClick={() => handleDownloadDetails(appointment)}>
-                  Download
-                </button>
-                {["confirmed", "pending"].includes(appointment.status) && (
-                  <button
-                    onClick={() => handleCancelAppointment(appointment)}
-                    style={{ color: "red", borderColor: "red" }}
-                  >
-                    Cancel
-                  </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  <div className="space-y-6">
+                    <div>
+                      <h4 className="font-bold text-foreground mb-4 flex items-center gap-2">
+                        <Stethoscope className="w-5 h-5 text-primary" />
+                        Service Information
+                      </h4>
+                      <div className="space-y-3">
+                        <div>
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Services:
+                          </span>
+                          <p className="font-medium text-foreground">
+                            {selectedAppointment.services
+                              ?.map((s) => s.name)
+                              .join(", ") || "N/A"}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Status:
+                          </span>
+                          <div className="mt-1">
+                            <StatusBadge status={selectedAppointment.status} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-bold text-foreground mb-4 flex items-center gap-2">
+                        <User className="w-5 h-5 text-primary" />
+                        Healthcare Provider
+                      </h4>
+                      <div className="space-y-3">
+                        <div>
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Doctor:
+                          </span>
+                          <p className="font-medium text-foreground">
+                            {selectedAppointment.doctor?.name || "N/A"}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Clinic:
+                          </span>
+                          <p className="font-medium text-foreground">
+                            {selectedAppointment.clinic?.name || "N/A"}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Address:
+                          </span>
+                          <p className="font-medium text-foreground">
+                            {selectedAppointment.clinic?.address || "N/A"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div>
+                      <h4 className="font-bold text-foreground mb-4 flex items-center gap-2">
+                        <Calendar className="w-5 h-5 text-primary" />
+                        Schedule
+                      </h4>
+                      <div className="space-y-3">
+                        <div>
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Date:
+                          </span>
+                          <p className="font-medium text-foreground">
+                            {formatDate(selectedAppointment.appointment_date)}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Time:
+                          </span>
+                          <p className="font-medium text-foreground">
+                            {formatTime(selectedAppointment.appointment_time)}
+                            {selectedAppointment.duration_minutes &&
+                              ` (${selectedAppointment.duration_minutes} min)`}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-bold text-foreground mb-4 flex items-center gap-2">
+                        <Phone className="w-5 h-5 text-primary" />
+                        Contact Information
+                      </h4>
+                      <div className="space-y-3">
+                        <div>
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Phone:
+                          </span>
+                          <p className="font-medium text-foreground">
+                            {selectedAppointment.clinic?.phone || "N/A"}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-muted-foreground">
+                            Email:
+                          </span>
+                          <p className="font-medium text-foreground">
+                            {selectedAppointment.clinic?.email || "N/A"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {selectedAppointment.notes && (
+                  <div className="mt-8 p-4 bg-muted/30 rounded-lg border">
+                    <h4 className="font-bold text-foreground mb-3 flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-primary" />
+                      Notes
+                    </h4>
+                    <p className="text-foreground">
+                      {selectedAppointment.notes}
+                    </p>
+                  </div>
                 )}
               </div>
-            </div>
-          );
-        })}
-      </div>
 
-      {/* ✅ FIXED: Cancel Modal with proper reason handling */}
-      {cancelModal.isOpen && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: "white",
-              padding: "20px",
-              borderRadius: "8px",
-              minWidth: "400px",
-              maxWidth: "500px",
-            }}
-          >
-            <h3>Cancel Appointment</h3>
-
-            {!cancelModal.canCancel ? (
-              <div>
-                <div style={{ color: "red", marginBottom: "15px" }}>
-                  {cancelModal.eligibilityMessage ||
-                    "Outside cancellation window"}
-                </div>
-                <p>
-                  Please contact the clinic directly to discuss cancellation
-                  options.
-                </p>
-                <div style={{ textAlign: "right", marginTop: "20px" }}>
-                  <button
-                    onClick={() =>
-                      setCancelModal({
-                        isOpen: false,
-                        appointment: null,
-                        canCancel: true,
-                        reason: "",
-                        eligibilityChecked: false,
-                      })
-                    }
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <p>
-                  Are you sure you want to cancel your appointment with{" "}
-                  <strong>{cancelModal.appointment?.clinic?.name}</strong>?
-                </p>
-
-                <div style={{ margin: "20px 0" }}>
-                  <label
-                    style={{
-                      display: "block",
-                      marginBottom: "8px",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Reason for cancellation: *
-                  </label>
-                  <textarea
-                    value={cancelModal.reason}
-                    onChange={(e) =>
-                      setCancelModal((prev) => ({
-                        ...prev,
-                        reason: e.target.value,
-                      }))
-                    }
-                    placeholder="Please provide a reason for cancellation..."
-                    rows="4"
-                    style={{
-                      width: "100%",
-                      padding: "10px",
-                      border: "1px solid #ccc",
-                      borderRadius: "4px",
-                      resize: "vertical",
-                    }}
-                    required
-                  />
-                  {!cancelModal.reason.trim() && (
-                    <small style={{ color: "red" }}>
-                      Cancellation reason is required
-                    </small>
-                  )}
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "10px",
-                    justifyContent: "flex-end",
-                  }}
+              <div className="flex items-center justify-end gap-3 p-6 border-t border-border">
+                <button
+                  onClick={() => handleDownloadDetails(selectedAppointment)}
+                  className="flex items-center gap-2 px-6 py-3 bg-muted text-foreground rounded-lg hover:bg-muted/80 transition-colors font-medium"
                 >
-                  <button
-                    onClick={() =>
-                      setCancelModal({
-                        isOpen: false,
-                        appointment: null,
-                        canCancel: true,
-                        reason: "",
-                        eligibilityChecked: false,
-                      })
-                    }
-                  >
-                    Keep Appointment
-                  </button>
-                  <button
-                    onClick={() =>
-                      confirmCancelAppointment(
-                        cancelModal.appointment?.id,
-                        cancelModal.reason
-                      )
-                    }
-                    disabled={!cancelModal.reason.trim() || cancelLoading}
-                    style={{
-                      backgroundColor: "red",
-                      color: "white",
-                      opacity:
-                        !cancelModal.reason.trim() || cancelLoading ? 0.5 : 1,
-                    }}
-                  >
-                    {cancelLoading ? "Cancelling..." : "Confirm Cancel"}
-                  </button>
-                </div>
+                  <Download className="w-4 h-4" />
+                  Download Details
+                </button>
+                <button
+                  onClick={() => setSelectedAppointment(null)}
+                  className="px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
+                >
+                  Close
+                </button>
               </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Details Modal */}
-      {selectedAppointment && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: "white",
-              padding: "30px",
-              borderRadius: "8px",
-              maxWidth: "600px",
-              width: "90%",
-              maxHeight: "80vh",
-              overflowY: "auto",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "20px",
-              }}
-            >
-              <h2>Appointment Details</h2>
-              <button
-                onClick={() => setSelectedAppointment(null)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  fontSize: "24px",
-                  cursor: "pointer",
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "30px",
-              }}
-            >
-              <div>
-                <h4>Service Information</h4>
-                <p>
-                  <strong>Services:</strong>{" "}
-                  {selectedAppointment.services
-                    ?.map((s) => s.name)
-                    .join(", ") || "N/A"}
-                </p>
-                <p>
-                  <strong>Status:</strong> {selectedAppointment.status}
-                </p>
-
-                <h4 style={{ marginTop: "20px" }}>Healthcare Provider</h4>
-                <p>
-                  <strong>Doctor:</strong>{" "}
-                  {selectedAppointment.doctor?.name || "N/A"}
-                </p>
-                <p>
-                  <strong>Clinic:</strong>{" "}
-                  {selectedAppointment.clinic?.name || "N/A"}
-                </p>
-                <p>
-                  <strong>Address:</strong>{" "}
-                  {selectedAppointment.clinic?.address || "N/A"}
-                </p>
-              </div>
-
-              <div>
-                <h4>Schedule</h4>
-                <p>
-                  <strong>Date:</strong>{" "}
-                  {formatDate(selectedAppointment.appointment_date)}
-                </p>
-                <p>
-                  <strong>Time:</strong>{" "}
-                  {formatTime(selectedAppointment.appointment_time)}
-                  {selectedAppointment.duration_minutes &&
-                    ` (${selectedAppointment.duration_minutes} min)`}
-                </p>
-
-                <h4 style={{ marginTop: "20px" }}>Contact Information</h4>
-                <p>
-                  <strong>Phone:</strong>{" "}
-                  {selectedAppointment.clinic?.phone || "N/A"}
-                </p>
-                <p>
-                  <strong>Email:</strong>{" "}
-                  {selectedAppointment.clinic?.email || "N/A"}
-                </p>
-              </div>
-            </div>
-
-            {selectedAppointment.notes && (
-              <div style={{ marginTop: "20px" }}>
-                <h4>Notes</h4>
-                <p>{selectedAppointment.notes}</p>
-              </div>
-            )}
-
-            <div style={{ marginTop: "30px", textAlign: "right" }}>
-              <button
-                onClick={() => handleDownloadDetails(selectedAppointment)}
-                style={{ marginRight: "10px" }}
-              >
-                Download Details
-              </button>
-              <button onClick={() => setSelectedAppointment(null)}>
-                Close
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
