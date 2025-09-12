@@ -45,8 +45,8 @@ import {
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { useDashboardAnalytics } from "@/core/hooks/useDashboardAnalytics";
-import { usePatientAppointmentHistory } from "@/core/hooks/usePatientAppointmentHistory"; 
-import { usePatientAppointments } from "@/core/hooks/usePatientAppointment"; 
+import { usePatientAppointmentHistory } from "@/core/hooks/usePatientAppointmentHistory";
+import { usePatientAppointments } from "@/core/hooks/usePatientAppointment";
 
 /**
  * Production Patient Dashboard - Targeted Integration
@@ -104,27 +104,37 @@ const PatientDashboard = () => {
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
-  const [cancellationReason, setCancellationReason] = useState('');
+  const [cancellationReason, setCancellationReason] = useState("");
   const [cancelLoading, setCancelLoading] = useState(false);
 
   // ✅ UTILITY FUNCTIONS (moved to top to avoid hoisting issues)
   const getNotificationIcon = useCallback((type) => {
     switch (type) {
-      case 'appointment_confirmed': return CheckCircle2;
-      case 'appointment_reminder': return Calendar;
-      case 'feedback_request': return Star;
-      case 'health_improvement': return TrendingUp;
-      default: return Activity;
+      case "appointment_confirmed":
+        return CheckCircle2;
+      case "appointment_reminder":
+        return Calendar;
+      case "feedback_request":
+        return Star;
+      case "health_improvement":
+        return TrendingUp;
+      default:
+        return Activity;
     }
   }, []);
 
   const getNotificationColor = useCallback((type) => {
     switch (type) {
-      case 'appointment_confirmed': return 'text-success';
-      case 'appointment_reminder': return 'text-info';
-      case 'feedback_request': return 'text-warning';
-      case 'health_improvement': return 'text-success';
-      default: return 'text-muted-foreground';
+      case "appointment_confirmed":
+        return "text-success";
+      case "appointment_reminder":
+        return "text-info";
+      case "feedback_request":
+        return "text-warning";
+      case "health_improvement":
+        return "text-success";
+      default:
+        return "text-muted-foreground";
     }
   }, []);
 
@@ -156,28 +166,28 @@ const PatientDashboard = () => {
         bg: "bg-warning/10",
         text: "text-warning",
         border: "border-warning/20",
-        label: "Pending"
+        label: "Pending",
       },
       confirmed: {
         bg: "bg-success/10",
         text: "text-success",
         border: "border-success/20",
-        label: "Confirmed"
+        label: "Confirmed",
       },
       completed: {
         bg: "bg-info/10",
         text: "text-info",
         border: "border-info/20",
-        label: "Completed"
+        label: "Completed",
       },
       cancelled: {
         bg: "bg-destructive/10",
         text: "text-destructive",
         border: "border-destructive/20",
-        label: "Cancelled"
-      }
+        label: "Cancelled",
+      },
     };
-    
+
     return statusConfig[status] || statusConfig.pending;
   }, []);
 
@@ -187,7 +197,8 @@ const PatientDashboard = () => {
 
     const dashboardInfo = dashboardData;
     const profileCompletion = dashboardInfo?.profile_completion || null;
-    const upcomingDashboardAppointments = dashboardInfo?.upcoming_appointments || [];
+    const upcomingDashboardAppointments =
+      dashboardInfo?.upcoming_appointments || [];
     const recentAppointments = dashboardInfo?.recent_appointments || [];
     const quickStats = dashboardInfo?.quick_stats || {};
     const notifications = dashboardInfo?.notifications || [];
@@ -200,36 +211,42 @@ const PatientDashboard = () => {
         profile_completion: profileCompletion,
       },
       analytics: {
-        total_appointments: quickStats?.total_appointments || totalAppointments || 0,
-        completed_appointments: quickStats?.completed_appointments || completedAppointments || 0,
-        cancelled_appointments: quickStats?.cancelled_appointments || cancelledCount || 0,
-        upcoming_appointments: upcomingDashboardAppointments?.length || confirmedCount + pendingCount || 0,
+        total_appointments:
+          quickStats?.total_appointments || totalAppointments || 0,
+        completed_appointments:
+          quickStats?.completed_appointments || completedAppointments || 0,
+        cancelled_appointments:
+          quickStats?.cancelled_appointments || cancelledCount || 0,
+        upcoming_appointments:
+          upcomingDashboardAppointments?.length ||
+          confirmedCount + pendingCount ||
+          0,
         favorite_clinic: quickStats?.favorite_clinic || null,
         last_appointment: quickStats?.last_appointment || null,
         health_score: healthScore || 0,
       },
-      recentNotifications: notifications.slice(0, 5).map(notif => ({
+      recentNotifications: notifications.slice(0, 5).map((notif) => ({
         id: notif.id,
-        type: notif.type || 'general',
+        type: notif.type || "general",
         title: notif.title,
         description: notif.message,
         timestamp: new Date(notif.created_at),
         icon: getNotificationIcon(notif.type),
         color: getNotificationColor(notif.type),
-        priority: notif.priority || 'medium',
+        priority: notif.priority || "medium",
       })),
     };
   }, [
-    dashboardData, 
-    profile, 
-    healthScore, 
-    totalAppointments, 
-    completedAppointments, 
-    confirmedCount, 
-    pendingCount, 
-    cancelledCount, 
+    dashboardData,
+    profile,
+    healthScore,
+    totalAppointments,
+    completedAppointments,
+    confirmedCount,
+    pendingCount,
+    cancelledCount,
     getNotificationIcon,
-    getNotificationColor
+    getNotificationColor,
   ]);
 
   // ✅ HEALTH ANALYTICS from usePatientAppointmentHistory (KEEP ORIGINAL)
@@ -238,14 +255,25 @@ const PatientDashboard = () => {
 
     return {
       health_score: healthScore || healthAnalytics?.health_score || 0,
-      improvement_trend: improvementTrend || healthAnalytics?.improvement_trend || 1,
-      total_appointments: totalAppointments || healthAnalytics?.total_appointments || 0,
-      completed_treatments: completedAppointments || healthAnalytics?.completed_treatments || 0,
-      consistency_rating: consistencyRating || healthAnalytics?.consistency_rating || 0,
+      improvement_trend:
+        improvementTrend || healthAnalytics?.improvement_trend || 1,
+      total_appointments:
+        totalAppointments || healthAnalytics?.total_appointments || 0,
+      completed_treatments:
+        completedAppointments || healthAnalytics?.completed_treatments || 0,
+      consistency_rating:
+        consistencyRating || healthAnalytics?.consistency_rating || 0,
       last_visit: healthAnalytics?.last_visit || null,
       next_recommended_visit: healthAnalytics?.next_recommended_visit || null,
     };
-  }, [healthAnalytics, healthScore, improvementTrend, totalAppointments, completedAppointments, consistencyRating]);
+  }, [
+    healthAnalytics,
+    healthScore,
+    improvementTrend,
+    totalAppointments,
+    completedAppointments,
+    consistencyRating,
+  ]);
 
   // ✅ APPOINTMENT TRENDS from historyAppointments (KEEP ORIGINAL)
   const appointmentTrends = useMemo(() => {
@@ -256,9 +284,9 @@ const PatientDashboard = () => {
       const date = new Date();
       date.setMonth(date.getMonth() - (5 - i));
       return {
-        month: format(date, 'MMM'),
+        month: format(date, "MMM"),
         year: date.getFullYear(),
-        key: format(date, 'yyyy-MM'),
+        key: format(date, "yyyy-MM"),
       };
     });
 
@@ -272,12 +300,12 @@ const PatientDashboard = () => {
       };
     });
 
-    historyAppointments.forEach(apt => {
-      const monthKey = format(new Date(apt.date), 'yyyy-MM');
+    historyAppointments.forEach((apt) => {
+      const monthKey = format(new Date(apt.date), "yyyy-MM");
       if (monthlyData[monthKey]) {
         monthlyData[monthKey].appointments++;
-        if (apt.status === 'completed') monthlyData[monthKey].completed++;
-        if (apt.status === 'cancelled') monthlyData[monthKey].cancelled++;
+        if (apt.status === "completed") monthlyData[monthKey].completed++;
+        if (apt.status === "cancelled") monthlyData[monthKey].cancelled++;
       }
     });
 
@@ -289,13 +317,14 @@ const PatientDashboard = () => {
     if (!historyAppointments) return [];
 
     return historyAppointments
-      .filter(apt => 
-        apt.status === 'completed' && 
-        !apt.hasReview && 
-        differenceInDays(new Date(), new Date(apt.date)) <= 7
+      .filter(
+        (apt) =>
+          apt.status === "completed" &&
+          !apt.hasReview &&
+          differenceInDays(new Date(), new Date(apt.date)) <= 7
       )
       .slice(0, 3)
-      .map(apt => ({
+      .map((apt) => ({
         id: apt.id,
         appointment_id: apt.id,
         doctor_name: apt.doctor,
@@ -312,23 +341,31 @@ const PatientDashboard = () => {
 
     setCancelLoading(true);
     try {
-      const result = await cancelAppointment(selectedAppointment.id, cancellationReason.trim());
-      
+      const result = await cancelAppointment(
+        selectedAppointment.id,
+        cancellationReason.trim()
+      );
+
       if (result.success) {
         setShowCancelModal(false);
         setSelectedAppointment(null);
-        setCancellationReason('');
+        setCancellationReason("");
         // Also refresh the history data to sync
         fetchAppointmentData(true);
       } else {
-        console.error('Cancellation failed:', result.error);
+        console.error("Cancellation failed:", result.error);
       }
     } catch (error) {
-      console.error('Cancel appointment error:', error);
+      console.error("Cancel appointment error:", error);
     } finally {
       setCancelLoading(false);
     }
-  }, [selectedAppointment, cancellationReason, cancelAppointment, fetchAppointmentData]);
+  }, [
+    selectedAppointment,
+    cancellationReason,
+    cancelAppointment,
+    fetchAppointmentData,
+  ]);
 
   // ✅ REFRESH HANDLERS (updated to include both hooks)
   const handleRefreshAll = useCallback(async () => {
@@ -341,7 +378,7 @@ const PatientDashboard = () => {
       ]);
       setLastRefresh(new Date());
     } catch (error) {
-      console.error('Refresh failed:', error);
+      console.error("Refresh failed:", error);
     } finally {
       setRefreshing(false);
     }
@@ -378,7 +415,7 @@ const PatientDashboard = () => {
   const openCancelModal = useCallback((appointment) => {
     setSelectedAppointment(appointment);
     setShowCancelModal(true);
-    setCancellationReason('');
+    setCancellationReason("");
   }, []);
 
   // ✅ LOADING STATE (include both sets of hooks)
@@ -433,14 +470,19 @@ const PatientDashboard = () => {
             Something went wrong
           </h2>
           <p className="text-muted-foreground mb-6">
-            {dashboardError || historyError || appointmentsError || 'Failed to load dashboard data'}
+            {dashboardError ||
+              historyError ||
+              appointmentsError ||
+              "Failed to load dashboard data"}
           </p>
           <button
             onClick={handleRefreshAll}
             disabled={refreshing}
             className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2 mx-auto"
           >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+            />
             Try Again
           </button>
         </div>
@@ -500,13 +542,14 @@ const PatientDashboard = () => {
                 )}
                 <div>
                   <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
-                    {getGreeting()}, {userProfile?.first_name || "Welcome back"}! 👋
+                    {getGreeting()}, {userProfile?.first_name || "Welcome back"}
+                    ! 👋
                   </h1>
                   <p className="text-lg text-muted-foreground">
                     Here's your personalized dental health overview
                   </p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Last updated: {format(lastRefresh, 'MMM dd, h:mm a')}
+                    Last updated: {format(lastRefresh, "MMM dd, h:mm a")}
                   </p>
                 </div>
               </div>
@@ -521,7 +564,11 @@ const PatientDashboard = () => {
                         Health Score
                       </span>
                     </div>
-                    <div className={`text-2xl font-bold ${getHealthScoreColor(healthAnalyticsData.health_score)}`}>
+                    <div
+                      className={`text-2xl font-bold ${getHealthScoreColor(
+                        healthAnalyticsData.health_score
+                      )}`}
+                    >
                       {healthAnalyticsData.health_score}%
                     </div>
                   </div>
@@ -538,7 +585,9 @@ const PatientDashboard = () => {
                   className="p-2 rounded-lg border border-border hover:bg-muted/50 transition-colors disabled:opacity-50"
                   title="Refresh dashboard"
                 >
-                  <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  <RefreshCw
+                    className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                  />
                 </button>
               </div>
             </div>
@@ -559,7 +608,9 @@ const PatientDashboard = () => {
                 <Calendar className="h-6 w-6 text-primary" />
               </div>
               <div className="text-right">
-                <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Total</div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
+                  Total
+                </div>
                 <div className="text-sm text-muted-foreground">All Time</div>
               </div>
             </div>
@@ -567,7 +618,9 @@ const PatientDashboard = () => {
               <div className="text-3xl font-bold text-foreground">
                 {analytics?.total_appointments || 0}
               </div>
-              <div className="text-sm text-muted-foreground font-medium">Appointments</div>
+              <div className="text-sm text-muted-foreground font-medium">
+                Appointments
+              </div>
               <div className="flex items-center gap-2 text-xs">
                 <div className="w-2 h-2 bg-success rounded-full"></div>
                 <span className="text-muted-foreground">
@@ -584,19 +637,34 @@ const PatientDashboard = () => {
                 <Activity className="h-6 w-6 text-success" />
               </div>
               <div className="text-right">
-                <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Health</div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
+                  Health
+                </div>
                 <div className="text-sm text-muted-foreground">Score</div>
               </div>
             </div>
             <div className="space-y-1">
-              <div className={`text-3xl font-bold ${getHealthScoreColor(healthAnalyticsData?.health_score || 0)}`}>
+              <div
+                className={`text-3xl font-bold ${getHealthScoreColor(
+                  healthAnalyticsData?.health_score || 0
+                )}`}
+              >
                 {healthAnalyticsData?.health_score || 0}%
               </div>
-              <div className="text-sm text-muted-foreground font-medium">Health Score</div>
+              <div className="text-sm text-muted-foreground font-medium">
+                Health Score
+              </div>
               {healthAnalyticsData?.improvement_trend > 1 && (
                 <div className="flex items-center gap-1 text-xs text-success">
                   <TrendingUp className="h-3 w-3" />
-                  <span>+{((healthAnalyticsData.improvement_trend - 1) * 100).toFixed(0)}% trend</span>
+                  <span>
+                    +
+                    {(
+                      (healthAnalyticsData.improvement_trend - 1) *
+                      100
+                    ).toFixed(0)}
+                    % trend
+                  </span>
                 </div>
               )}
             </div>
@@ -609,7 +677,9 @@ const PatientDashboard = () => {
                 <Clock className="h-6 w-6 text-info" />
               </div>
               <div className="text-right">
-                <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Next</div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
+                  Next
+                </div>
                 <div className="text-sm text-muted-foreground">Visit</div>
               </div>
             </div>
@@ -617,10 +687,16 @@ const PatientDashboard = () => {
               <div className="text-3xl font-bold text-foreground">
                 {analytics?.upcoming_appointments || 0}
               </div>
-              <div className="text-sm text-muted-foreground font-medium">Scheduled</div>
+              <div className="text-sm text-muted-foreground font-medium">
+                Scheduled
+              </div>
               {healthAnalyticsData?.next_recommended_visit && (
                 <div className="text-xs text-muted-foreground">
-                  Next recommended: {format(parseISO(healthAnalyticsData.next_recommended_visit), "MMM dd")}
+                  Next recommended:{" "}
+                  {format(
+                    parseISO(healthAnalyticsData.next_recommended_visit),
+                    "MMM dd"
+                  )}
                 </div>
               )}
             </div>
@@ -633,7 +709,9 @@ const PatientDashboard = () => {
                 <Award className="h-6 w-6 text-warning" />
               </div>
               <div className="text-right">
-                <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Care</div>
+                <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium">
+                  Care
+                </div>
                 <div className="text-sm text-muted-foreground">Rating</div>
               </div>
             </div>
@@ -641,7 +719,9 @@ const PatientDashboard = () => {
               <div className="text-3xl font-bold text-foreground">
                 {healthAnalyticsData?.consistency_rating || 0}%
               </div>
-              <div className="text-sm text-muted-foreground font-medium">Consistency</div>
+              <div className="text-sm text-muted-foreground font-medium">
+                Consistency
+              </div>
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Sparkles className="h-3 w-3" />
                 <span>Great routine!</span>
@@ -658,8 +738,12 @@ const PatientDashboard = () => {
         >
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-2xl font-semibold text-foreground">Quick Actions</h2>
-              <p className="text-sm text-muted-foreground">Everything you need at your fingertips</p>
+              <h2 className="text-2xl font-semibold text-foreground">
+                Quick Actions
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Everything you need at your fingertips
+              </p>
             </div>
           </div>
 
@@ -673,8 +757,12 @@ const PatientDashboard = () => {
                   <Calendar className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <div className="font-semibold text-foreground">Book Appointment</div>
-                  <div className="text-sm text-muted-foreground">Schedule your next visit</div>
+                  <div className="font-semibold text-foreground">
+                    Book Appointment
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Schedule your next visit
+                  </div>
                 </div>
               </div>
               <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -691,8 +779,12 @@ const PatientDashboard = () => {
                   <Stethoscope className="h-6 w-6 text-success" />
                 </div>
                 <div>
-                  <div className="font-semibold text-foreground">Find Specialists</div>
-                  <div className="text-sm text-muted-foreground">Browse expert dentists</div>
+                  <div className="font-semibold text-foreground">
+                    Find Specialists
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Browse expert dentists
+                  </div>
                 </div>
               </div>
               <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -709,8 +801,12 @@ const PatientDashboard = () => {
                   <Search className="h-6 w-6 text-info" />
                 </div>
                 <div>
-                  <div className="font-semibold text-foreground">Find Clinics</div>
-                  <div className="text-sm text-muted-foreground">Discover nearby centers</div>
+                  <div className="font-semibold text-foreground">
+                    Find Clinics
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Discover nearby centers
+                  </div>
                 </div>
               </div>
               <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -719,7 +815,9 @@ const PatientDashboard = () => {
             </button>
 
             <button
-              onClick={() => window.location.href = "/patient/health-insights"}
+              onClick={() =>
+                (window.location.href = "/patient/appointments/history")
+              }
               className="group relative p-6 bg-gradient-to-br from-accent/5 to-accent/10 border border-accent/20 rounded-2xl hover:from-accent/10 hover:to-accent/20 hover:border-accent/30 hover:shadow-lg transition-all duration-300"
             >
               <div className="flex flex-col items-center space-y-4 text-center">
@@ -727,8 +825,12 @@ const PatientDashboard = () => {
                   <BarChart3 className="h-6 w-6 text-accent" />
                 </div>
                 <div>
-                  <div className="font-semibold text-foreground">Health Insights</div>
-                  <div className="text-sm text-muted-foreground">View detailed analytics</div>
+                  <div className="font-semibold text-foreground">
+                    Health Insights
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    View detailed analytics
+                  </div>
                 </div>
               </div>
               <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -750,9 +852,12 @@ const PatientDashboard = () => {
             >
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-xl font-semibold text-foreground">Upcoming Appointments</h2>
+                  <h2 className="text-xl font-semibold text-foreground">
+                    Upcoming Appointments
+                  </h2>
                   <p className="text-sm text-muted-foreground">
-                    Your scheduled dental visits ({upcomingAppointments?.length || 0} upcoming)
+                    Your scheduled dental visits (
+                    {upcomingAppointments?.length || 0} upcoming)
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -762,7 +867,11 @@ const PatientDashboard = () => {
                     className="p-2 rounded-lg border border-border hover:bg-muted/50 transition-colors disabled:opacity-50"
                     title="Refresh appointments"
                   >
-                    <RefreshCw className={`h-4 w-4 ${appointmentsLoading ? 'animate-spin' : ''}`} />
+                    <RefreshCw
+                      className={`h-4 w-4 ${
+                        appointmentsLoading ? "animate-spin" : ""
+                      }`}
+                    />
                   </button>
                   <button
                     onClick={handleViewAppointments}
@@ -778,7 +887,10 @@ const PatientDashboard = () => {
                 {appointmentsLoading ? (
                   <div className="space-y-4">
                     {[...Array(3)].map((_, i) => (
-                      <div key={i} className="bg-card border border-border rounded-2xl p-6 animate-pulse">
+                      <div
+                        key={i}
+                        className="bg-card border border-border rounded-2xl p-6 animate-pulse"
+                      >
                         <div className="flex items-center gap-4">
                           <div className="w-16 h-16 bg-muted rounded-full"></div>
                           <div className="flex-1 space-y-2">
@@ -790,14 +902,18 @@ const PatientDashboard = () => {
                       </div>
                     ))}
                   </div>
-                ) : !upcomingAppointments || upcomingAppointments.length === 0 ? (
+                ) : !upcomingAppointments ||
+                  upcomingAppointments.length === 0 ? (
                   <div className="bg-card border border-border rounded-2xl p-8 text-center">
                     <div className="w-16 h-16 bg-muted/20 rounded-full flex items-center justify-center mx-auto mb-4">
                       <Calendar className="h-8 w-8 text-muted-foreground" />
                     </div>
-                    <h3 className="font-semibold text-foreground mb-2">No upcoming appointments</h3>
+                    <h3 className="font-semibold text-foreground mb-2">
+                      No upcoming appointments
+                    </h3>
                     <p className="text-sm text-muted-foreground mb-6">
-                      Schedule your next dental visit to maintain optimal oral health.
+                      Schedule your next dental visit to maintain optimal oral
+                      health.
                     </p>
                     <button
                       onClick={handleBookAppointment}
@@ -808,9 +924,11 @@ const PatientDashboard = () => {
                   </div>
                 ) : (
                   upcomingAppointments.slice(0, 3).map((appointment, index) => {
-                    const appointmentDetails = getAppointmentDetails(appointment.id);
+                    const appointmentDetails = getAppointmentDetails(
+                      appointment.id
+                    );
                     const statusBadge = getStatusBadge(appointment.status);
-                    
+
                     return (
                       <motion.div
                         key={appointment.id}
@@ -823,10 +941,10 @@ const PatientDashboard = () => {
                           <div className="relative">
                             <img
                               src={
-                                appointment.doctor?.profile_image_url || 
+                                appointment.doctor?.profile_image_url ||
                                 `https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=400&h=400&fit=crop&crop=face`
                               }
-                              alt={appointment.doctor?.name || 'Doctor'}
+                              alt={appointment.doctor?.name || "Doctor"}
                               className="w-16 h-16 rounded-full object-cover border-2 border-border group-hover:border-primary/30 transition-colors"
                             />
                             <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-primary rounded-full border-2 border-background flex items-center justify-center">
@@ -837,14 +955,18 @@ const PatientDashboard = () => {
                           <div className="flex-1">
                             <div className="flex items-center justify-between mb-3">
                               <h3 className="font-semibold text-foreground">
-                                {appointment.doctor?.name || 'Unknown Doctor'}
+                                {appointment.doctor?.name || "Unknown Doctor"}
                               </h3>
                               <div className="flex items-center gap-2">
-                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusBadge.bg} ${statusBadge.text} border ${statusBadge.border}`}>
+                                <span
+                                  className={`px-3 py-1 rounded-full text-xs font-medium ${statusBadge.bg} ${statusBadge.text} border ${statusBadge.border}`}
+                                >
                                   {statusBadge.label}
                                 </span>
                                 <span className="px-3 py-1 bg-primary/10 text-primary border border-primary/20 rounded-full text-xs font-medium">
-                                  {getAppointmentTimeLabel(new Date(appointment.appointment_date))}
+                                  {getAppointmentTimeLabel(
+                                    new Date(appointment.appointment_date)
+                                  )}
                                 </span>
                               </div>
                             </div>
@@ -853,18 +975,33 @@ const PatientDashboard = () => {
                               <div className="flex items-center gap-2 text-sm">
                                 <div className="w-2 h-2 bg-primary rounded-full"></div>
                                 <span className="font-medium text-foreground">
-                                  {appointment.services?.map(s => s.name).join(', ') || 'General Appointment'}
+                                  {appointment.services
+                                    ?.map((s) => s.name)
+                                    .join(", ") || "General Appointment"}
                                 </span>
                                 <span className="text-muted-foreground">•</span>
-                                <span className="text-muted-foreground">{appointment.clinic?.name}</span>
+                                <span className="text-muted-foreground">
+                                  {appointment.clinic?.name}
+                                </span>
                               </div>
 
                               <div className="flex items-center gap-4 text-sm text-muted-foreground">
                                 <div className="flex items-center gap-2">
                                   <Clock className="h-4 w-4" />
                                   <span>
-                                    {appointmentDetails?.formattedDate || format(new Date(appointment.appointment_date), "MMM dd, yyyy")} at{" "}
-                                    {appointmentDetails?.formattedTime || format(new Date(`2000-01-01T${appointment.appointment_time}`), "h:mm a")}
+                                    {appointmentDetails?.formattedDate ||
+                                      format(
+                                        new Date(appointment.appointment_date),
+                                        "MMM dd, yyyy"
+                                      )}{" "}
+                                    at{" "}
+                                    {appointmentDetails?.formattedTime ||
+                                      format(
+                                        new Date(
+                                          `2000-01-01T${appointment.appointment_time}`
+                                        ),
+                                        "h:mm a"
+                                      )}
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -872,12 +1009,13 @@ const PatientDashboard = () => {
                                   <span>{appointment.clinic?.address}</span>
                                 </div>
                               </div>
-                              
+
                               {appointmentDetails?.timeUntilAppointment && (
                                 <div className="flex items-center gap-2 text-sm">
                                   <div className="w-2 h-2 bg-info rounded-full animate-pulse"></div>
                                   <span className="text-info font-medium">
-                                    {appointmentDetails.timeUntilAppointment} until appointment
+                                    {appointmentDetails.timeUntilAppointment}{" "}
+                                    until appointment
                                   </span>
                                 </div>
                               )}
@@ -885,21 +1023,33 @@ const PatientDashboard = () => {
 
                             <div className="flex items-center gap-3">
                               <button
-                                onClick={() => window.open(`tel:${appointment.clinic?.phone}`, "_self")}
+                                onClick={() =>
+                                  window.open(
+                                    `tel:${appointment.clinic?.phone}`,
+                                    "_self"
+                                  )
+                                }
                                 className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-xl hover:bg-secondary/80 transition-colors text-sm font-medium"
                               >
                                 <Phone className="h-4 w-4" />
                                 Call Clinic
                               </button>
-                              
+
                               <button
-                                onClick={() => window.open(`https://maps.google.com/?q=${encodeURIComponent(appointment.clinic?.address || '')}`, "_blank")}
+                                onClick={() =>
+                                  window.open(
+                                    `https://maps.google.com/?q=${encodeURIComponent(
+                                      appointment.clinic?.address || ""
+                                    )}`,
+                                    "_blank"
+                                  )
+                                }
                                 className="flex items-center gap-2 px-4 py-2 border border-border text-foreground rounded-xl hover:bg-muted/50 transition-colors text-sm font-medium"
                               >
                                 <Navigation className="h-4 w-4" />
                                 Directions
                               </button>
-                              
+
                               {appointment.canCancel && (
                                 <button
                                   onClick={() => openCancelModal(appointment)}
@@ -943,15 +1093,25 @@ const PatientDashboard = () => {
                 {appointmentTrends.length > 0 ? (
                   <ChartContainer config={chartConfig} className="h-[350px]">
                     <BarChart data={appointmentTrends}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="hsl(var(--border))"
+                        opacity={0.3}
+                      />
                       <XAxis
                         dataKey="month"
-                        tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                        tick={{
+                          fontSize: 12,
+                          fill: "hsl(var(--muted-foreground))",
+                        }}
                         tickLine={false}
                         axisLine={false}
                       />
                       <YAxis
-                        tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                        tick={{
+                          fontSize: 12,
+                          fill: "hsl(var(--muted-foreground))",
+                        }}
                         tickLine={false}
                         axisLine={false}
                       />
@@ -980,8 +1140,12 @@ const PatientDashboard = () => {
                   <div className="h-[350px] flex items-center justify-center">
                     <div className="text-center">
                       <BarChart3 className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                      <p className="text-muted-foreground">No appointment data available yet</p>
-                      <p className="text-sm text-muted-foreground">Charts will appear after your first appointments</p>
+                      <p className="text-muted-foreground">
+                        No appointment data available yet
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Charts will appear after your first appointments
+                      </p>
                     </div>
                   </div>
                 )}
@@ -1004,8 +1168,12 @@ const PatientDashboard = () => {
                       <Activity className="h-5 w-5 text-success" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-foreground">Health Progress</h3>
-                      <p className="text-sm text-muted-foreground">Your wellness journey</p>
+                      <h3 className="font-semibold text-foreground">
+                        Health Progress
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        Your wellness journey
+                      </p>
                     </div>
                   </div>
                   {healthAnalyticsData?.improvement_trend > 1 && (
@@ -1018,17 +1186,25 @@ const PatientDashboard = () => {
 
                 <div className="space-y-4">
                   <div className="text-center">
-                    <div className={`text-3xl font-bold mb-1 ${getHealthScoreColor(healthAnalyticsData?.health_score || 0)}`}>
+                    <div
+                      className={`text-3xl font-bold mb-1 ${getHealthScoreColor(
+                        healthAnalyticsData?.health_score || 0
+                      )}`}
+                    >
                       {healthAnalyticsData?.health_score || 0}%
                     </div>
-                    <div className="text-sm text-muted-foreground">Overall Health Score</div>
+                    <div className="text-sm text-muted-foreground">
+                      Overall Health Score
+                    </div>
                   </div>
 
                   {/* Progress Bar */}
                   <div className="w-full bg-muted/50 rounded-full h-3">
                     <div
                       className="bg-gradient-to-r from-success to-primary h-3 rounded-full transition-all duration-1000"
-                      style={{ width: `${healthAnalyticsData?.health_score || 0}%` }}
+                      style={{
+                        width: `${healthAnalyticsData?.health_score || 0}%`,
+                      }}
                     ></div>
                   </div>
 
@@ -1037,13 +1213,17 @@ const PatientDashboard = () => {
                       <div className="text-lg font-bold text-foreground">
                         {healthAnalyticsData?.completed_treatments || 0}
                       </div>
-                      <div className="text-xs text-muted-foreground">Treatments</div>
+                      <div className="text-xs text-muted-foreground">
+                        Treatments
+                      </div>
                     </div>
                     <div className="text-center">
                       <div className="text-lg font-bold text-foreground">
                         {healthAnalyticsData?.consistency_rating || 0}%
                       </div>
-                      <div className="text-xs text-muted-foreground">Consistency</div>
+                      <div className="text-xs text-muted-foreground">
+                        Consistency
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1057,7 +1237,9 @@ const PatientDashboard = () => {
               transition={{ delay: 0.4 }}
             >
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-foreground">Pending Reviews</h2>
+                <h2 className="text-lg font-semibold text-foreground">
+                  Pending Reviews
+                </h2>
                 {pendingReviews.length > 0 && (
                   <span className="text-xs bg-warning/10 text-warning px-2 py-1 rounded-full border border-warning/20">
                     {pendingReviews.length} pending
@@ -1071,8 +1253,12 @@ const PatientDashboard = () => {
                     <div className="w-12 h-12 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-3">
                       <CheckCircle2 className="h-6 w-6 text-success" />
                     </div>
-                    <h3 className="font-medium text-foreground mb-1">All caught up!</h3>
-                    <p className="text-sm text-muted-foreground">No pending reviews at the moment.</p>
+                    <h3 className="font-medium text-foreground mb-1">
+                      All caught up!
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      No pending reviews at the moment.
+                    </p>
                   </div>
                 ) : (
                   pendingReviews.map((review, index) => (
@@ -1090,15 +1276,21 @@ const PatientDashboard = () => {
                           className="w-12 h-12 rounded-full object-cover border-2 border-border"
                         />
                         <div className="flex-1">
-                          <h4 className="font-medium text-foreground text-sm">{review.doctor_name}</h4>
-                          <p className="text-xs text-muted-foreground">{review.clinic_name}</p>
+                          <h4 className="font-medium text-foreground text-sm">
+                            {review.doctor_name}
+                          </h4>
+                          <p className="text-xs text-muted-foreground">
+                            {review.clinic_name}
+                          </p>
                         </div>
                       </div>
 
                       <div className="mb-4">
                         <div className="flex items-center gap-2 mb-1">
                           <div className="w-2 h-2 bg-primary rounded-full"></div>
-                          <span className="text-sm font-medium text-foreground">{review.service}</span>
+                          <span className="text-sm font-medium text-foreground">
+                            {review.service}
+                          </span>
                         </div>
                         <p className="text-xs text-muted-foreground">
                           {format(review.appointment_date, "MMM dd, yyyy")}
@@ -1106,7 +1298,9 @@ const PatientDashboard = () => {
                       </div>
 
                       <button
-                        onClick={() => handleSubmitReview(review.appointment_id)}
+                        onClick={() =>
+                          handleSubmitReview(review.appointment_id)
+                        }
                         className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors text-sm font-medium flex items-center justify-center gap-2"
                       >
                         <Star className="h-4 w-4" />
@@ -1125,15 +1319,21 @@ const PatientDashboard = () => {
               transition={{ delay: 0.5 }}
             >
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-foreground">Recent Activity</h2>
-                <button className="text-xs text-primary hover:text-primary/80 font-medium">View all</button>
+                <h2 className="text-lg font-semibold text-foreground">
+                  Recent Activity
+                </h2>
+                <button className="text-xs text-primary hover:text-primary/80 font-medium">
+                  View all
+                </button>
               </div>
 
               <div className="space-y-3">
                 {recentActivity.length === 0 ? (
                   <div className="bg-card border border-border rounded-2xl p-6 text-center">
                     <Activity className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-                    <p className="text-sm text-muted-foreground">No recent activity</p>
+                    <p className="text-sm text-muted-foreground">
+                      No recent activity
+                    </p>
                   </div>
                 ) : (
                   recentActivity.map((activity, index) => {
@@ -1150,13 +1350,19 @@ const PatientDashboard = () => {
                             : "border-border hover:border-primary/20 hover:bg-muted/30"
                         }`}
                       >
-                        <div className={`p-2 rounded-lg flex-shrink-0 ${
-                          activity.priority === "high" ? "bg-primary/20" : "bg-muted/50"
-                        }`}>
+                        <div
+                          className={`p-2 rounded-lg flex-shrink-0 ${
+                            activity.priority === "high"
+                              ? "bg-primary/20"
+                              : "bg-muted/50"
+                          }`}
+                        >
                           <Icon className={`h-4 w-4 ${activity.color}`} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground">{activity.title}</p>
+                          <p className="text-sm font-medium text-foreground">
+                            {activity.title}
+                          </p>
                           <p className="text-xs text-muted-foreground mb-1 line-clamp-2">
                             {activity.description}
                           </p>

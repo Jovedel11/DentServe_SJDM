@@ -24,6 +24,7 @@ import {
   FileText,
   SquareKanban,
 } from "lucide-react";
+import { useAuth } from "@/auth/context/AuthProvider";
 
 // Admin Dashboard Navigation Data
 const data = {
@@ -74,6 +75,12 @@ const data = {
 };
 
 export function AppSidebar({ ...props }) {
+  const { profile, loading } = useAuth();
+
+  if (loading) {
+    return <Loader message="Loading sidebar..." />;
+  }
+
   return (
     <Sidebar
       variant="floating"
@@ -160,7 +167,7 @@ export function AppSidebar({ ...props }) {
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border bg-sidebar">
-        <NavUser user={data.user} />
+        <NavUser user={profile.profile} />
       </SidebarFooter>
     </Sidebar>
   );

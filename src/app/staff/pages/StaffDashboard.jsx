@@ -10,7 +10,6 @@ import {
   Award,
   Activity,
   Phone,
-  Mail,
   MoreVertical,
   Eye,
 } from "lucide-react";
@@ -19,15 +18,8 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/core/components/ui/chart";
-import {
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-} from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
+import Delete from "@/test/add-delete-users/Delete";
 
 const StaffDashboard = () => {
   const [dashboardData, setDashboardData] = useState({
@@ -332,6 +324,7 @@ const StaffDashboard = () => {
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6 space-y-6 md:space-y-8">
+      <Delete />
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>

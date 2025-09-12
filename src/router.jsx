@@ -92,6 +92,9 @@ const StaffDashboard = lazy(() => import("@/app/staff/pages/StaffDashboard"));
 const ManageAppointments = lazy(() =>
   import("@/app/staff/pages/ManageAppointments")
 );
+const StaffHistory = lazy(() =>
+  import("@/app/staff/pages/StaffAppointmentHistory")
+);
 const ClinicAnalytics = lazy(() => import("@/app/staff/pages/ClinicAnalytics"));
 const ClinicTeam = lazy(() => import("@/app/staff/pages/ClinicTeam"));
 const FeedbackManagement = lazy(() =>
@@ -186,6 +189,10 @@ export const router = createBrowserRouter([
           {
             path: "manage-appointments",
             element: withSuspense(ManageAppointments),
+          },
+          {
+            path: "appointment-history",
+            element: withSuspense(StaffHistory),
           },
           { path: "clinic-analytics", element: withSuspense(ClinicAnalytics) },
           { path: "team", element: withSuspense(ClinicTeam) },

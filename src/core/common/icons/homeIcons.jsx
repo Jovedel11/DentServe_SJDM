@@ -47,8 +47,7 @@ export const steps = [
   {
     icon: <FaUserPlus aria-label="Register" />,
     title: "Register Effortlessly",
-    description:
-      "Create your account in under 30 seconds via email or social media.",
+    description: "Create your account in under 2 minutes via email.",
     tooltip: "We prioritize your privacy and data security.",
   },
   {

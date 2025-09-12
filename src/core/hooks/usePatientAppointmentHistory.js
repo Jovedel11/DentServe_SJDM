@@ -1,4 +1,3 @@
-// hooks/usePatientAppointmentHistory.js - COMPLETELY FIXED VERSION
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
@@ -7,7 +6,6 @@ import { useArchiveManager } from './useArchiveManager';
 export const usePatientAppointmentHistory = () => {
   const { user, profile, isPatient } = useAuth();
   
-  // ✅ FIXED: Archive manager integration with correct method names
   const {
     archiveAppointment: archiveAppointmentItem,
     unarchiveItem,
@@ -36,7 +34,7 @@ export const usePatientAppointmentHistory = () => {
     }
   });
 
-  // ✅ COMPLETELY FIXED: Fetch appointments with proper data handling
+  //Fetch appointments with
   const fetchAppointmentData = useCallback(async (forceRefresh = false, loadMore = false) => {
     if (!user || !isPatient()) {
       setState(prev => ({ ...prev, loading: false }));
@@ -51,13 +49,13 @@ export const usePatientAppointmentHistory = () => {
 
       console.log('🔄 Fetching appointment data:', { forceRefresh, loadMore });
 
-      // ✅ FIXED: Proper offset handling for pagination
+      // Proper offset handling for pagination
       const currentOffset = loadMore ? state.pagination.offset : 0;
       const currentLimit = state.pagination.limit;
 
       console.log('📊 Pagination params:', { currentOffset, currentLimit });
 
-      // ✅ FIXED: Fetch all data with proper error handling
+      // Fetch all data with proper error handling
       const [analyticsResponse, appointmentsResponse, archivedResponse] = await Promise.allSettled([
         supabase.rpc('get_patient_health_analytics', { 
           p_patient_id: null // Uses current user context
@@ -78,7 +76,7 @@ export const usePatientAppointmentHistory = () => {
         archived: archivedResponse
       });
 
-      // ✅ FIXED: Handle analytics response (optional)
+      // Handle analytics response (optional)
       let healthAnalytics = null;
       if (analyticsResponse.status === 'fulfilled' && analyticsResponse.value.data) {
         healthAnalytics = analyticsResponse.value.data;
@@ -86,7 +84,7 @@ export const usePatientAppointmentHistory = () => {
         console.warn('⚠️ Analytics failed:', analyticsResponse.reason);
       }
       
-      // ✅ FIXED: Handle appointments response (required)
+      // Handle appointments response (required)
       if (appointmentsResponse.status === 'rejected') {
         console.error('❌ Appointments fetch failed:', appointmentsResponse.reason);
         throw new Error(appointmentsResponse.reason?.message || 'Failed to fetch appointments');
@@ -103,7 +101,7 @@ export const usePatientAppointmentHistory = () => {
         throw new Error(appointmentsResult.data?.error || 'Failed to fetch appointments');
       }
 
-      // ✅ FIXED: Extract appointment data with proper structure handling
+      //  Extract appointment data with proper structure handling
       const appointmentData = appointmentsResult.data.data;
       const appointments = appointmentData?.appointments || [];
       const paginationData = appointmentData?.pagination || {};
@@ -113,7 +111,7 @@ export const usePatientAppointmentHistory = () => {
         pagination: paginationData
       });
 
-      // ✅ FIXED: Handle archived response with proper error checking
+      //  Handle archived response with proper error checking
       let archivedItems = [];
       if (archivedResponse.status === 'fulfilled') {
         const archivedResult = archivedResponse.value;
@@ -128,11 +126,11 @@ export const usePatientAppointmentHistory = () => {
       
       console.log('🗃️ Processed archived items:', archivedItems);
       
-      // ✅ FIXED: Create proper archive ID set for faster lookup
+      // Create proper archive ID set for faster lookup
       const archivedItemIds = new Set(archivedItems.map(item => item.item_id));
       console.log('🗃️ Archived appointment IDs:', Array.from(archivedItemIds));
       
-      // ✅ FIXED: Transform appointments with complete data mapping
+      //  Transform appointments with complete data mapping
       const transformedAppointments = appointments.map(apt => {
         const isArchived = archivedItemIds.has(apt.id);
         console.log(`📝 Appointment ${apt.id}: archived=${isArchived}`);

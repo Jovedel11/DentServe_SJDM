@@ -67,23 +67,11 @@ export const slides = [
 // footer component
 export const footerColumns = [
   {
-    title: "Services",
-    links: [
-      { text: "General Dentistry", href: "#services" },
-      { text: "Cosmetic Procedures", href: "#cosmetic" },
-      { text: "Orthodontics", href: "#orthodontics" },
-      { text: "Pediatric Care", href: "#pediatric" },
-      { text: "Emergency Services", href: "#emergency" },
-    ],
-  },
-  {
     title: "Company",
     links: [
-      { text: "About Us", href: "#about" },
-      { text: "Careers", href: "#careers" },
-      { text: "Press", href: "#press" },
-      { text: "Testimonials", href: "#testimonials" },
-      { text: "Blog", href: "#blog" },
+      { text: "About Us", href: "/about" },
+      { text: "Services", href: "/services" },
+      { text: "Contact", href: "/contact" },
     ],
   },
   {

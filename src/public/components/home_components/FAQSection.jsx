@@ -65,7 +65,7 @@ const FAQSection = () => {
         id: 1,
         question: "Do I need an account to book?",
         answer:
-          "No account required! Enjoy our guest booking feature for quick reservations. Optionally create an account to track your appointments and access exclusive features.",
+          "Yes, account required! Enjoy our guest booking feature for quick reservations. Optionally create an account to track your appointments and access exclusive features.",
       },
       {
         id: 2,
@@ -77,26 +77,26 @@ const FAQSection = () => {
         id: 3,
         question: "Will I receive a confirmation?",
         answer:
-          "Instant digital receipt! Receive SMS and email confirmation with appointment details, clinic location map, and preparation guidelines immediately after booking.",
+          "Instant digital receipt! Receive SMS and email confirmation with appointment details, clinic details, and preparation guidelines immediately after booking.",
         extraInfo: true,
       },
       {
         id: 4,
         question: "Can I reschedule or cancel appointments?",
         answer:
-          "Flexible changes available! Modify or cancel appointments up to 24 hours prior through your confirmation link or patient dashboard, subject to clinic policies.",
+          "Flexible changes available! Modify or cancel appointments up to clinic cancellation policy, prior through your confirmation link or patient dashboard.",
       },
       {
         id: 5,
-        question: "How do I know clinic availability?",
+        question: "How do I know appointment status?",
         answer:
-          "Real-time availability updates! Color-coded indicators show clinic capacity: Green (Plenty), Amber (Limited), Red (Fully Booked).",
+          "Real-time availability updates! Color-coded indicators show appointment status: Red (Urgent), Plain White-Black (Confirm/Pending)",
       },
       {
         id: 6,
         question: "What safety measures are in place?",
         answer:
-          "All partner clinics maintain our strict Safety Certified standards. Look for the shield icon indicating enhanced sanitation protocols and staff certifications.",
+          "All partner clinics maintain our strict Safety Certified standards. Look for the Clinic Badge indicating enhanced sanitation protocols and staff certifications.",
       },
     ],
     []

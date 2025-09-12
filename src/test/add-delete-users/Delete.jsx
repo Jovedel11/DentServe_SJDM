@@ -1,4 +1,4 @@
-import { adminSupabase } from "backend/lib/supabaseSuperAdmin";
+import { adminSupabase } from "@/lib/supabaseSuperAdmin";
 
 const Delete = () => {
   const handleDelete = async () => {
@@ -18,10 +18,9 @@ const Delete = () => {
       phone: "+639937683114",
       user_metadata: {
         user_type: "staff",
-        first_name: "Manoy",
-        last_name: "Diaz",
-        address:
-          "Alexandria Bldg. Abella Rd, Sto. Cristo, Palmera, San Jose Del Monte Bulacan",
+        first_name: "Zeus",
+        last_name: "Delos Reyes",
+        address: "Blk 1 Lt1 V.O Bello Bldg Francisco Homes CSJDM Bulacan",
         clinic_id: "daa2fd13-2b6b-44e5-bf27-d34ff3808c64",
         employee_id: "GSC-101",
         position: "Staff",

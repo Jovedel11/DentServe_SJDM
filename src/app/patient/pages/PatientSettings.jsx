@@ -734,52 +734,6 @@ const Settings = () => {
             </span>
           </label>
         </div>
-
-        <div className="flex justify-between items-start gap-4 py-5 md:flex-row flex-col md:items-center">
-          <div className="flex items-start gap-3 flex-1">
-            <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center flex-shrink-0 mt-1 dark:bg-red-950">
-              <FiShield className="text-red-600 text-lg dark:text-red-400" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-base font-medium text-foreground">
-                Share Data with Partners
-              </label>
-              <span className="text-sm text-muted-foreground leading-relaxed">
-                Allow sharing of anonymized data with trusted healthcare
-                partners for research and improvement
-              </span>
-            </div>
-          </div>
-          <label className="relative inline-block w-14 h-8 flex-shrink-0">
-            <input
-              type="checkbox"
-              checked={settings.privacy.shareDataWithPartners}
-              onChange={(e) =>
-                handleSettingChange(
-                  "privacy",
-                  "shareDataWithPartners",
-                  e.target.checked
-                )
-              }
-              className="opacity-0 w-0 h-0"
-            />
-            <span
-              className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 rounded-full transition-all duration-300 ${
-                settings.privacy.shareDataWithPartners
-                  ? "bg-primary shadow-md"
-                  : "bg-muted-foreground/30"
-              }`}
-            >
-              <span
-                className={`absolute left-1 bottom-1 bg-white w-6 h-6 rounded-full transition-all duration-300 shadow-sm ${
-                  settings.privacy.shareDataWithPartners
-                    ? "translate-x-6"
-                    : "translate-x-0"
-                }`}
-              ></span>
-            </span>
-          </label>
-        </div>
       </div>
 
       <div className="space-y-6">
