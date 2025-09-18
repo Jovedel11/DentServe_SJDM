@@ -1,4 +1,4 @@
-const IMAGE_SERVER_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'; 
+const IMAGE_SERVER_URL = import.meta.env.VITE_API_URL; 
 
 export const imageService = {
   async uploadImage(access_token, formData, onProgress = null, signal = null) {

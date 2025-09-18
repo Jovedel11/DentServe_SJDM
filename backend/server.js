@@ -51,7 +51,6 @@ app.use(cors({
   optionsSuccessStatus: 200
 }));
 
-
 // parse data
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -83,29 +82,73 @@ app.use((error, req, res, next) => {
     timestamp: new Date().toISOString(),
     path: req.path,
     method: req.method,
-    ip: req.ip
+    ip: req.ip,
+    userAgent: req.get('User-Agent')
   });
+
+  // Handle client disconnect during upload
+  if (req.aborted || req.destroyed) {
+    console.log('Client disconnected during request processing');
+    return; // Don't send response to disconnected client
+  }
 
   // multer specific error
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        success: false,
+        error: 'File too large. Maximum size is 5MB',
+        timestamp: new Date().toISOString(),
+      });
+    }
+    if (error.code === 'LIMIT_UNEXPECTED_FILE') {
       return res.status(400).json({
         success: false,
-        error: 'File too large. Maximum size is 5mb',
+        error: 'Unexpected file field',
         timestamp: new Date().toISOString(),
       });
     }
   }
 
-  if (error.message === 'Only image files are allowed') {
+  // Custom validation errors
+  if (error.message === 'Only image files are allowed!') {
     return res.status(400).json({
       success: false,
       error: 'Only image files are allowed',
-      timestamps: new Date().toISOString(),
+      timestamp: new Date().toISOString(),
     });
   }
 
-  res.status(error.status || 500).json({
+  // Rate limit errors
+  if (error.statusCode === 429) {
+    return res.status(429).json({
+      success: false,
+      error: 'Too many requests. Please try again later.',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Authentication errors
+  if (error.message.includes('token') || error.message.includes('auth')) {
+    return res.status(401).json({
+      success: false,
+      error: 'Authentication failed',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Network/timeout errors
+  if (error.code === 'ENOTFOUND' || error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
+    return res.status(503).json({
+      success: false,
+      error: 'Service temporarily unavailable',
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // Default error response
+  const statusCode = error.status || error.statusCode || 500;
+  res.status(statusCode).json({
     success: false,
     error: process.env.NODE_ENV === 'development' 
       ? error.message 
