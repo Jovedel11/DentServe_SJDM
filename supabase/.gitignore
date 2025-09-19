@@ -1,0 +1,15 @@
+# Supabase
+.branches
+.temp
+
+# dotenvx
+.env.keys
+.env.local
+.env.*.local
+
+
+# Supabase local-only files
+.supabase/
+supabase/.temp/
+supabase/roles.sql  # unless ginagamit nyo
+supabase/storage/   # if may local storage dump
