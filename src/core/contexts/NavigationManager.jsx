@@ -103,11 +103,10 @@ export const useNavigationManager = () => {
 
     const currentPath = location.pathname;
 
-    // Skip verification routes
+    // Skip verification routes - REMOVED verify-phone
     const verificationRoutes = [
       "/verify-email",
-      "/verify-phone",
-      "/complete-profile",
+      "/staff/complete-profile",
       "/change-password",
     ];
     if (
@@ -167,7 +166,7 @@ export const useNavigationManager = () => {
         }
       }
 
-      // Handle verification flow
+      // Handle verification flow - UPDATED to remove phone verification
       if (
         !canAccessApp &&
         authStatus?.next_step &&

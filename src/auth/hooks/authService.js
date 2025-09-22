@@ -17,6 +17,7 @@ export const authService = {
     try {
       validatePassword(userData.password);
 
+
       let normalizedPhone = null;
       if (userData.phone) {
         normalizedPhone = phoneUtils.normalizePhilippinePhone(userData.phone);

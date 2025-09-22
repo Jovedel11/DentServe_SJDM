@@ -1,4 +1,3 @@
-// auth/components/AuthCallback.jsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
@@ -9,7 +8,7 @@ const AuthCallback = () => {
   const [error, setError] = useState(null);
   const [status, setStatus] = useState("Verifying your account...");
   const navigate = useNavigate();
-  const { checkUserProfile } = useAuth(); // ✅ SIMPLIFIED: Just checkUserProfile
+  const { refreshAuthStatus } = useAuth();
 
   useEffect(() => {
     handleAuthCallback();
@@ -19,11 +18,12 @@ const AuthCallback = () => {
     try {
       setStatus("Processing email verification...");
 
+      // Handle the email verification callback
       const { data, error: exchangeError } =
         await supabase.auth.exchangeCodeForSession(window.location.href);
 
       if (exchangeError) {
-        throw new Error(exchangeError.message || "Session exchange failed");
+        throw new Error(exchangeError.message || "Email verification failed");
       }
 
       if (!data?.session?.user) {
@@ -31,22 +31,22 @@ const AuthCallback = () => {
       }
 
       const authUser = data.session.user;
-      console.log("Email verification successful for:", authUser.email);
+      console.log("✅ Email verification successful for:", authUser.email);
 
       setStatus("Updating verification status...");
 
       // Wait for database triggers to complete
-      await new Promise((resolve) => setTimeout(resolve, 3000));
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      // Re-check profile status after verification
-      await checkUserProfile(authUser);
+      // Refresh auth status to get updated verification state
+      await refreshAuthStatus(authUser.id);
 
-      setStatus("Redirecting...");
+      setStatus("Redirecting to dashboard...");
 
-      // ✅ SIMPLIFIED: Let AuthProvider handle navigation via useAuthNavigation
-      // Small delay to ensure state updates
+      // The AuthProvider and NavigationManager will handle the redirect
       setTimeout(() => {
         setLoading(false);
+        // Let the navigation system handle where to go
       }, 1000);
     } catch (err) {
       console.error("Auth callback error:", err);
@@ -64,22 +64,31 @@ const AuthCallback = () => {
 
   if (error) {
     return (
-      <div className="auth-callback-container">
-        <div className="auth-callback-error">
-          <h2>Verification Failed</h2>
-          <p>{error}</p>
-          <p>Redirecting to login...</p>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md text-center">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-2xl">❌</span>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">
+            Verification Failed
+          </h2>
+          <p className="text-red-600 mb-4">{error}</p>
+          <p className="text-gray-600">Redirecting to login...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="auth-callback-container">
-      <div className="auth-callback-loading">
-        <div className="spinner"></div>
-        <h2>{status}</h2>
-        <p>Please wait while we complete your verification...</p>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md text-center">
+        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent"></div>
+        </div>
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">{status}</h2>
+        <p className="text-gray-600">
+          Please wait while we complete your verification...
+        </p>
       </div>
     </div>
   );

@@ -1,28 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
-import { useLocation } from "react-router-dom";
 import { toast } from "react-toastify";
 import { Phone, Mail, MapPin, Calendar } from "lucide-react";
 
 import styles from "../style/pages/Contact.module.scss";
-import PartnershipForm from "../components/contact_components/PartnershipForm";
+import StaffApplicationForm from "../components/contact_components/StaffApplicationForm";
 import MapSection from "../components/contact_components/MapSection";
 import { benefits } from "@/core/common/icons/contactIcons";
 import Skeleton from "@/core/components/Skeleton";
 
 const Contact = () => {
-  const location = useLocation();
   const formRef = useRef(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    reset,
-    setValue,
-  } = useForm();
+  const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false);
 
   // Hero loading effect
   useEffect(() => {
@@ -30,57 +19,29 @@ const Contact = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  // Form submission handler
-  const onSubmit = useCallback(
-    async (data) => {
-      setIsSubmitting(true);
-      try {
-        const formData = new FormData();
-        Object.entries(data).forEach(([key, value]) => {
-          if (key === "documents") {
-            Array.from(value).forEach((file) => {
-              formData.append("documents", file);
-            });
-          } else if (key === "services") {
-            value.forEach((service) => {
-              formData.append("services", service);
-            });
-          } else {
-            formData.append(key, value);
-          }
-        });
+  // Patient inquiry form submission
+  const handlePatientInquiry = useCallback(async (e) => {
+    e.preventDefault();
+    setIsSubmittingInquiry(true);
 
-        // Simulate API call
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        console.log("Form data:", Object.fromEntries(formData));
+    try {
+      const formData = new FormData(e.target);
+      const data = Object.fromEntries(formData);
 
-        toast.success("Application submitted successfully!");
-        reset();
-        setValue("documents", null);
-      } catch (error) {
-        toast.error(error.message || "Failed to submit application");
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [reset, setValue]
-  );
+      // TODO: Replace with actual API call
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      console.log("Patient inquiry:", data);
 
-  // Scroll handler for form section
-  const handleHashScroll = useCallback(() => {
-    if (location.hash === "#agreement" && formRef.current) {
-      const yOffset = -100;
-      const y =
-        formRef.current.getBoundingClientRect().top + window.scrollY + yOffset;
-      window.scrollTo({ top: y, behavior: "smooth" });
+      toast.success(
+        "Inquiry sent successfully! We'll respond within 24 hours."
+      );
+      e.target.reset();
+    } catch (error) {
+      toast.error("Failed to send inquiry. Please try again.");
+    } finally {
+      setIsSubmittingInquiry(false);
     }
-  }, [location.hash]);
-
-  useEffect(() => {
-    handleHashScroll();
-    window.addEventListener("hashchange", handleHashScroll);
-    return () => window.removeEventListener("hashchange", handleHashScroll);
-  }, [handleHashScroll]);
+  }, []);
 
   // Contact items data
   const contactItems = [
@@ -150,16 +111,8 @@ const Contact = () => {
         </div>
       </section>
 
-      {/* Partnership Form */}
-      <PartnershipForm
-        ref={formRef}
-        register={register}
-        errors={errors}
-        handleSubmit={handleSubmit}
-        onSubmit={onSubmit}
-        isSubmitting={isSubmitting}
-        setValue={setValue}
-      />
+      {/* Staff Application Form */}
+      <StaffApplicationForm ref={formRef} />
 
       {/* Map Section */}
       <MapSection />
@@ -171,24 +124,31 @@ const Contact = () => {
             <h3>Patient Inquiry Form</h3>
             <p>Have questions? Our team will get back to you within 24 hours</p>
 
-            <form className={styles.patientFormContent} onSubmit={handleSubmit}>
+            <form
+              className={styles.patientFormContent}
+              onSubmit={handlePatientInquiry}
+            >
               <div className={styles.formGroup}>
                 <div className={styles.formField}>
                   <label htmlFor="patientName">Full Name</label>
                   <input
                     id="patientName"
+                    name="patientName"
                     type="text"
                     placeholder="Your full name"
                     autoComplete="name"
+                    required
                   />
                 </div>
                 <div className={styles.formField}>
                   <label htmlFor="patientEmail">Email Address</label>
                   <input
                     id="patientEmail"
+                    name="patientEmail"
                     type="email"
                     autoComplete="email"
                     placeholder="your.email@example.com"
+                    required
                   />
                 </div>
               </div>
@@ -197,6 +157,7 @@ const Contact = () => {
                 <label htmlFor="patientPhone">Phone Number</label>
                 <input
                   id="patientPhone"
+                  name="patientPhone"
                   type="tel"
                   autoComplete="tel"
                   placeholder="(123) 456-7890"
@@ -207,13 +168,19 @@ const Contact = () => {
                 <label htmlFor="patientMessage">Message</label>
                 <textarea
                   id="patientMessage"
+                  name="patientMessage"
                   placeholder="How can we help you?"
                   rows="4"
+                  required
                 ></textarea>
               </div>
 
-              <button type="submit" className={styles.submitButton}>
-                Send Inquiry
+              <button
+                type="submit"
+                className={styles.submitButton}
+                disabled={isSubmittingInquiry}
+              >
+                {isSubmittingInquiry ? "Sending..." : "Send Inquiry"}
               </button>
             </form>
           </div>

@@ -1159,7 +1159,7 @@ const ClinicTeam = () => {
                           >
                             {doctor.is_available ? "Available" : "Unavailable"}
                           </span>
-                        </div>
+                        </div>s
                         <div className="flex items-center text-xs text-muted-foreground">
                           <Star className="w-3 h-3 text-yellow-500 fill-current mr-1" />
                           {doctor.rating} ({doctor.total_reviews})

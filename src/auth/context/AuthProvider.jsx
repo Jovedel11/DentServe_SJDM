@@ -9,7 +9,6 @@ import {
 } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { authService } from "../hooks/authService";
-import { useVerification } from "../hooks/useVerification";
 import { useRedirectPath } from "../hooks/useRedirectPath";
 
 const AuthContext = createContext({});
@@ -24,7 +23,7 @@ export const AuthProvider = ({ children }) => {
   const [error, setError] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
-  //prevent duplicate requests
+  // Prevent duplicate requests
   const lastFetchTime = useRef({ profile: 0, authStatus: 0 });
   const refreshTimeout = useRef(null);
 
@@ -34,14 +33,15 @@ export const AuthProvider = ({ children }) => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log("Auth state changed:", event, session?.user?.email);
+      console.log("🔄 Auth state changed:", event, session?.user?.email);
 
       if (session?.user) {
         setSession(session);
         setUser(session.user);
-        console.log("User logged in:", session.user.email);
+        console.log("✅ User logged in:", session.user.email);
         handleRefreshAuthStatus(session.user.id);
       } else {
+        console.log("🚪 User logged out");
         resetAuthState();
       }
       setLoading(false);
@@ -63,9 +63,10 @@ export const AuthProvider = ({ children }) => {
 
     loadDashboardData(user.id, true);
 
+    // Refresh dashboard data every 15 minutes
     const interval = setInterval(() => {
       loadDashboardData(user.id, false);
-    }, 15 * 60 * 1000); // 5 minutes
+    }, 15 * 60 * 1000);
 
     return () => clearInterval(interval);
   }, [user, isInitialized]);
@@ -82,7 +83,7 @@ export const AuthProvider = ({ children }) => {
         await refreshAuthStatus(session.user.id);
       }
     } catch (error) {
-      console.error("Error initializing auth:", error);
+      console.error("❌ Error initializing auth:", error);
       setError("Failed to initialize authentication");
     } finally {
       setLoading(false);
@@ -90,7 +91,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // prevent spam calls
+  // Prevent spam calls with timeout
   const handleRefreshAuthStatus = (userId) => {
     if (refreshTimeout.current) {
       clearTimeout(refreshTimeout.current);
@@ -108,7 +109,7 @@ export const AuthProvider = ({ children }) => {
 
       const now = Date.now();
       if (now - lastFetchTime.current.authStatus < 2000) {
-        return;
+        return; // Prevent spam calls
       }
       lastFetchTime.current.authStatus = now;
 
@@ -121,7 +122,7 @@ export const AuthProvider = ({ children }) => {
         setError(result.error);
       }
     } catch (error) {
-      console.error("Error refreshing auth status:", error);
+      console.error("❌ Error refreshing auth status:", error);
       setError("Failed to get authentication status");
     }
   };
@@ -130,7 +131,7 @@ export const AuthProvider = ({ children }) => {
     if (!userId) return;
 
     try {
-      // spam prevention
+      // Spam prevention
       const now = Date.now();
       if (now - lastFetchTime.current.profile < 3000) {
         return;
@@ -141,7 +142,7 @@ export const AuthProvider = ({ children }) => {
       const profile = await fetchUserProfile(userId);
       setProfile(profile);
     } catch (err) {
-      console.error("Error fetching profile:", err);
+      console.error("❌ Error fetching profile:", err);
       setError("Failed to load profile");
     } finally {
       setLoading(false);
@@ -151,10 +152,9 @@ export const AuthProvider = ({ children }) => {
   const fetchUserProfile = async (userId) => {
     if (!userId) return null;
 
-    // OPTIMIZED: Single call - get_user_complete_profile handles auth.uid() lookup internally
+    // Single call - get_user_complete_profile handles auth.uid() lookup internally
     const { data: profile, error: profileError } = await supabase.rpc(
       "get_user_complete_profile"
-      // Remove p_user_id parameter - function gets user from auth.uid()
     );
 
     if (profileError) throw profileError;
@@ -164,36 +164,37 @@ export const AuthProvider = ({ children }) => {
   const handleRefreshProfile = async () => {
     if (!user) return;
 
-    // reset the timer to allow immediate fetch
+    // Reset the timer to allow immediate fetch
     lastFetchTime.current.profile = 0;
     await loadProfile(user.id);
   };
 
   const resetAuthState = () => {
     setUser(null);
+    setSession(null);
     setAuthStatus(null);
     setError(null);
     setProfile(null);
     setDashboardData(null);
 
-    // reset timers
+    // Reset timers
     lastFetchTime.current = { profile: 0, authStatus: 0 };
   };
 
-  // auth status derived values
+  // Auth status derived values - SIMPLIFIED (no phone verification)
   const userRole = authStatus?.user_role;
   const isEmailVerified = authStatus?.email_verified || false;
-  const isPhoneVerified = authStatus?.phone_verified || false;
-  const phoneRequired = authStatus?.phone_required || false;
   const canAccessApp = authStatus?.can_access_app || false;
   const nextStep = authStatus?.next_step;
 
-  console.log("AuthProvider -> user:", user);
-  console.log("AuthProvider -> authStatus:", authStatus);
-  console.log("AuthProvider -> userRole:", userRole);
-  console.log("AuthProvider -> profile:", profile);
+  console.log("🔍 AuthProvider Debug:");
+  console.log("  → user:", user?.email);
+  console.log("  → authStatus:", authStatus);
+  console.log("  → userRole:", userRole);
+  console.log("  → isEmailVerified:", isEmailVerified);
+  console.log("  → canAccessApp:", canAccessApp);
 
-  // role checks
+  // Role checks
   const isPatient = useCallback(
     () => authStatus?.user_role === "patient",
     [authStatus?.user_role]
@@ -207,7 +208,7 @@ export const AuthProvider = ({ children }) => {
     [authStatus?.user_role]
   );
 
-  // wrap auth actions with loading/error handling
+  // Wrap auth actions with loading/error handling
   const wrapAuthAction = (actionName, actionFunction) => {
     return async (...args) => {
       setLoading(true);
@@ -226,7 +227,7 @@ export const AuthProvider = ({ children }) => {
     };
   };
 
-  // Auth actions
+  // Auth actions (simplified - no phone verification)
   const signUpUser = wrapAuthAction("sign up", authService.signUpUser);
   const inviteStaff = wrapAuthAction(
     "invite staff",
@@ -236,37 +237,6 @@ export const AuthProvider = ({ children }) => {
     "invite admin",
     authService.adminInvitation
   );
-
-  const sendPhoneOTP = async () => {
-    setLoading(true);
-    try {
-      const result = await useVerification.sendPhoneOTP(user?.id);
-      if (result.error) setError(result.error);
-      return result;
-    } catch (error) {
-      setError(error.message);
-      return { success: false, error: error.message };
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const verifyPhoneOTP = async (phone, otpCode) => {
-    setLoading(true);
-    try {
-      const result = await useVerification.verifyPhoneOTP(phone, otpCode);
-      if (result.success) {
-        handleRefreshAuthStatus();
-      }
-      if (result.error) setError(result.error);
-      return result;
-    } catch (error) {
-      setError(error.message);
-      return { success: false, error: error.message };
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const updatePassword = async (newPassword) => {
     setLoading(true);
@@ -307,8 +277,10 @@ export const AuthProvider = ({ children }) => {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       resetAuthState();
+      console.log("✅ Sign out successful");
       return { success: true };
     } catch (error) {
+      console.error("❌ Sign out error:", error);
       setError(error.message);
       return { success: false, error: error.message };
     }
@@ -375,11 +347,9 @@ export const AuthProvider = ({ children }) => {
       error,
       isInitialized,
 
-      // Derived state
+      // Derived state (simplified - no phone verification)
       userRole,
       isEmailVerified,
-      isPhoneVerified,
-      phoneRequired,
       canAccessApp,
       nextStep,
 
@@ -392,12 +362,10 @@ export const AuthProvider = ({ children }) => {
       profile,
       dashboardData,
 
-      // Actions
+      // Actions (simplified - no phone verification)
       signUpUser,
       inviteStaff,
       inviteAdmin,
-      sendPhoneOTP,
-      verifyPhoneOTP,
       signOut,
       refreshAuthStatus,
       updatePassword,
@@ -411,6 +379,7 @@ export const AuthProvider = ({ children }) => {
       useRedirectPath,
     }),
     [
+      session,
       user,
       authStatus,
       loading,
@@ -418,8 +387,6 @@ export const AuthProvider = ({ children }) => {
       isInitialized,
       userRole,
       isEmailVerified,
-      isPhoneVerified,
-      phoneRequired,
       canAccessApp,
       nextStep,
       profile,

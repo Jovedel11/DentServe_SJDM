@@ -7,4 +7,4 @@ if (!supabaseUrl || !supabaseRoleKey) {
   throw new Error("Missing Supabase env vars. Check .env file.");
 }
 
-export const adminSupabase = createClient(supabaseUrl, supabaseRoleKey);
+export const supabase = createClient(supabaseUrl, supabaseRoleKey);

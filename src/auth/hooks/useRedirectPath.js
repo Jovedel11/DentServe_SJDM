@@ -1,3 +1,4 @@
+// src/auth/hooks/useRedirectPath.js (updated)
 import { useAuth } from "@/auth/context/AuthProvider";  
 
 export const useRedirectPath = () => {
@@ -8,12 +9,8 @@ export const useRedirectPath = () => {
   switch (nextStep) {
     case "verify_email":
       return "/verify-email";
-    case "verify_phone":
-      return "/verify-phone";
-    case "complete_staff_info":
+    case "complete_staff_profile":
       return "/staff/complete-profile";
-    case "complete_profile":
-      return "/complete-profile";
     case "dashboard":
       // Role-based dashboard routing
       switch (userRole) {
@@ -24,9 +21,22 @@ export const useRedirectPath = () => {
         case "admin":
           return "/admin/dashboard";
         default:
-          return "/dashboard";
+          return "/login";
       }
     default:
-      return "/complete-verification";
+      // If user is verified but no specific next step, go to dashboard
+      if (authStatus.can_access_app) {
+        switch (userRole) {
+          case "patient":
+            return "/patient/dashboard";
+          case "staff":
+            return "/staff/dashboard";
+          case "admin":
+            return "/admin/dashboard";
+          default:
+            return "/login";
+        }
+      }
+      return "/verify-email";
   }
 };

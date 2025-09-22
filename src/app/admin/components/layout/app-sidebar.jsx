@@ -23,6 +23,7 @@ import {
   BarChart3,
   FileText,
   SquareKanban,
+  Building2,
 } from "lucide-react";
 import { useAuth } from "@/auth/context/AuthProvider";
 
@@ -43,6 +44,11 @@ const data = {
       title: "UI Management",
       url: "/admin/ui-management",
       icon: SquareKanban,
+    },
+    {
+      title: "Partnership Request Manager",
+      url: "/admin/partnership-request-manager",
+      icon: Building2,
     },
     {
       title: "User Management",
@@ -92,11 +98,11 @@ export function AppSidebar({ ...props }) {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <NavLink
-                to="/staff/dashboard"
+                to="/admin/dashboard"
                 className="flex items-center gap-3"
               >
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <Logo />
+                  <Logo to="/admin/dashboard" />
                 </div>
                 <div className="flex flex-col">
                   <span className="font-semibold text-sidebar-foreground">

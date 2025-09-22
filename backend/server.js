@@ -6,7 +6,7 @@ import morgan from 'morgan';
 import recaptchaRoutes from "./routes/recaptcha.js"
 import multer from 'multer';
 import uploadRoutes from "./routes/cloudImage.js"
-import smsRoutes from "./routes/sms.js"
+import emailRoutes from "./routes/email.js"
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -70,7 +70,7 @@ app.get('/health', (_req, res) => {
 // Routes
 app.use('/api/recaptcha', recaptchaRoutes);
 app.use('/api/upload', uploadRoutes);
-app.use('/api/sms', smsRoutes); // Add SMS routes
+app.use('/api/email', emailRoutes);
 
 app.listen(PORT, () =>  console.log(`Custom Server is running on http://localhost:${PORT}`));
 
@@ -156,6 +156,7 @@ app.use((error, req, res, next) => {
     timestamp: new Date().toISOString()
   });
 });
+
 
 // 404 handler
 app.use((req, res) => {

@@ -88,44 +88,20 @@ export const validateOTP = (otp) => {
 export const validateLoginForm = (credentials, loginMethod) => {
   const errors = {};
 
-  switch (loginMethod) {
-    case "email-password":
-      const emailValidation = validateEmail(credentials.email);
-      if (!emailValidation.isValid) errors.email = emailValidation.error;
+  // Email validation
+  if (!credentials.email) {
+    errors.email = "Email is required";
+  } else if (!/^\S+@\S+\.\S+$/.test(credentials.email)) {
+    errors.email = "Invalid email format";
+  }
 
-      const passwordValidation = validatePassword(credentials.password);
-      if (!passwordValidation.isValid)
-        errors.password = passwordValidation.error;
-      break;
-
-    case "phone-password":
-      const phoneValidation = validatePhone(credentials.phone);
-      if (!phoneValidation.isValid) errors.phone = phoneValidation.error;
-
-      const phonePasswordValidation = validatePassword(credentials.password);
-      if (!phonePasswordValidation.isValid)
-        errors.password = phonePasswordValidation.error;
-      break;
-
-    case "email-otp":
-      const emailOtpValidation = validateEmail(credentials.email);
-      if (!emailOtpValidation.isValid) errors.email = emailOtpValidation.error;
-
-      if (credentials.otp) {
-        const otpValidation = validateOTP(credentials.otp);
-        if (!otpValidation.isValid) errors.otp = otpValidation.error;
-      }
-      break;
-
-    case "phone-otp":
-      const phoneOtpValidation = validatePhone(credentials.phone);
-      if (!phoneOtpValidation.isValid) errors.phone = phoneOtpValidation.error;
-
-      if (credentials.otp) {
-        const otpOtpValidation = validateOTP(credentials.otp);
-        if (!otpOtpValidation.isValid) errors.otp = otpOtpValidation.error;
-      }
-      break;
+  // Password validation (only for email-password method)
+  if (loginMethod === "email-password") {
+    if (!credentials.password) {
+      errors.password = "Password is required";
+    } else if (credentials.password.length < 6) {
+      errors.password = "Password must be at least 6 characters";
+    }
   }
 
   return {

@@ -3,7 +3,7 @@ import authenticateToken from "../middlewares/auth.js";
 import { uploadLimiter, upload } from "../lib/upload.js"
 import cloudinary from "../lib/cloudinary.js";
 import streamifier from "streamifier"
-import { adminSupabase } from "../lib/supabaseSuperAdmin.js";
+import { supabase } from "../lib/supabaseSuperAdmin.js";
 
 const router = express.Router();
 
@@ -168,7 +168,7 @@ router.post('/profile-image',
 
       while (updateAttempts < maxUpdateAttempts) {
         try {
-          const result = await adminSupabase
+          const result = await supabase
             .from('user_profiles')
             .update({ 
               profile_image_url: uploadResult.secure_url,

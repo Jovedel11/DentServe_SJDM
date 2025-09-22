@@ -51,11 +51,10 @@ const EmailVerification = lazy(() =>
   import("./auth/components/EmailVerification")
 );
 const ForgotPassword = lazy(() => import("./auth/components/ForgotPassword"));
-const PhoneVerification = lazy(() =>
-  import("./auth/components/PhoneVerification")
-);
 const ResetPassword = lazy(() => import("./auth/components/ResetPassword"));
-const CompleteProfile = lazy(() => import("./auth/components/CompleteProfile"));
+const StaffCompleteProfile = lazy(() =>
+  import("./auth/components/StaffCompleteProfile")
+);
 
 // Layouts
 const PatientLayout = lazy(() => import("./app/patient/layout/PatientLayout"));
@@ -108,6 +107,9 @@ const AdminDashboard = lazy(() => import("@/app/admin/pages/AdminDashboard"));
 const UIManagement = lazy(() => import("@/app/admin/pages/UIManagement"));
 const UserManagement = lazy(() => import("@/app/admin/pages/UserManagement"));
 const UserRecords = lazy(() => import("@/app/admin/pages/UserRecords"));
+const PartnershipRequestManager = lazy(() =>
+  import("@/app/admin/pages/PartnershipRequestManager")
+);
 
 // Simple route creation
 const createProtectedRoute = (allowedRoles, LayoutComponent, children) => ({
@@ -148,9 +150,12 @@ export const router = createBrowserRouter([
       { path: "auth-callback", element: withSuspense(AuthCallback) },
       { path: "reset-password", element: withSuspense(ResetPassword) },
       { path: "verify-email", element: withSuspense(EmailVerification) },
-      { path: "verify-phone", element: withSuspense(PhoneVerification) },
-      { path: "complete-profile", element: withSuspense(CompleteProfile) },
       { path: "change-password", element: withSuspense(ResetPassword) },
+
+      {
+        path: "staff/complete-profile",
+        element: withSuspense(StaffCompleteProfile),
+      },
 
       // Protected routes
       {
@@ -213,6 +218,10 @@ export const router = createBrowserRouter([
               { index: true, element: withSuspense(UserManagement) },
               { path: "records", element: withSuspense(UserRecords) },
             ],
+          },
+          {
+            path: "partnership-request-manager",
+            element: withSuspense(PartnershipRequestManager),
           },
         ]),
       },

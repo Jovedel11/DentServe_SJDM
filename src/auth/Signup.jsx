@@ -37,7 +37,7 @@ const Signup = () => {
 
   // useActionState for form handling
   const [state, formAction, isPending] = useActionState(
-    async (prevState, formDataAction) => {
+    async (_prevState, formDataAction) => {
       // Client-side validation
       const validation = validateSignupForm(formData);
       if (!validation.isValid) {

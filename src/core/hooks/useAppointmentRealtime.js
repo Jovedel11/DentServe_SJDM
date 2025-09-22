@@ -173,7 +173,7 @@ export const useAppointmentRealtime = (options = {}) => {
     if (appointmentSubscription) {
       subscriptionsRef.current.push(appointmentSubscription);
     }
-  }, [getUserDetails, enableAppointments, onAppointmentUpdate, onAppointmentStatusChange]);
+  }, []);
 
   // Notifications subscription
   const setupNotificationSubscription = useCallback(() => {

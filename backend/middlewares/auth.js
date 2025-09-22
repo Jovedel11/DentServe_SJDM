@@ -1,4 +1,4 @@
-import { adminSupabase } from "../lib/supabaseSuperAdmin.js";
+import { supabase } from "../lib/supabaseSuperAdmin.js";
 
 const authenticateToken = async (req, res, next) => {
   try {
@@ -14,7 +14,7 @@ const authenticateToken = async (req, res, next) => {
     const token = authHeader.substring(7); // remove 'Bearer ' prefix
     
     // verify token with Supabase
-    const { data: { user }, error } = await adminSupabase.auth.getUser(token);
+    const { data: { user }, error } = await supabase.auth.getUser(token);
     
     if (error || !user) {
       console.error('Token verification failed:', error?.message);
@@ -25,7 +25,7 @@ const authenticateToken = async (req, res, next) => {
     }
     
     // get user's profile information from your database
-    const { data: userProfile, error: profileError } = await adminSupabase
+    const { data: userProfile, error: profileError } = await supabase
       .from('users')
       .select(`
         id,

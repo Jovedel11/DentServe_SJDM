@@ -40,3 +40,10 @@ backend.env.production
 .env.production
 
 *.env
+
+.temp
+# Supabase local-only files
+.supabase/
+supabase/.temp/
+supabase/roles.sql  # unless ginagamit nyo
+supabase/storage/   # if may local storage dump
