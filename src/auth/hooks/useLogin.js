@@ -46,6 +46,7 @@ export const useLogin = () => {
       }
 
       console.log('✅ Login successful:', data.user.email)
+      await checkRateLimit(email, 'login', 5, 15, true) // Log successful attempt
       return { success: true, user: data.user }
 
     } catch (error) {

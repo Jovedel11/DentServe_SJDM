@@ -5,14 +5,21 @@ export const useRateLimit = () => {
   const [rateLimited, setRateLimited] = useState(false)
   const [error, setError] = useState(null)
 
-  const checkRateLimit = async (userIdentifier, actionType, maxAttempts, timeWindowMinutes) => {
+  const checkRateLimit = async (
+    userIdentifier,
+    actionType,
+    maxAttempts,
+    timeWindowMinutes,
+    success = false
+  ) => {
     try {
       const { data, error: rateLimitError } = await supabase
         .rpc('check_rate_limit', {
           p_user_identifier: userIdentifier,
           p_action_type: actionType,
           p_max_attempts: maxAttempts,
-          p_time_window_minutes: timeWindowMinutes
+          p_time_window_minutes: timeWindowMinutes,
+          p_success: success
         })
 
       if (rateLimitError) throw new Error(rateLimitError?.message || 'Rate limit check failed')
