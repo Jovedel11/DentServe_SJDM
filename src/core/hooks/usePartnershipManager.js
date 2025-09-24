@@ -65,7 +65,7 @@ export const usePartnershipManager = () => {
 
   // Get partnership requests (admin only)
   const getPartnershipRequests = useCallback(async (filters = {}) => {
-    if (!isAdmin()) {
+    if (!isAdmin) {
       const error = 'Access denied: Admin required';
       setError(error);
       return { success: false, error };
@@ -106,7 +106,7 @@ export const usePartnershipManager = () => {
 
   // Review partnership request (admin only)
   const reviewPartnershipRequest = useCallback(async (requestId, action, adminNotes = '') => {
-    if (!isAdmin()) {
+    if (!isAdmin) {
       const error = 'Access denied: Admin required';
       setError(error);
       return { success: false, error };
@@ -195,6 +195,6 @@ export const usePartnershipManager = () => {
 
     // Utilities
     clearError: () => setError(null),
-    canReview: isAdmin()
+    canReview: isAdmin
   };
 };

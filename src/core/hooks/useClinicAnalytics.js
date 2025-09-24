@@ -12,7 +12,7 @@ export const useClinicAnalytics = () => {
 
   const fetchClinicAnalytics = useCallback(async (options = {}) => {
     // ✅ Role validation
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -32,7 +32,7 @@ export const useClinicAnalytics = () => {
 
       // ✅ Use current clinic for staff, require explicit clinic for admin
       let targetClinicId = clinicId;
-      if (isStaff() && !targetClinicId) {
+      if (isStaff && !targetClinicId) {
         targetClinicId = profile?.role_specific_data?.clinic_id;
       }
 
@@ -83,7 +83,7 @@ export const useClinicAnalytics = () => {
 
   const fetchResourceAnalytics = useCallback(async (options = {}) => {
     // ✅ Role validation
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -99,7 +99,7 @@ export const useClinicAnalytics = () => {
 
       // ✅ Use current clinic for staff
       let targetClinicId = clinicId;
-      if (isStaff() && !targetClinicId) {
+      if (isStaff && !targetClinicId) {
         targetClinicId = profile?.role_specific_data?.clinic_id;
       }
 

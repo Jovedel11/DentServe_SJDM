@@ -236,22 +236,25 @@ export const authService = {
   },
 
   // update user profile
-  async updateProfile(profileData, roleSpecificData = {}, userId = null) {
+  async updateProfile(userId = null, profileData = {}, roleSpecificData = {}, clinicData = {}, servicesData = {}, doctorsData = {}) {
     try {
       const { data, error } = await supabase.rpc('update_user_profile', {
-        p_user_id: userId,
-        p_profile_data: profileData,
-        p_role_specific_data: roleSpecificData
-      })
+        p_user_id: userId,                    // 1st - UUID
+        p_profile_data: profileData,          // 2nd - JSONB
+        p_role_specific_data: roleSpecificData, // 3rd - JSONB
+        p_clinic_data: clinicData,            // 4th - JSONB
+        p_services_data: servicesData,        // 5th - JSONB
+        p_doctors_data: doctorsData           // 6th - JSONB
+      });
 
-      if (error) throw error
+      if (error) throw error;
       if (!data?.success) {
-        throw new Error(data?.error || 'Profile update failed')
+        throw new Error(data?.error || 'Profile update failed');
       }
       
-      return { success: true, data }
+      return { success: true, data };
     } catch (error) {
-      return { success: false, error: error.message || 'Profile update failed'}
+      return { success: false, error: error.message || 'Profile update failed' };
     }
   },
 

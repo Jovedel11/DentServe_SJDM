@@ -9,7 +9,7 @@ export const useFeedback = () => {
 
   const submitFeedback = useCallback(async (feedbackData) => {
     // ✅ Role validation
-    if (!isPatient()) {
+    if (!isPatient) {
       const error = 'Only patients can submit feedback';
       setError(error);
       return { success: false, error };

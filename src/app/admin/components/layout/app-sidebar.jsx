@@ -24,6 +24,7 @@ import {
   FileText,
   SquareKanban,
   Building2,
+  User,
 } from "lucide-react";
 import { useAuth } from "@/auth/context/AuthProvider";
 
@@ -76,6 +77,11 @@ const data = {
         { title: "General Settings", url: "/admin/settings/general" },
         { title: "User Management", url: "/admin/settings/users" },
       ],
+    },
+    {
+      title: "Profile",
+      url: "/admin/profile",
+      icon: User,
     },
   ],
 };

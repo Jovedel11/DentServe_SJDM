@@ -10,7 +10,7 @@ export const useMedicalHistory = () => {
 
   // Get clinic ID for staff users
   const getClinicId = useCallback(() => {
-    if (isStaff()) {
+    if (isStaff) {
       return profile?.role_specific_data?.clinic_id;
     }
     return null;
@@ -25,10 +25,10 @@ export const useMedicalHistory = () => {
       let targetPatientId = patientId;
       
       // ✅ Role-based access control
-      if (isPatient()) {
+      if (isPatient) {
         // Patients can only view their own history
         targetPatientId = profile?.user_id;
-      } else if (isStaff() || isAdmin()) {
+      } else if (isStaff || isAdmin) {
         // Staff/Admin need explicit patient ID
         if (!targetPatientId) {
           throw new Error('Patient ID is required');
@@ -39,7 +39,7 @@ export const useMedicalHistory = () => {
 
       const { data, error: rpcError } = await supabase.rpc('get_patient_medical_history', {
         p_patient_id: targetPatientId,
-        p_include_deleted_appointments: isStaff() || isAdmin()
+        p_include_deleted_appointments: isStaff || isAdmin
       });
 
       if (rpcError) throw new Error(rpcError.message);
@@ -68,7 +68,7 @@ export const useMedicalHistory = () => {
 
   // Create medical history record (staff/admin only)
   const createMedicalRecord = useCallback(async (recordData) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -150,7 +150,7 @@ export const useMedicalHistory = () => {
 
   // Update medical history record (staff/admin only)
   const updateMedicalRecord = useCallback(async (recordId, updates) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -269,7 +269,7 @@ export const useMedicalHistory = () => {
 
   // Get patient summary (aggregated medical data)
   const getPatientSummary = useCallback(async (patientId) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -326,7 +326,7 @@ export const useMedicalHistory = () => {
   // Export medical history (for patients and authorized staff)
   const exportMedicalHistory = useCallback(async (patientId = null, format = 'json') => {
     try {
-      const targetPatientId = patientId || (isPatient() ? profile?.user_id : null);
+      const targetPatientId = patientId || (isPatient ? profile?.user_id : null);
       
       if (!targetPatientId) {
         throw new Error('Patient ID is required');
@@ -377,8 +377,8 @@ export const useMedicalHistory = () => {
     
     // Utilities
     clearError: () => setError(null),
-    canCreateRecords: isStaff() || isAdmin(),
-    canViewRecords: isStaff() || isAdmin() || isPatient(),
+    canCreateRecords: isStaff || isAdmin,
+    canViewRecords: isStaff || isAdmin || isPatient,
     searchMedicalRecords,
     
     // Helpers

@@ -5,7 +5,6 @@ import {
   useContext,
   useMemo,
   useRef,
-  useCallback,
 } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { authService } from "../hooks/authService";
@@ -193,17 +192,18 @@ export const AuthProvider = ({ children }) => {
   console.log("  → userRole:", userRole);
   console.log("  → isEmailVerified:", isEmailVerified);
   console.log("  → canAccessApp:", canAccessApp);
+  console.log("  → profileData: ", profile);
 
   // Role checks
-  const isPatient = useCallback(
+  const isPatient = useMemo(
     () => authStatus?.user_role === "patient",
     [authStatus?.user_role]
   );
-  const isStaff = useCallback(
+  const isStaff = useMemo(
     () => authStatus?.user_role === "staff",
     [authStatus?.user_role]
   );
-  const isAdmin = useCallback(
+  const isAdmin = useMemo(
     () => authStatus?.user_role === "admin",
     [authStatus?.user_role]
   );
@@ -287,21 +287,27 @@ export const AuthProvider = ({ children }) => {
   };
 
   const updateProfile = async (
+    userId = null,
     profileData,
     roleSpecificData = {},
-    userId = null
+    clinicData = {},
+    servicesData = {},
+    doctorsData = {}
   ) => {
     setLoading(true);
     setError(null);
     try {
       const result = await authService.updateProfile(
+        userId,
         profileData,
         roleSpecificData,
-        userId
+        clinicData,
+        servicesData,
+        doctorsData
       );
       if (result.success) {
         await handleRefreshProfile();
-        return { success: true };
+        return { success: true, data: result.data };
       } else {
         return {
           success: false,

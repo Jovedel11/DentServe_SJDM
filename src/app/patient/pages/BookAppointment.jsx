@@ -93,7 +93,7 @@ const BookAppointment = () => {
   };
 
   // Access control
-  if (!isPatient()) {
+  if (!isPatient) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="max-w-md mx-auto text-center p-8 glass-effect rounded-xl border shadow-lg">

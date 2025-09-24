@@ -49,7 +49,7 @@ const NotificationBell = ({
   const bellRef = useRef(null);
 
   // ✅ ACCESS CONTROL
-  if (!user || !isPatient || !isPatient()) {
+  if (!user || !isPatient || !isPatient) {
     return null;
   }
 

@@ -65,7 +65,7 @@ export const usePatientFeedback = () => {
 
   // ✅ ENHANCED - Better data fetching with caching
   const fetchCompletedAppointments = useCallback(async () => {
-    if (!user || !isPatient() || fetchedRef.current.appointments) {
+    if (!user || !isPatient || fetchedRef.current.appointments) {
       return { success: false, error: 'Invalid state or already fetched' };
     }
 
@@ -167,7 +167,7 @@ export const usePatientFeedback = () => {
 
   // ✅ OPTIMIZED - Better feedback history with archive integration
   const fetchFeedbackHistory = useCallback(async (forceRefresh = false) => {
-    if (!user || !isPatient() || (!forceRefresh && fetchedRef.current.feedback)) {
+    if (!user || !isPatient || (!forceRefresh && fetchedRef.current.feedback)) {
       return { success: false, error: 'Invalid state or already fetched' };
     }
 
@@ -535,13 +535,13 @@ Generated on ${new Date().toLocaleString()}
 
   // ✅ OPTIMIZED - Auto-fetch on mount only
   useEffect(() => {
-    if (user && isPatient() && !fetchedRef.current.appointments) {
+    if (user && isPatient && !fetchedRef.current.appointments) {
       fetchCompletedAppointments();
     }
   }, [user, isPatient, fetchCompletedAppointments]);
 
   useEffect(() => {
-    if (user && isPatient() && !fetchedRef.current.feedback) {
+    if (user && isPatient && !fetchedRef.current.feedback) {
       fetchFeedbackHistory();
     }
   }, [user, isPatient, fetchFeedbackHistory]);

@@ -51,7 +51,7 @@ export const useDashboardAnalytics = () => {
       // ✅ LIGHTWEIGHT PROCESSING - Minimal data transformation
       let processedData = null;
 
-      if (isPatient()) {
+      if (isPatient) {
         processedData = {
           type: 'patient',
           profile_completion: data.profile_completion,
@@ -60,7 +60,7 @@ export const useDashboardAnalytics = () => {
           quick_stats: data.quick_stats || {},
           notifications: data.notifications || []
         };
-      } else if (isStaff()) {
+      } else if (isStaff) {
         processedData = {
           type: 'staff',
           clinic_info: data.clinic_info,
@@ -68,7 +68,7 @@ export const useDashboardAnalytics = () => {
           pending_feedback: data.pending_feedback || 0,
           growth_analytics: data.growth_analytics
         };
-      } else if (isAdmin()) {
+      } else if (isAdmin) {
         processedData = {
           type: 'admin',
           system_overview: data.system_overview,

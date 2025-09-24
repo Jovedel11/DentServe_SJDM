@@ -18,7 +18,7 @@ export const useStaffAppointments = () => {
 
   // Fetch appointments with comprehensive filtering
   const fetchAppointments = useCallback(async (filters = {}) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       return { success: false, error: 'Access denied: Staff or Admin only' };
     }
 
@@ -89,7 +89,7 @@ export const useStaffAppointments = () => {
       return { success: false, error: 'Appointment ID is required' };
     }
 
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Insufficient permissions';
       setError(error);
       return { success: false, error };
@@ -155,7 +155,7 @@ export const useStaffAppointments = () => {
       return { success: false, error: 'Appointment ID is required' };
     }
 
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Insufficient permissions';
       setError(error);
       return { success: false, error };
@@ -259,7 +259,7 @@ export const useStaffAppointments = () => {
       return { success: false, error: 'Appointment ID is required' };
     }
 
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Insufficient permissions';
       setError(error);
       return { success: false, error };
@@ -281,6 +281,8 @@ export const useStaffAppointments = () => {
         p_follow_up_notes: completionData.follow_up_notes || '',
         p_services_completed: completionData.services_completed || []
       });
+
+      console.log("🔍 RPC raw result:", { data, error });
 
       if (error) throw new Error(error.message);
 
@@ -327,7 +329,7 @@ export const useStaffAppointments = () => {
 
   // Auto-fetch on mount
   useEffect(() => {
-    if (isStaff() || isAdmin()) {
+    if (isStaff || isAdmin) {
       fetchAppointments();
     }
   }, [isStaff, isAdmin, fetchAppointments]);

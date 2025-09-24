@@ -386,7 +386,7 @@ const PatientDashboard = () => {
 
   // Auto-refresh on mount
   useEffect(() => {
-    if (user && isPatient()) {
+    if (user && isPatient) {
       // Data will be auto-fetched by hooks
     }
   }, [user, isPatient]);

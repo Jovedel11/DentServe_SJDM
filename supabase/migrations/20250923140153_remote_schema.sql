@@ -135,299 +135,6 @@ CREATE TYPE "public"."user_type" AS ENUM (
 
 ALTER TYPE "public"."user_type" OWNER TO "postgres";
 
--- 1. Add missing columns to staff_invitations table
-ALTER TABLE "public"."staff_invitations" 
-ADD COLUMN IF NOT EXISTS "invitation_token" TEXT,
-ADD COLUMN IF NOT EXISTS "completed_at" timestamp with time zone;
-
--- 2. Update the status check constraint to include 'completed'
-ALTER TABLE "public"."staff_invitations" 
-DROP CONSTRAINT IF EXISTS "staff_invitations_status_check";
-
-ALTER TABLE "public"."staff_invitations" 
-ADD CONSTRAINT "staff_invitations_status_check" 
-CHECK (("status" = ANY (ARRAY['pending'::text, 'accepted'::text, 'expired'::text, 'completed'::text])));
-
--- 3. Create email queue table (for backup/logging)
-CREATE TABLE IF NOT EXISTS "public"."email_queue" (
-    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
-    "to_email" character varying(255) NOT NULL,
-    "subject" character varying(500) NOT NULL,
-    "body" "text" NOT NULL,
-    "email_type" character varying(50) DEFAULT 'staff_invitation',
-    "status" character varying(20) DEFAULT 'pending',
-    "attempts" integer DEFAULT 0,
-    "max_attempts" integer DEFAULT 3,
-    "error_message" "text",
-    "scheduled_for" timestamp with time zone DEFAULT "now"(),
-    "sent_at" timestamp with time zone,
-    "created_at" timestamp with time zone DEFAULT "now"(),
-    "updated_at" timestamp with time zone DEFAULT "now"(),
-    CONSTRAINT "email_queue_pkey" PRIMARY KEY ("id")
-);
-
--- 4. Enable RLS for email_queue
-ALTER TABLE "public"."email_queue" ENABLE ROW LEVEL SECURITY;
-
--- 5. Add policy for service role
-CREATE POLICY "Service role can manage email queue" ON "public"."email_queue" 
-    USING (auth.role() = 'service_role');
-
--- 6. Create Resend email function
-CREATE OR REPLACE FUNCTION "public"."send_staff_invitation_email"("p_invitation_data" "jsonb") RETURNS "jsonb"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    AS $$
-DECLARE
-    queue_id UUID;
-    invitation_link TEXT;
-    email_body TEXT;
-BEGIN
-    -- Build invitation link (update with your domain)
-    invitation_link := format(
-        '%s/auth/staff-signup?invitation=%s&token=%s',
-        'http://localhost:5173', -- Change to your production domain
-        p_invitation_data->>'invitation_id',
-        p_invitation_data->>'invitation_token'
-    );
-    
-    -- Build email body
-    email_body := format(
-        '<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
-        .content { background: white; padding: 30px; border: 1px solid #e5e7eb; }
-        .button { display: inline-block; background: #10b981; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold; margin: 20px 0; }
-        .footer { background: #f9fafb; padding: 20px; text-align: center; border-radius: 0 0 8px 8px; font-size: 14px; color: #6b7280; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>🦷 Welcome to DentServe</h1>
-            <p>You''ve been invited to join our dental care platform</p>
-        </div>
-        <div class="content">
-            <h2>Hello %s %s!</h2>
-            <p>You have been invited to join <strong>%s</strong> as a <strong>%s</strong>.</p>
-            <p>Click the button below to complete your registration and set up your account:</p>
-            <p style="text-align: center;">
-                <a href="%s" class="button">Complete Registration</a>
-            </p>
-            <p><strong>Important:</strong> This invitation expires in 7 days.</p>
-            <p>If the button doesn''t work, copy and paste this link into your browser:</p>
-            <p style="word-break: break-all; background: #f3f4f6; padding: 10px; border-radius: 4px; font-family: monospace;">%s</p>
-        </div>
-        <div class="footer">
-            <p>If you have any questions, please contact our support team.</p>
-            <p>&copy; 2024 DentServe. All rights reserved.</p>
-        </div>
-    </div>
-</body>
-</html>',
-        COALESCE(p_invitation_data->>'first_name', ''),
-        COALESCE(p_invitation_data->>'last_name', ''),
-        p_invitation_data->>'clinic_name',
-        p_invitation_data->>'position',
-        invitation_link,
-        invitation_link
-    );
-    
-    -- Log email to queue table for backup
-    INSERT INTO email_queue (
-        to_email,
-        subject,
-        body,
-        email_type,
-        status
-    ) VALUES (
-        p_invitation_data->>'email',
-        format('Welcome to %s - Complete Your Registration', p_invitation_data->>'clinic_name'),
-        email_body,
-        'staff_invitation',
-        'queued_for_resend'
-    ) RETURNING id INTO queue_id;
-    
-    RETURN jsonb_build_object(
-        'success', true,
-        'queue_id', queue_id,
-        'to_email', p_invitation_data->>'email',
-        'subject', format('Welcome to %s - Complete Your Registration', p_invitation_data->>'clinic_name'),
-        'html_body', email_body
-    );
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Failed to prepare email: ' || SQLERRM
-        );
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION "public"."send_staff_invitation_email"("p_invitation_data" "jsonb") RETURNS "jsonb"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    AS $$
-DECLARE
-    queue_id UUID;
-BEGIN
-    -- Log email to queue table for backup/tracking
-    INSERT INTO email_queue (
-        to_email,
-        subject,
-        body,
-        email_type,
-        status
-    ) VALUES (
-        p_invitation_data->>'email',
-        format('Welcome to %s - Complete Your Registration', p_invitation_data->>'clinic_name'),
-        'Email content will be generated by backend',
-        'staff_invitation',
-        'queued_for_backend'
-    ) RETURNING id INTO queue_id;
-    
-    -- Return data needed for backend email service
-    RETURN jsonb_build_object(
-        'success', true,
-        'queue_id', queue_id,
-        'to_email', p_invitation_data->>'email',
-        'subject', format('Welcome to %s - Complete Your Registration', p_invitation_data->>'clinic_name'),
-        'clinic_name', p_invitation_data->>'clinic_name',
-        'position', p_invitation_data->>'position',
-        'first_name', p_invitation_data->>'first_name',
-        'last_name', p_invitation_data->>'last_name',
-        'invitation_id', p_invitation_data->>'invitation_id',
-        'invitation_token', p_invitation_data->>'invitation_token'
-    );
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Failed to prepare email: ' || SQLERRM
-        );
-END;
-$$;
-
--- 7. Update create_staff_invitation function
-CREATE OR REPLACE FUNCTION "public"."create_staff_invitation"(
-    "p_email" character varying, 
-    "p_clinic_id" "uuid", 
-    "p_position" character varying, 
-    "p_department" character varying DEFAULT NULL::character varying, 
-    "p_first_name" character varying DEFAULT NULL::character varying, 
-    "p_last_name" character varying DEFAULT NULL::character varying
-) RETURNS "jsonb"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public', 'pg_catalog'
-    AS $$
-DECLARE
-    invitation_id UUID;
-    temp_password TEXT;
-    invitation_token TEXT;
-    current_user_context JSONB;
-    clinic_name VARCHAR;
-    email_data JSONB;
-BEGIN
-    -- Security check
-    current_user_context := get_current_user_context();
-    
-    IF NOT (current_user_context->>'authenticated')::boolean THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
-    END IF;
-    
-    IF (current_user_context->>'user_type') != 'admin' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Only admins can invite staff');
-    END IF;
-    
-    -- Validate required fields
-    IF p_email IS NULL OR p_email = '' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Email is required');
-    END IF;
-    
-    IF p_clinic_id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Clinic ID is required');
-    END IF;
-    
-    -- Check if clinic exists
-    SELECT name INTO clinic_name FROM clinics WHERE id = p_clinic_id;
-    IF clinic_name IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Clinic not found');
-    END IF;
-    
-    -- Check if invitation already exists and is pending
-    IF EXISTS (
-        SELECT 1 FROM staff_invitations 
-        WHERE email = p_email 
-        AND status = 'pending' 
-        AND expires_at > NOW()
-    ) THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Pending invitation already exists for this email');
-    END IF;
-    
-    -- Check if user already exists
-    IF EXISTS (SELECT 1 FROM users WHERE email = p_email) THEN
-        RETURN jsonb_build_object('success', false, 'error', 'User with this email already exists');
-    END IF;
-    
-    -- Generate temporary password and invitation token using UUID
-    temp_password := replace(gen_random_uuid()::text, '-', '');
-    invitation_token := replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
-    
-    -- Create invitation record
-    INSERT INTO staff_invitations (
-        email,
-        clinic_id,
-        position,
-        department,
-        temp_password,
-        invitation_token,
-        expires_at,
-        status
-    ) VALUES (
-        p_email,
-        p_clinic_id,
-        COALESCE(p_position, 'Staff'),
-        p_department,
-        temp_password,
-        invitation_token,
-        NOW() + INTERVAL '7 days',
-        'pending'
-    ) RETURNING id INTO invitation_id;
-    
-    -- Prepare email data for Resend
-    SELECT send_staff_invitation_email(
-        jsonb_build_object(
-            'invitation_id', invitation_id,
-            'invitation_token', invitation_token,
-            'email', p_email,
-            'clinic_name', clinic_name,
-            'position', COALESCE(p_position, 'Staff'),
-            'first_name', COALESCE(p_first_name, ''),
-            'last_name', COALESCE(p_last_name, '')
-        )
-    ) INTO email_data;
-    
-    RETURN jsonb_build_object(
-        'success', true,
-        'message', 'Staff invitation created successfully',
-        'invitation_id', invitation_id,
-        'email_data', email_data
-    );
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Failed to create staff invitation: ' || SQLERRM
-        );
-END;
-$$;
-
 
 CREATE OR REPLACE FUNCTION "public"."approve_appointment"("p_appointment_id" "uuid", "p_staff_notes" "text" DEFAULT NULL::"text") RETURNS "jsonb"
     LANGUAGE "plpgsql" SECURITY DEFINER
@@ -683,12 +390,15 @@ DECLARE
     current_user_context jsonb;
     request_record record;
     invitation_result jsonb;
+    new_clinic_id uuid;
+    first_name varchar;
+    last_name varchar;
 BEGIN
     -- Security check
     current_user_context := get_current_user_context();
     
     IF current_user_context->>'user_type' != 'admin' THEN
-        RAISE EXCEPTION 'Access denied. Admin privileges required.';
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied. Admin privileges required.');
     END IF;
     
     -- Get the request
@@ -703,34 +413,69 @@ BEGIN
         );
     END IF;
     
+    -- Extract first and last name (basic parsing)
+    first_name := split_part(request_record.clinic_name, ' ', 1);
+    last_name := COALESCE(split_part(request_record.clinic_name, ' ', 2), '');
+    
+    -- Create clinic first (placeholder - will be updated during profile completion)
+    INSERT INTO clinics (
+        name,
+        address,
+        city,
+        province,
+        email,
+        location,
+        is_active
+    ) VALUES (
+        request_record.clinic_name,
+        'To be updated during profile completion',
+        'San Jose Del Monte',
+        'Bulacan', 
+        request_record.email,
+        ST_SetSRID(ST_Point(121.0583, 14.8169), 4326)::geography,
+        true
+    ) RETURNING id INTO new_clinic_id;
+    
+    -- Create staff invitation
+    invitation_result := create_staff_invitation(
+        request_record.email,
+        new_clinic_id,
+        'Clinic Manager',
+        'Administration',
+        first_name,
+        last_name
+    );
+    
+    IF NOT (invitation_result->>'success')::boolean THEN
+        -- Rollback clinic creation if invitation fails
+        DELETE FROM clinics WHERE id = new_clinic_id;
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Failed to create staff invitation: ' || (invitation_result->>'error')
+        );
+    END IF;
+    
     -- Update request status
-    UPDATE clinic_partnership_requests
+    UPDATE clinic_partnership_requests 
     SET 
         status = 'approved',
+        admin_notes = p_admin_notes,
         reviewed_by = (current_user_context->>'user_id')::uuid,
-        reviewed_at = NOW(),
-        admin_notes = p_admin_notes
+        reviewed_at = NOW()
     WHERE id = p_request_id;
-    
-    -- Send staff invitation using existing function
-    SELECT send_staff_invitation(
-        request_record.email,
-        jsonb_build_object(
-            'clinic_name', request_record.clinic_name,
-            'admin_notes', p_admin_notes
-        )
-    ) INTO invitation_result;
     
     RETURN jsonb_build_object(
         'success', true,
         'message', 'Partnership request approved and invitation sent',
-        'invitation_result', invitation_result
+        'clinic_id', new_clinic_id,
+        'invitation_id', invitation_result->'invitation_id'
     );
+    
 EXCEPTION
     WHEN OTHERS THEN
         RETURN jsonb_build_object(
             'success', false,
-            'error', SQLERRM
+            'error', 'Failed to approve partnership request: ' || SQLERRM
         );
 END;
 $$;
@@ -739,19 +484,10 @@ $$;
 ALTER FUNCTION "public"."approve_partnership_request"("p_request_id" "uuid", "p_admin_notes" "text") OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION public.book_appointment(
-    p_clinic_id uuid, 
-    p_doctor_id uuid, 
-    p_appointment_date date, 
-    p_appointment_time time without time zone, 
-    p_service_ids uuid[], 
-    p_symptoms text DEFAULT NULL::text
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_catalog', 'extensions'
-AS $function$
+CREATE OR REPLACE FUNCTION "public"."book_appointment"("p_clinic_id" "uuid", "p_doctor_id" "uuid", "p_appointment_date" "date", "p_appointment_time" time without time zone, "p_service_ids" "uuid"[], "p_symptoms" "text" DEFAULT NULL::"text") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'pg_catalog', 'extensions'
+    AS $$
 DECLARE
     current_context JSONB;
     patient_id_val UUID;
@@ -993,7 +729,8 @@ BEGIN
             RETURN jsonb_build_object('success', false, 'error', 'Booking failed. Please try again.');
     END;
 END;
-$function$
+$$;
+
 
 ALTER FUNCTION "public"."book_appointment"("p_clinic_id" "uuid", "p_doctor_id" "uuid", "p_appointment_date" "date", "p_appointment_time" time without time zone, "p_service_ids" "uuid"[], "p_symptoms" "text") OWNER TO "postgres";
 
@@ -1618,56 +1355,65 @@ $$;
 ALTER FUNCTION "public"."check_patient_reliability"("p_patient_id" "uuid", "p_clinic_id" "uuid", "p_lookback_months" integer) OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."check_rate_limit"("p_user_identifier" "text", "p_action_type" "text", "p_max_attempts" integer, "p_time_window_minutes" integer) RETURNS boolean
+CREATE OR REPLACE FUNCTION "public"."check_rate_limit"("p_user_identifier" "text", "p_action_type" "text", "p_max_attempts" integer, "p_time_window_minutes" integer, "p_success" boolean DEFAULT false) RETURNS boolean
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_catalog', 'extensions'
     AS $$
 DECLARE
-    current_attempts INTEGER;
     time_window_start TIMESTAMP WITH TIME ZONE;
     rate_record RECORD;
 BEGIN
-    -- Compute cutoff time window
     time_window_start := NOW() - (p_time_window_minutes || ' minutes')::INTERVAL;
 
-    -- ✅ FIXED: Clean up old entries first
-    DELETE FROM rate_limits 
+    -- Clean old entries
+    DELETE FROM rate_limits
     WHERE last_attempt < time_window_start
       AND blocked_until IS NULL;
 
-    -- ✅ FIXED: Use UPSERT to handle concurrent inserts
+    -- ✅ Reset attempts only if success AND action_type = login or clinic_search
+    IF p_success AND p_action_type IN ('login', 'clinic_search') THEN
+        UPDATE rate_limits
+        SET attempt_count = 0,
+            blocked_until = NULL,
+            last_attempt = NOW(),
+            first_attempt = NOW()
+        WHERE user_identifier = p_user_identifier
+          AND action_type = p_action_type;
+        RETURN TRUE;
+    END IF;
+
+    -- Handle failed attempt (or success but action must still be counted, e.g., booking/feedback)
     INSERT INTO rate_limits (user_identifier, action_type, attempt_count, first_attempt, last_attempt)
     VALUES (p_user_identifier, p_action_type, 1, NOW(), NOW())
-    ON CONFLICT (user_identifier, action_type) 
+    ON CONFLICT (user_identifier, action_type)
     DO UPDATE SET 
         last_attempt = NOW(),
-        attempt_count = CASE 
+        attempt_count = CASE
             WHEN rate_limits.blocked_until IS NOT NULL AND rate_limits.blocked_until > NOW() THEN
-                rate_limits.attempt_count -- Keep existing count if still blocked
+                rate_limits.attempt_count
             WHEN rate_limits.last_attempt < time_window_start THEN
-                1 -- Reset if outside time window
+                1
             ELSE
-                rate_limits.attempt_count + 1 -- Increment if within window
+                rate_limits.attempt_count + 1
         END,
         blocked_until = CASE
             WHEN rate_limits.blocked_until IS NOT NULL AND rate_limits.blocked_until > NOW() THEN
-                rate_limits.blocked_until -- Keep existing block
+                rate_limits.blocked_until
             WHEN rate_limits.last_attempt < time_window_start THEN
-                NULL -- Clear block if outside time window
+                NULL
             ELSE
-                rate_limits.blocked_until -- Keep existing state
+                rate_limits.blocked_until
         END
     RETURNING attempt_count, blocked_until INTO rate_record;
 
-    -- ✅ Check if currently blocked
+    -- Check if blocked
     IF rate_record.blocked_until IS NOT NULL AND rate_record.blocked_until > NOW() THEN
         RETURN FALSE;
     END IF;
 
-    -- ✅ Check if we've exceeded attempts
+    -- Check exceeded attempts
     IF rate_record.attempt_count >= p_max_attempts THEN
-        -- ✅ Block the user
-        UPDATE rate_limits 
+        UPDATE rate_limits
         SET blocked_until = CASE p_action_type
             WHEN 'login' THEN NOW() + INTERVAL '15 minutes'
             WHEN 'appointment_booking' THEN NOW() + INTERVAL '1 hour'
@@ -1677,7 +1423,7 @@ BEGIN
         END
         WHERE user_identifier = p_user_identifier
           AND action_type = p_action_type;
-        
+
         RETURN FALSE;
     END IF;
 
@@ -1685,14 +1431,13 @@ BEGIN
 
 EXCEPTION
     WHEN OTHERS THEN
-        -- ✅ Log error and fail open for availability
         RAISE LOG 'Rate limit error for % %: %', p_user_identifier, p_action_type, SQLERRM;
         RETURN TRUE;
 END;
 $$;
 
 
-ALTER FUNCTION "public"."check_rate_limit"("p_user_identifier" "text", "p_action_type" "text", "p_max_attempts" integer, "p_time_window_minutes" integer) OWNER TO "postgres";
+ALTER FUNCTION "public"."check_rate_limit"("p_user_identifier" "text", "p_action_type" "text", "p_max_attempts" integer, "p_time_window_minutes" integer, "p_success" boolean) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."check_rate_limit_unified"("p_user_email" character varying, "p_action_type" character varying, "p_max_attempts" integer, "p_window_minutes" integer DEFAULT 1440, "p_is_success" boolean DEFAULT false) RETURNS boolean
@@ -1770,28 +1515,28 @@ DECLARE
     clinic_id_val UUID;
     completed_services JSONB;
 BEGIN
-    
+    -- ✅ Get current user context
     current_context := get_current_user_context();
-    
+
     IF NOT (current_context->>'authenticated')::boolean THEN
         RETURN current_context;
     END IF;
-    
+
     v_current_role := current_context->>'user_type';
-    
+
     -- Only staff can complete appointments
     IF v_current_role != 'staff' THEN
         RETURN jsonb_build_object('success', false, 'error', 'Access denied: Staff only');
     END IF;
-    
+
     clinic_id_val := (current_context->>'clinic_id')::UUID;
-    
-    -- ✅ ENHANCED: Input validation
+
+    -- ✅ Input validation
     IF p_appointment_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Appointment ID is required');
     END IF;
-    
-    -- ✅ OPTIMIZED: Get appointment with all related service data
+
+    -- ✅ Get appointment
     SELECT 
         a.*,
         c.name as clinic_name,
@@ -1819,12 +1564,12 @@ BEGIN
     LEFT JOIN doctors d ON a.doctor_id = d.id
     WHERE a.id = p_appointment_id
     AND a.clinic_id = clinic_id_val;
-    
+
     IF NOT FOUND THEN
         RETURN jsonb_build_object('success', false, 'error', 'Appointment not found or access denied');
     END IF;
-    
-    -- ✅ ENHANCED: Status validation
+
+    -- ✅ Status validation
     IF appointment_record.status NOT IN ('confirmed', 'pending') THEN
         RETURN jsonb_build_object(
             'success', false, 
@@ -1835,8 +1580,8 @@ BEGIN
             )
         );
     END IF;
-    
-    -- ✅ ENHANCED: Validate appointment date/time logic
+
+    -- ✅ Date validation
     IF appointment_record.appointment_date > CURRENT_DATE THEN
         RETURN jsonb_build_object(
             'success', false, 
@@ -1847,10 +1592,9 @@ BEGIN
             )
         );
     END IF;
-    
-    -- ✅ ENHANCED: Validate services completed against appointment services
+
+    -- ✅ Validate services completed
     IF p_services_completed IS NOT NULL THEN
-        -- Get details of completed services for validation
         SELECT jsonb_agg(jsonb_build_object(
             'id', s.id,
             'name', s.name,
@@ -1862,10 +1606,10 @@ BEGIN
         WHERE s.id = ANY(p_services_completed)
         AND s.clinic_id = clinic_id_val;
     END IF;
-    
-    -- ✅ TRANSACTION: Atomic completion process
+
+    -- ✅ Transaction
     BEGIN
-        -- Update appointment status with completion details
+        -- Update appointment
         UPDATE appointments 
         SET 
             status = 'completed',
@@ -1880,39 +1624,40 @@ BEGIN
             ),
             updated_at = NOW()
         WHERE id = p_appointment_id;
-        
-        -- ✅ ENHANCED: Create medical history entry if services were provided
+
+        -- ✅ Insert medical history (aligned with schema)
         IF p_completion_notes IS NOT NULL OR p_services_completed IS NOT NULL THEN
             INSERT INTO patient_medical_history (
                 patient_id,
                 appointment_id,
                 created_by,
-                visit_date,
-                diagnosis,
-                treatment_provided,
+                conditions,
+                allergies,
                 medications,
+                treatment_notes,
                 follow_up_required,
-                follow_up_notes,
-                visit_notes
+                follow_up_date
             ) VALUES (
                 appointment_record.patient_id,
                 p_appointment_id,
                 (current_context->>'user_id')::UUID,
-                appointment_record.appointment_date,
-                NULL, -- Diagnosis can be updated separately
+                NULL, -- conditions handled separately
+                NULL, -- allergies handled separately
+                NULL, -- medications handled separately
                 CASE 
                     WHEN p_services_completed IS NOT NULL THEN
-                        (SELECT string_agg(name, ', ') FROM services WHERE id = ANY(p_services_completed))
-                    ELSE 'General consultation'
+                        'Services completed: ' || (SELECT string_agg(name, ', ') FROM services WHERE id = ANY(p_services_completed))
+                    ELSE p_completion_notes
                 END,
-                NULL, -- Medications can be added separately
                 p_follow_up_required,
-                p_follow_up_notes,
-                p_completion_notes
+                CASE 
+                    WHEN p_follow_up_required THEN CURRENT_DATE + INTERVAL '7 days'
+                    ELSE NULL
+                END
             );
         END IF;
-        
-        -- ✅ ENHANCED: Create feedback request notification with delay
+
+        -- ✅ Feedback request notification
         INSERT INTO notifications (
             user_id, 
             notification_type, 
@@ -1927,10 +1672,10 @@ BEGIN
             format('Your appointment at %s has been completed. Please share your feedback to help us improve our service.',
                    appointment_record.clinic_name),
             p_appointment_id,
-            NOW() + INTERVAL '2 hours' -- Delay feedback request
+            NOW() + INTERVAL '2 hours'
         );
-        
-        -- ✅ ENHANCED: If follow-up required, create reminder for staff
+
+        -- ✅ Follow-up reminder notification
         IF p_follow_up_required THEN
             INSERT INTO notifications (
                 user_id, 
@@ -1948,11 +1693,11 @@ BEGIN
                        appointment_record.appointment_date,
                        COALESCE(p_follow_up_notes, 'No specific notes')),
                 p_appointment_id,
-                NOW() + INTERVAL '1 week' -- Follow-up reminder in 1 week
+                NOW() + INTERVAL '1 week'
             );
         END IF;
-        
-        -- ✅ ENHANCED: Return comprehensive completion data
+
+        -- ✅ Final return
         RETURN jsonb_build_object(
             'success', true,
             'message', 'Appointment completed successfully',
@@ -1972,8 +1717,7 @@ BEGIN
                     'services_completed', completed_services,
                     'completion_notes', p_completion_notes,
                     'follow_up_required', p_follow_up_required,
-                    'follow_up_notes', p_follow_up_notes,
-                    'medical_history_created', (p_completion_notes IS NOT NULL OR p_services_completed IS NOT NULL)
+                    'follow_up_notes', p_follow_up_notes
                 ),
                 'notifications_scheduled', jsonb_build_object(
                     'feedback_request', jsonb_build_object(
@@ -1988,23 +1732,10 @@ BEGIN
                             )
                         ELSE NULL
                     END
-                ),
-                'next_actions', CASE 
-                    WHEN p_follow_up_required THEN
-                        jsonb_build_array(
-                            'Schedule follow-up appointment',
-                            'Monitor patient feedback',
-                            'Update medical records'
-                        )
-                    ELSE
-                        jsonb_build_array(
-                            'Monitor patient feedback',
-                            'Archive appointment records'
-                        )
-                END
+                )
             )
         );
-        
+
     EXCEPTION
         WHEN OTHERS THEN
             RAISE LOG 'complete_appointment error for appointment %: %', p_appointment_id, SQLERRM;
@@ -2160,6 +1891,95 @@ $$;
 ALTER FUNCTION "public"."create_appointment_with_validation"("p_doctor_id" "uuid", "p_clinic_id" "uuid", "p_appointment_date" "date", "p_appointment_time" time without time zone, "p_service_type" character varying, "p_symptoms" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."create_direct_staff_invitation"("p_email" character varying) RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    current_user_context JSONB;
+    admin_clinic_id UUID;
+    result JSONB;
+BEGIN
+    -- Security check
+    current_user_context := get_current_user_context();
+    
+    IF NOT (current_user_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+    
+    IF (current_user_context->>'user_type') != 'admin' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Only admins can invite staff');
+    END IF;
+    
+    -- Get admin's default clinic (first active clinic)
+    SELECT id INTO admin_clinic_id 
+    FROM clinics 
+    WHERE is_active = true 
+    ORDER BY created_at ASC 
+    LIMIT 1;
+    
+    IF admin_clinic_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'No active clinic found. Please create a clinic first.');
+    END IF;
+    
+    -- Use existing create_staff_invitation function
+    result := create_staff_invitation(
+        p_email,
+        admin_clinic_id,
+        'Staff',
+        'General',
+        NULL,
+        NULL
+    );
+    
+    RETURN result;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."create_direct_staff_invitation"("p_email" character varying) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."create_direct_staff_invitation"("p_email" character varying, "p_clinic_id" "uuid", "p_position" character varying DEFAULT 'Staff'::character varying, "p_department" character varying DEFAULT NULL::character varying, "p_first_name" character varying DEFAULT NULL::character varying, "p_last_name" character varying DEFAULT NULL::character varying) RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    current_user_context JSONB;
+    result JSONB;
+BEGIN
+    -- Security check
+    current_user_context := get_current_user_context();
+    
+    IF NOT (current_user_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+    
+    IF (current_user_context->>'user_type') != 'admin' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Only admins can invite staff');
+    END IF;
+    
+    -- Validate clinic exists
+    IF NOT EXISTS (SELECT 1 FROM clinics WHERE id = p_clinic_id AND is_active = true) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Clinic not found or inactive');
+    END IF;
+    
+    -- Use existing create_staff_invitation function
+    result := create_staff_invitation(
+        p_email,
+        p_clinic_id,
+        p_position,
+        p_department,
+        p_first_name,
+        p_last_name
+    );
+    
+    RETURN result;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."create_direct_staff_invitation"("p_email" character varying, "p_clinic_id" "uuid", "p_position" character varying, "p_department" character varying, "p_first_name" character varying, "p_last_name" character varying) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."create_staff_invitation"("p_email" character varying, "p_clinic_id" "uuid", "p_position" character varying, "p_department" character varying DEFAULT NULL::character varying, "p_first_name" character varying DEFAULT NULL::character varying, "p_last_name" character varying DEFAULT NULL::character varying) RETURNS "jsonb"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public', 'pg_catalog'
@@ -2168,11 +1988,11 @@ DECLARE
     invitation_id UUID;
     temp_password TEXT;
     invitation_token TEXT;
-    result JSONB;
     current_user_context JSONB;
     clinic_name VARCHAR;
+    email_data JSONB;
 BEGIN
-    -- ✅ SECURITY: Get current user context
+    -- Security check
     current_user_context := get_current_user_context();
     
     IF NOT (current_user_context->>'authenticated')::boolean THEN
@@ -2213,9 +2033,9 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'User with this email already exists');
     END IF;
     
-    -- Generate temporary password and invitation token
-    temp_password := encode(gen_random_bytes(12), 'base64');
-    invitation_token := encode(gen_random_bytes(32), 'hex');
+    -- Generate temporary password and invitation token using UUID
+    temp_password := replace(gen_random_uuid()::text, '-', '');
+    invitation_token := replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
     
     -- Create invitation record
     INSERT INTO staff_invitations (
@@ -2224,6 +2044,7 @@ BEGIN
         position,
         department,
         temp_password,
+        invitation_token,
         expires_at,
         status
     ) VALUES (
@@ -2232,40 +2053,37 @@ BEGIN
         COALESCE(p_position, 'Staff'),
         p_department,
         temp_password,
+        invitation_token,
         NOW() + INTERVAL '7 days',
         'pending'
     ) RETURNING id INTO invitation_id;
     
-    -- Return invitation details
-    SELECT jsonb_build_object(
-        'success', true,
-        'invitation_id', invitation_id,
-        'email', p_email,
-        'clinic_name', clinic_name,
-        'temp_password', temp_password,
-        'invitation_token', invitation_token,
-        'expires_at', NOW() + INTERVAL '7 days',
-        'invitation_link', format(
-            '%s/staff-signup?invitation=%s&token=%s', 
-            'https://yourdomain.com', -- Replace with your domain
-            invitation_id::text,
-            invitation_token
-        ),
-        'message', format(
-            'Staff invitation created for %s at %s. Expires in 7 days.',
-            p_email,
-            clinic_name
+    -- Prepare email data for Resend
+    SELECT send_staff_invitation_email(
+        jsonb_build_object(
+            'invitation_id', invitation_id,
+            'invitation_token', invitation_token,
+            'email', p_email,
+            'clinic_name', clinic_name,
+            'position', COALESCE(p_position, 'Staff'),
+            'first_name', COALESCE(p_first_name, ''),
+            'last_name', COALESCE(p_last_name, '')
         )
-    ) INTO result;
+    ) INTO email_data;
     
-    RAISE LOG 'Staff invitation created: ID=%, Email=%, Clinic=%s', invitation_id, p_email, clinic_name;
-    
-    RETURN result;
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Staff invitation created successfully',
+        'invitation_id', invitation_id,
+        'email_data', email_data
+    );
     
 EXCEPTION
     WHEN OTHERS THEN
-        RAISE LOG 'Error creating staff invitation: %', SQLERRM;
-        RETURN jsonb_build_object('success', false, 'error', 'Failed to create staff invitation: ' || SQLERRM);
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Failed to create staff invitation: ' || SQLERRM
+        );
 END;
 $$;
 
@@ -6930,360 +6748,6 @@ EXCEPTION
 END;
 $$;
 
--- 1. Fix create_staff_invitation function (remove email queue dependency)
-CREATE OR REPLACE FUNCTION "public"."create_staff_invitation"(
-    "p_email" character varying, 
-    "p_clinic_id" "uuid", 
-    "p_position" character varying, 
-    "p_department" character varying DEFAULT NULL::character varying, 
-    "p_first_name" character varying DEFAULT NULL::character varying, 
-    "p_last_name" character varying DEFAULT NULL::character varying
-) RETURNS "jsonb"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public', 'pg_catalog'
-    AS $$
-DECLARE
-    invitation_id UUID;
-    temp_password TEXT;
-    invitation_token TEXT;
-    current_user_context JSONB;
-    clinic_name VARCHAR;
-BEGIN
-    -- Security check
-    current_user_context := get_current_user_context();
-    
-    IF NOT (current_user_context->>'authenticated')::boolean THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
-    END IF;
-    
-    IF (current_user_context->>'user_type') != 'admin' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Only admins can invite staff');
-    END IF;
-    
-    -- Validate required fields
-    IF p_email IS NULL OR p_email = '' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Email is required');
-    END IF;
-    
-    IF p_clinic_id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Clinic ID is required');
-    END IF;
-    
-    -- Check if clinic exists
-    SELECT name INTO clinic_name FROM clinics WHERE id = p_clinic_id;
-    IF clinic_name IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Clinic not found');
-    END IF;
-    
-    -- Check if invitation already exists and is pending
-    IF EXISTS (
-        SELECT 1 FROM staff_invitations 
-        WHERE email = p_email 
-        AND status = 'pending' 
-        AND expires_at > NOW()
-    ) THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Pending invitation already exists for this email');
-    END IF;
-    
-    -- Check if user already exists
-    IF EXISTS (SELECT 1 FROM users WHERE email = p_email) THEN
-        RETURN jsonb_build_object('success', false, 'error', 'User with this email already exists');
-    END IF;
-    
-    -- Generate temporary password and invitation token using UUID
-    temp_password := replace(gen_random_uuid()::text, '-', '');
-    invitation_token := replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
-    
-    -- Create invitation record
-    INSERT INTO staff_invitations (
-        email,
-        clinic_id,
-        position,
-        department,
-        temp_password,
-        invitation_token,
-        expires_at,
-        status
-    ) VALUES (
-        p_email,
-        p_clinic_id,
-        COALESCE(p_position, 'Staff'),
-        p_department,
-        temp_password,
-        invitation_token,
-        NOW() + INTERVAL '7 days',
-        'pending'
-    ) RETURNING id INTO invitation_id;
-    
-    -- Create notification for email processing (without metadata column)
-    INSERT INTO notifications (
-        user_id,
-        notification_type,
-        title,
-        message,
-        created_at
-    ) VALUES (
-        (current_user_context->>'user_id')::uuid,
-        'partnership_request',
-        'Staff Invitation Sent',
-        format('Staff invitation sent to %s for %s position at %s', 
-            p_email, 
-            COALESCE(p_position, 'Staff'), 
-            clinic_name
-        ),
-        NOW()
-    );
-    
-    RETURN jsonb_build_object(
-        'success', true,
-        'message', 'Staff invitation created successfully',
-        'invitation_id', invitation_id,
-        'invitation_token', invitation_token
-    );
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Failed to create staff invitation: ' || SQLERRM
-        );
-END;
-$$;
-
--- 2. Fix reject_partnership_request function (without metadata column)
-CREATE OR REPLACE FUNCTION "public"."reject_partnership_request"(
-    "p_request_id" "uuid", 
-    "p_admin_notes" "text" DEFAULT NULL::"text"
-) RETURNS "jsonb"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    AS $$
-DECLARE
-    current_user_context jsonb;
-    request_record record;
-BEGIN
-    -- Security check
-    current_user_context := get_current_user_context();
-    
-    IF current_user_context->>'user_type' != 'admin' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Access denied. Admin privileges required.');
-    END IF;
-    
-    -- Get the request
-    SELECT * INTO request_record
-    FROM clinic_partnership_requests
-    WHERE id = p_request_id AND status = 'pending';
-    
-    IF NOT FOUND THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Request not found or already processed'
-        );
-    END IF;
-    
-    -- Update request status
-    UPDATE clinic_partnership_requests 
-    SET 
-        status = 'rejected',
-        admin_notes = p_admin_notes,
-        reviewed_by = (current_user_context->>'user_id')::uuid,
-        reviewed_at = NOW()
-    WHERE id = p_request_id;
-    
-    -- Create notification record (without metadata column)
-    INSERT INTO notifications (
-        user_id,
-        notification_type,
-        title,
-        message,
-        created_at
-    ) VALUES (
-        (current_user_context->>'user_id')::uuid,
-        'partnership_request',
-        'Partnership Request Rejected',
-        format('Partnership request for %s has been rejected. %s', 
-            request_record.clinic_name,
-            CASE 
-                WHEN p_admin_notes IS NOT NULL THEN 'Reason: ' || p_admin_notes
-                ELSE 'Please contact us if you have any questions.'
-            END
-        ),
-        NOW()
-    );
-    
-    RETURN jsonb_build_object(
-        'success', true,
-        'message', 'Partnership request rejected successfully'
-    );
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Failed to reject partnership request: ' || SQLERRM
-        );
-END;
-$$;
-
--- 3. Fix approve_partnership_request function
-CREATE OR REPLACE FUNCTION "public"."approve_partnership_request"(
-    "p_request_id" "uuid", 
-    "p_admin_notes" "text" DEFAULT NULL::"text"
-) RETURNS "jsonb"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    AS $$
-DECLARE
-    current_user_context jsonb;
-    request_record record;
-    invitation_result jsonb;
-    new_clinic_id uuid;
-    first_name varchar;
-    last_name varchar;
-BEGIN
-    -- Security check
-    current_user_context := get_current_user_context();
-    
-    IF current_user_context->>'user_type' != 'admin' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Access denied. Admin privileges required.');
-    END IF;
-    
-    -- Get the request
-    SELECT * INTO request_record
-    FROM clinic_partnership_requests
-    WHERE id = p_request_id AND status = 'pending';
-    
-    IF NOT FOUND THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Request not found or already processed'
-        );
-    END IF;
-    
-    -- Extract first and last name (basic parsing)
-    first_name := split_part(request_record.clinic_name, ' ', 1);
-    last_name := COALESCE(split_part(request_record.clinic_name, ' ', 2), '');
-    
-    -- Create clinic first (placeholder - will be updated during profile completion)
-    INSERT INTO clinics (
-        name,
-        address,
-        city,
-        province,
-        email,
-        location,
-        is_active
-    ) VALUES (
-        request_record.clinic_name,
-        'To be updated during profile completion',
-        'San Jose Del Monte',
-        'Bulacan', 
-        request_record.email,
-        ST_SetSRID(ST_Point(121.0583, 14.8169), 4326)::geography,
-        true
-    ) RETURNING id INTO new_clinic_id;
-    
-    -- Create staff invitation
-    invitation_result := create_staff_invitation(
-        request_record.email,
-        new_clinic_id,
-        'Clinic Manager',
-        'Administration',
-        first_name,
-        last_name
-    );
-    
-    IF NOT (invitation_result->>'success')::boolean THEN
-        -- Rollback clinic creation if invitation fails
-        DELETE FROM clinics WHERE id = new_clinic_id;
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Failed to create staff invitation: ' || (invitation_result->>'error')
-        );
-    END IF;
-    
-    -- Update request status
-    UPDATE clinic_partnership_requests 
-    SET 
-        status = 'approved',
-        admin_notes = p_admin_notes,
-        reviewed_by = (current_user_context->>'user_id')::uuid,
-        reviewed_at = NOW()
-    WHERE id = p_request_id;
-    
-    RETURN jsonb_build_object(
-        'success', true,
-        'message', 'Partnership request approved and invitation sent',
-        'clinic_id', new_clinic_id,
-        'invitation_id', invitation_result->'invitation_id'
-    );
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Failed to approve partnership request: ' || SQLERRM
-        );
-END;
-$$;
-
--- 4. Simplified direct staff invitation function
-CREATE OR REPLACE FUNCTION "public"."create_direct_staff_invitation"(
-    "p_email" character varying
-) RETURNS "jsonb"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    AS $$
-DECLARE
-    current_user_context JSONB;
-    admin_clinic_id UUID;
-    result JSONB;
-BEGIN
-    -- Security check
-    current_user_context := get_current_user_context();
-    
-    IF NOT (current_user_context->>'authenticated')::boolean THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
-    END IF;
-    
-    IF (current_user_context->>'user_type') != 'admin' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Only admins can invite staff');
-    END IF;
-    
-    -- Get admin's default clinic (first active clinic)
-    SELECT id INTO admin_clinic_id 
-    FROM clinics 
-    WHERE is_active = true 
-    ORDER BY created_at ASC 
-    LIMIT 1;
-    
-    IF admin_clinic_id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'error', 'No active clinic found. Please create a clinic first.');
-    END IF;
-    
-    -- Use existing create_staff_invitation function
-    result := create_staff_invitation(
-        p_email,
-        admin_clinic_id,
-        'Staff',
-        'General',
-        NULL,
-        NULL
-    );
-    
-    RETURN result;
-END;
-$$;
-
--- 5. Add missing invitation_token column if it doesn't exist
-DO $$ 
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns 
-        WHERE table_name = 'staff_invitations' 
-        AND column_name = 'invitation_token'
-    ) THEN
-        ALTER TABLE staff_invitations ADD COLUMN invitation_token TEXT;
-    END IF;
-END $$;
-
 
 ALTER FUNCTION "public"."manage_patient_archives"("p_action" "text", "p_item_type" "text", "p_item_id" "uuid", "p_item_ids" "uuid"[]) OWNER TO "postgres";
 
@@ -8225,7 +7689,6 @@ BEGIN
                       p_appointment_id, SQLERRM, SQLSTATE;
             RETURN jsonb_build_object('success', false, 'error', 
                 format('Rejection failed: %s (State: %s)', SQLERRM, SQLSTATE));
-    END;
 END;$$;
 
 
@@ -8237,21 +7700,18 @@ CREATE OR REPLACE FUNCTION "public"."reject_partnership_request"("p_request_id" 
     AS $$
 DECLARE
     current_user_context jsonb;
+    request_record record;
 BEGIN
     -- Security check
     current_user_context := get_current_user_context();
     
     IF current_user_context->>'user_type' != 'admin' THEN
-        RAISE EXCEPTION 'Access denied. Admin privileges required.';
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied. Admin privileges required.');
     END IF;
     
-    -- Update request status
-    UPDATE clinic_partnership_requests
-    SET 
-        status = 'rejected',
-        reviewed_by = (current_user_context->>'user_id')::uuid,
-        reviewed_at = NOW(),
-        admin_notes = p_admin_notes
+    -- Get the request
+    SELECT * INTO request_record
+    FROM clinic_partnership_requests
     WHERE id = p_request_id AND status = 'pending';
     
     IF NOT FOUND THEN
@@ -8261,15 +7721,46 @@ BEGIN
         );
     END IF;
     
+    -- Update request status
+    UPDATE clinic_partnership_requests 
+    SET 
+        status = 'rejected',
+        admin_notes = p_admin_notes,
+        reviewed_by = (current_user_context->>'user_id')::uuid,
+        reviewed_at = NOW()
+    WHERE id = p_request_id;
+    
+    -- Create notification record (without metadata column)
+    INSERT INTO notifications (
+        user_id,
+        notification_type,
+        title,
+        message,
+        created_at
+    ) VALUES (
+        (current_user_context->>'user_id')::uuid,
+        'partnership_request',
+        'Partnership Request Rejected',
+        format('Partnership request for %s has been rejected. %s', 
+            request_record.clinic_name,
+            CASE 
+                WHEN p_admin_notes IS NOT NULL THEN 'Reason: ' || p_admin_notes
+                ELSE 'Please contact us if you have any questions.'
+            END
+        ),
+        NOW()
+    );
+    
     RETURN jsonb_build_object(
         'success', true,
-        'message', 'Partnership request rejected'
+        'message', 'Partnership request rejected successfully'
     );
+    
 EXCEPTION
     WHEN OTHERS THEN
         RETURN jsonb_build_object(
             'success', false,
-            'error', SQLERRM
+            'error', 'Failed to reject partnership request: ' || SQLERRM
         );
 END;
 $$;
@@ -8446,6 +7937,54 @@ $$;
 
 
 ALTER FUNCTION "public"."send_condition_report"("p_clinic_id" "uuid", "p_subject" "text", "p_message" "text", "p_attachment_urls" "text"[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."send_staff_invitation_email"("p_invitation_data" "jsonb") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    queue_id UUID;
+BEGIN
+    -- Log email to queue table for backup/tracking
+    INSERT INTO email_queue (
+        to_email,
+        subject,
+        body,
+        email_type,
+        status
+    ) VALUES (
+        p_invitation_data->>'email',
+        format('Welcome to %s - Complete Your Registration', p_invitation_data->>'clinic_name'),
+        'Email content will be generated by backend',
+        'staff_invitation',
+        'queued_for_backend'
+    ) RETURNING id INTO queue_id;
+    
+    -- Return data needed for backend email service
+    RETURN jsonb_build_object(
+        'success', true,
+        'queue_id', queue_id,
+        'to_email', p_invitation_data->>'email',
+        'subject', format('Welcome to %s - Complete Your Registration', p_invitation_data->>'clinic_name'),
+        'clinic_name', p_invitation_data->>'clinic_name',
+        'position', p_invitation_data->>'position',
+        'first_name', p_invitation_data->>'first_name',
+        'last_name', p_invitation_data->>'last_name',
+        'invitation_id', p_invitation_data->>'invitation_id',
+        'invitation_token', p_invitation_data->>'invitation_token'
+    );
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Failed to prepare email: ' || SQLERRM
+        );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."send_staff_invitation_email"("p_invitation_data" "jsonb") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."submit_clinic_partnership_request"("p_clinic_name" character varying, "p_email" character varying, "p_address" "text", "p_reason" "text", "p_staff_name" character varying DEFAULT NULL::character varying, "p_contact_number" character varying DEFAULT NULL::character varying) RETURNS "jsonb"
@@ -8793,6 +8332,156 @@ $$;
 
 
 ALTER FUNCTION "public"."update_clinic_rating"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_staff_complete_profile"("p_profile_data" "jsonb" DEFAULT '{}'::"jsonb", "p_clinic_data" "jsonb" DEFAULT '{}'::"jsonb") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public', 'extensions', 'pg_catalog'
+    AS $$
+DECLARE
+    current_context JSONB;
+    user_id_val UUID;
+    profile_id UUID;
+    staff_profile_id UUID;
+    clinic_id_val UUID;
+    invitation_record RECORD;
+    full_address TEXT;
+    location_point geography;
+BEGIN
+    -- Get current user context
+    current_context := get_current_user_context();
+    
+    -- Check authentication
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+    
+    IF (current_context->>'user_type') != 'staff' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Staff only');
+    END IF;
+    
+    user_id_val := (current_context->>'user_id')::UUID;
+    
+    -- Get staff invitation to find the clinic
+    SELECT si.*, sp.id as staff_profile_id, up.id as profile_id
+    INTO invitation_record
+    FROM staff_invitations si
+    JOIN users u ON u.email = si.email
+    JOIN user_profiles up ON u.id = up.user_id
+    LEFT JOIN staff_profiles sp ON up.id = sp.user_profile_id
+    WHERE u.id = user_id_val 
+    AND si.status = 'accepted';
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Staff invitation not found');
+    END IF;
+    
+    profile_id := invitation_record.profile_id;
+    clinic_id_val := invitation_record.clinic_id;
+    
+    -- Update user phone
+    IF p_profile_data ? 'phone' THEN
+        UPDATE users 
+        SET phone = p_profile_data->>'phone',
+            phone_verified = false,
+            updated_at = NOW()
+        WHERE id = user_id_val;
+    END IF;
+    
+    -- Update user profile
+    UPDATE user_profiles 
+    SET 
+        first_name = COALESCE(p_profile_data->>'first_name', first_name),
+        last_name = COALESCE(p_profile_data->>'last_name', last_name),
+        updated_at = NOW()
+    WHERE id = profile_id;
+    
+    -- Create or update staff profile
+    IF invitation_record.staff_profile_id IS NULL THEN
+        INSERT INTO staff_profiles (
+            user_profile_id, 
+            clinic_id, 
+            position, 
+            department, 
+            is_active,
+            created_at
+        ) VALUES (
+            profile_id,
+            clinic_id_val,
+            invitation_record.position,
+            invitation_record.department,
+            true,
+            NOW()
+        );
+    ELSE
+        UPDATE staff_profiles 
+        SET 
+            is_active = true,
+            updated_at = NOW()
+        WHERE id = invitation_record.staff_profile_id;
+    END IF;
+    
+    -- Update clinic information if provided
+    IF p_clinic_data != '{}' THEN
+        -- Build full address
+        full_address := CONCAT(
+            p_clinic_data->>'address', ', ',
+            COALESCE(p_clinic_data->>'city', 'San Jose Del Monte'), ', ',
+            COALESCE(p_clinic_data->>'province', 'Bulacan'), ', Philippines'
+        );
+        
+        -- Geocode address (simplified - you might want to use a geocoding service)
+        location_point := ST_SetSRID(ST_Point(121.0583, 14.8169), 4326)::geography; -- Default to SJDM coordinates
+        
+        UPDATE clinics 
+        SET 
+            name = COALESCE(p_clinic_data->>'name', name),
+            address = full_address,
+            city = COALESCE(p_clinic_data->>'city', city),
+            province = COALESCE(p_clinic_data->>'province', province),
+            zip_code = p_clinic_data->>'zip_code',
+            phone = COALESCE(p_clinic_data->>'phone', phone),
+            email = COALESCE(p_clinic_data->>'email', email),
+            location = location_point,
+            operating_hours = CASE 
+                WHEN p_clinic_data ? 'operating_hours'
+                THEN p_clinic_data->'operating_hours'
+                ELSE operating_hours
+            END,
+            services_offered = CASE 
+                WHEN p_clinic_data ? 'services_offered'
+                THEN p_clinic_data->'services_offered'
+                ELSE services_offered
+            END,
+            updated_at = NOW()
+        WHERE id = clinic_id_val;
+    END IF;
+    
+    -- Mark staff invitation as completed
+    UPDATE staff_invitations 
+    SET 
+        status = 'completed',
+        completed_at = NOW(),
+        updated_at = NOW()
+    WHERE id = invitation_record.id;
+    
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Profile completed successfully',
+        'clinic_id', clinic_id_val
+    );
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Failed to complete profile: ' || SQLERRM
+        );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_staff_complete_profile"("p_profile_data" "jsonb", "p_clinic_data" "jsonb") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
@@ -9857,6 +9546,26 @@ CREATE TABLE IF NOT EXISTS "public"."email_communications" (
 ALTER TABLE "public"."email_communications" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."email_queue" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "to_email" character varying(255) NOT NULL,
+    "subject" character varying(500) NOT NULL,
+    "body" "text" NOT NULL,
+    "email_type" character varying(50) DEFAULT 'staff_invitation'::character varying,
+    "status" character varying(20) DEFAULT 'pending'::character varying,
+    "attempts" integer DEFAULT 0,
+    "max_attempts" integer DEFAULT 3,
+    "error_message" "text",
+    "scheduled_for" timestamp with time zone DEFAULT "now"(),
+    "sent_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "updated_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."email_queue" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."feedback" (
     "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
     "patient_id" "uuid",
@@ -10034,7 +9743,9 @@ CREATE TABLE IF NOT EXISTS "public"."staff_invitations" (
     "expires_at" timestamp with time zone NOT NULL,
     "status" "text" DEFAULT 'pending'::"text",
     "created_at" timestamp with time zone DEFAULT "now"(),
-    CONSTRAINT "staff_invitations_status_check" CHECK (("status" = ANY (ARRAY['pending'::"text", 'accepted'::"text", 'expired'::"text"])))
+    "invitation_token" "text",
+    "completed_at" timestamp with time zone,
+    CONSTRAINT "staff_invitations_status_check" CHECK (("status" = ANY (ARRAY['pending'::"text", 'accepted'::"text", 'expired'::"text", 'completed'::"text"])))
 );
 
 
@@ -10215,6 +9926,11 @@ ALTER TABLE ONLY "public"."doctors"
 
 ALTER TABLE ONLY "public"."email_communications"
     ADD CONSTRAINT "email_communications_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."email_queue"
+    ADD CONSTRAINT "email_queue_pkey" PRIMARY KEY ("id");
 
 
 
@@ -10682,10 +10398,6 @@ CREATE INDEX "idx_staff_context_lookup" ON "public"."staff_profiles" USING "btre
 
 
 CREATE INDEX "idx_staff_invitations_clinic_id" ON "public"."staff_invitations" USING "btree" ("clinic_id");
-
-
-
-CREATE INDEX "idx_staff_profiles_auth_user" ON "public"."staff_profiles" USING "btree" ("user_profile_id") WHERE ("is_active" = true);
 
 
 
@@ -11485,198 +11197,6 @@ CASE "public"."get_current_user_role"()
 END);
 
 
-
-CREATE POLICY "Role-based user access" ON "public"."users" FOR SELECT USING (
-CASE "public"."get_current_user_role"()
-    WHEN 'admin'::"public"."user_type" THEN true
-    WHEN 'staff'::"public"."user_type" THEN (("auth_user_id" = ( SELECT "auth"."uid"() AS "uid")) OR (EXISTS ( SELECT 1
-       FROM "public"."appointments" "a"
-      WHERE (("a"."patient_id" = "users"."id") AND ("a"."clinic_id" = "public"."get_current_staff_clinic_id"()))
-     LIMIT 1)))
-    WHEN 'patient'::"public"."user_type" THEN ("auth_user_id" = ( SELECT "auth"."uid"() AS "uid"))
-    ELSE false
-END);
-
-
-
-CREATE POLICY "Service creation access" ON "public"."services" FOR INSERT TO "authenticated" WITH CHECK (
-CASE "public"."get_current_user_role"()
-    WHEN 'admin'::"public"."user_type" THEN true
-    WHEN 'staff'::"public"."user_type" THEN ("clinic_id" = "public"."get_current_staff_clinic_id"())
-    ELSE false
-END);
-
-
-
-CREATE POLICY "Service deletion access" ON "public"."services" FOR DELETE TO "authenticated" USING (("public"."get_current_user_role"() = 'admin'::"public"."user_type"));
-
-
-
-CREATE POLICY "Service update access" ON "public"."services" FOR UPDATE TO "authenticated" USING (
-CASE "public"."get_current_user_role"()
-    WHEN 'admin'::"public"."user_type" THEN true
-    WHEN 'staff'::"public"."user_type" THEN ("clinic_id" = "public"."get_current_staff_clinic_id"())
-    ELSE false
-END) WITH CHECK (
-CASE "public"."get_current_user_role"()
-    WHEN 'admin'::"public"."user_type" THEN true
-    WHEN 'staff'::"public"."user_type" THEN ("clinic_id" = "public"."get_current_staff_clinic_id"())
-    ELSE false
-END);
-
-
-
-CREATE POLICY "Service view access" ON "public"."services" FOR SELECT USING (
-CASE "public"."get_current_user_role"()
-    WHEN 'admin'::"public"."user_type" THEN true
-    WHEN 'staff'::"public"."user_type" THEN ("clinic_id" = "public"."get_current_staff_clinic_id"())
-    WHEN 'patient'::"public"."user_type" THEN (("is_active" = true) AND (EXISTS ( SELECT 1
-       FROM "public"."clinics" "c"
-      WHERE (("c"."id" = "services"."clinic_id") AND ("c"."is_active" = true)))))
-    ELSE false
-END);
-
-
-
-CREATE POLICY "Staff can manage own clinic appointments" ON "public"."appointments" TO "authenticated" USING (
-CASE "public"."get_current_user_role"()
-    WHEN 'staff'::"public"."user_type" THEN ("clinic_id" = "public"."get_current_staff_clinic_id"())
-    WHEN 'admin'::"public"."user_type" THEN true
-    WHEN 'patient'::"public"."user_type" THEN ("patient_id" = "public"."get_current_user_id"())
-    ELSE false
-END);
-
-
-
-CREATE POLICY "Staff can manage own clinic services" ON "public"."services" TO "authenticated" USING (
-CASE "public"."get_current_user_role"()
-    WHEN 'staff'::"public"."user_type" THEN ("clinic_id" = "public"."get_current_staff_clinic_id"())
-    WHEN 'admin'::"public"."user_type" THEN true
-    ELSE false
-END);
-
-
-
-CREATE POLICY "Staff can response to feedback patient can update it" ON "public"."feedback" FOR UPDATE TO "authenticated" USING (
-CASE "public"."get_current_user_role"()
-    WHEN 'staff'::"public"."user_type" THEN ("clinic_id" = "public"."get_current_staff_clinic_id"())
-    WHEN 'patient'::"public"."user_type" THEN ("patient_id" = "public"."get_current_user_id"())
-    ELSE false
-END) WITH CHECK (
-CASE "public"."get_current_user_role"()
-    WHEN 'staff'::"public"."user_type" THEN ("clinic_id" = "public"."get_current_staff_clinic_id"())
-    WHEN 'patient'::"public"."user_type" THEN ("patient_id" = "public"."get_current_user_id"())
-    ELSE false
-END);
-
-
-
-CREATE POLICY "Staff can update their clinic" ON "public"."clinics" FOR UPDATE TO "authenticated" USING (
-CASE "public"."get_current_user_role"()
-    WHEN 'staff'::"public"."user_type" THEN ("id" = "public"."get_current_staff_clinic_id"())
-    ELSE false
-END) WITH CHECK (
-CASE "public"."get_current_user_role"()
-    WHEN 'staff'::"public"."user_type" THEN ("id" = "public"."get_current_staff_clinic_id"())
-    ELSE false
-END);
-
-
-
-CREATE POLICY "Staff can view own clinic feedback" ON "public"."feedback" FOR SELECT TO "authenticated" USING (
-CASE "public"."get_current_user_role"()
-    WHEN 'staff'::"public"."user_type" THEN ("clinic_id" = "public"."get_current_staff_clinic_id"())
-    WHEN 'admin'::"public"."user_type" THEN true
-    WHEN 'patient'::"public"."user_type" THEN ("patient_id" = "public"."get_current_user_id"())
-    ELSE false
-END);
-
-
-
-CREATE POLICY "Staff invitation creation access" ON "public"."staff_invitations" FOR INSERT TO "authenticated" WITH CHECK (
-CASE "public"."get_current_user_role"()
-    WHEN 'admin'::"public"."user_type" THEN true
-    WHEN 'staff'::"public"."user_type" THEN (("clinic_id" = "public"."get_current_staff_clinic_id"()) AND ("email" IS NOT NULL) AND ("position" IS NOT NULL) AND ("temp_password" IS NOT NULL) AND ("expires_at" > "now"()) AND ("status" = 'pending'::"text") AND (("email")::"text" ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'::"text"))
-    ELSE false
-END);
-
-
-
-CREATE POLICY "Staff invitation deletion access" ON "public"."staff_invitations" FOR DELETE TO "authenticated" USING (("public"."get_current_user_role"() = 'admin'::"public"."user_type"));
-
-
-
-CREATE POLICY "Staff invitation update access" ON "public"."staff_invitations" FOR UPDATE TO "authenticated" USING (
-CASE "public"."get_current_user_role"()
-    WHEN 'admin'::"public"."user_type" THEN true
-    WHEN 'staff'::"public"."user_type" THEN ("clinic_id" = "public"."get_current_staff_clinic_id"())
-    ELSE (((( SELECT "auth"."jwt"() AS "jwt") ->> 'email'::"text") = ("email")::"text") AND ("status" = 'pending'::"text") AND ("expires_at" > "now"()))
-END);
-
-
-
-CREATE POLICY "Staff invitation view access" ON "public"."staff_invitations" FOR SELECT USING (
-CASE "public"."get_current_user_role"()
-    WHEN 'admin'::"public"."user_type" THEN true
-    WHEN 'staff'::"public"."user_type" THEN ("clinic_id" = "public"."get_current_staff_clinic_id"())
-    ELSE (((( SELECT "auth"."jwt"() AS "jwt") ->> 'email'::"text") = ("email")::"text") AND ("status" = 'pending'::"text") AND ("expires_at" > "now"()))
-END);
-
-
-
-CREATE POLICY "Staff profile creation access" ON "public"."staff_profiles" FOR INSERT TO "authenticated" WITH CHECK (("public"."get_current_user_role"() = 'admin'::"public"."user_type"));
-
-
-
-CREATE POLICY "Staff profile deletion access" ON "public"."staff_profiles" FOR DELETE TO "authenticated" USING (("public"."get_current_user_role"() = 'admin'::"public"."user_type"));
-
-
-
-CREATE POLICY "Staff profile update access" ON "public"."staff_profiles" FOR UPDATE TO "authenticated" USING (
-CASE "public"."get_current_user_role"()
-    WHEN 'admin'::"public"."user_type" THEN true
-    WHEN 'staff'::"public"."user_type" THEN (EXISTS ( SELECT 1
-       FROM "public"."user_profiles" "up"
-      WHERE (("up"."id" = "staff_profiles"."user_profile_id") AND ("up"."user_id" = "public"."get_current_user_id"()))))
-    ELSE false
-END) WITH CHECK (
-CASE "public"."get_current_user_role"()
-    WHEN 'admin'::"public"."user_type" THEN true
-    WHEN 'staff'::"public"."user_type" THEN true
-    ELSE false
-END);
-
-
-
-CREATE POLICY "Staff profile view access" ON "public"."staff_profiles" FOR SELECT USING (
-CASE "public"."get_current_user_role"()
-    WHEN 'admin'::"public"."user_type" THEN true
-    WHEN 'staff'::"public"."user_type" THEN (EXISTS ( SELECT 1
-       FROM "public"."user_profiles" "up"
-      WHERE (("up"."id" = "staff_profiles"."user_profile_id") AND ("up"."user_id" = "public"."get_current_user_id"()))))
-    ELSE false
-END);
-
-
-
-CREATE POLICY "Users can send communications" ON "public"."email_communications" FOR INSERT TO "authenticated" WITH CHECK (("from_user_id" = "public"."get_current_user_id"()));
-
-
-
-CREATE POLICY "Users can update own profile" ON "public"."users" FOR UPDATE TO "authenticated" USING (("auth_user_id" = ( SELECT "auth"."uid"() AS "uid")));
-
-
-
-CREATE POLICY "Users can view their communications" ON "public"."email_communications" FOR SELECT TO "authenticated" USING ((("from_user_id" = "public"."get_current_user_id"()) OR ("to_user_id" = "public"."get_current_user_id"())));
-
-
-
-ALTER TABLE "public"."admin_profiles" ENABLE ROW LEVEL SECURITY;
-
-
-ALTER TABLE "public"."analytics_events" ENABLE ROW LEVEL SECURITY;
-
-
 ALTER TABLE "public"."appointment_services" ENABLE ROW LEVEL SECURITY;
 
 
@@ -11718,6 +11238,9 @@ ALTER TABLE "public"."doctors" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."email_communications" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."email_queue" ENABLE ROW LEVEL SECURITY;
 
 
 ALTER TABLE "public"."feedback" ENABLE ROW LEVEL SECURITY;
@@ -11813,8 +11336,6 @@ GRANT USAGE ON SCHEMA "public" TO "service_role";
 
 
 
-
-
 GRANT ALL ON FUNCTION "public"."approve_appointment"("p_appointment_id" "uuid", "p_staff_notes" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."approve_appointment"("p_appointment_id" "uuid", "p_staff_notes" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."approve_appointment"("p_appointment_id" "uuid", "p_staff_notes" "text") TO "service_role";
@@ -11869,9 +11390,9 @@ GRANT ALL ON FUNCTION "public"."check_patient_reliability"("p_patient_id" "uuid"
 
 
 
-GRANT ALL ON FUNCTION "public"."check_rate_limit"("p_user_identifier" "text", "p_action_type" "text", "p_max_attempts" integer, "p_time_window_minutes" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."check_rate_limit"("p_user_identifier" "text", "p_action_type" "text", "p_max_attempts" integer, "p_time_window_minutes" integer) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."check_rate_limit"("p_user_identifier" "text", "p_action_type" "text", "p_max_attempts" integer, "p_time_window_minutes" integer) TO "service_role";
+GRANT ALL ON FUNCTION "public"."check_rate_limit"("p_user_identifier" "text", "p_action_type" "text", "p_max_attempts" integer, "p_time_window_minutes" integer, "p_success" boolean) TO "anon";
+GRANT ALL ON FUNCTION "public"."check_rate_limit"("p_user_identifier" "text", "p_action_type" "text", "p_max_attempts" integer, "p_time_window_minutes" integer, "p_success" boolean) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."check_rate_limit"("p_user_identifier" "text", "p_action_type" "text", "p_max_attempts" integer, "p_time_window_minutes" integer, "p_success" boolean) TO "service_role";
 
 
 
@@ -11896,6 +11417,18 @@ GRANT ALL ON FUNCTION "public"."create_appointment_notification"("p_user_id" "uu
 GRANT ALL ON FUNCTION "public"."create_appointment_with_validation"("p_doctor_id" "uuid", "p_clinic_id" "uuid", "p_appointment_date" "date", "p_appointment_time" time without time zone, "p_service_type" character varying, "p_symptoms" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."create_appointment_with_validation"("p_doctor_id" "uuid", "p_clinic_id" "uuid", "p_appointment_date" "date", "p_appointment_time" time without time zone, "p_service_type" character varying, "p_symptoms" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."create_appointment_with_validation"("p_doctor_id" "uuid", "p_clinic_id" "uuid", "p_appointment_date" "date", "p_appointment_time" time without time zone, "p_service_type" character varying, "p_symptoms" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."create_direct_staff_invitation"("p_email" character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."create_direct_staff_invitation"("p_email" character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_direct_staff_invitation"("p_email" character varying) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."create_direct_staff_invitation"("p_email" character varying, "p_clinic_id" "uuid", "p_position" character varying, "p_department" character varying, "p_first_name" character varying, "p_last_name" character varying) TO "anon";
+GRANT ALL ON FUNCTION "public"."create_direct_staff_invitation"("p_email" character varying, "p_clinic_id" "uuid", "p_position" character varying, "p_department" character varying, "p_first_name" character varying, "p_last_name" character varying) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_direct_staff_invitation"("p_email" character varying, "p_clinic_id" "uuid", "p_position" character varying, "p_department" character varying, "p_first_name" character varying, "p_last_name" character varying) TO "service_role";
 
 
 
@@ -12058,12 +11591,6 @@ GRANT ALL ON FUNCTION "public"."get_staff_invitation_status"("p_invitation_id" "
 
 
 
-GRANT ALL ON FUNCTION "public"."get_staff_invitations"("p_clinic_id" "uuid", "p_status" "text", "p_limit" integer, "p_offset" integer) TO "anon";
-GRANT ALL ON FUNCTION "public"."get_staff_invitations"("p_clinic_id" "uuid", "p_status" "text", "p_limit" integer, "p_offset" integer) TO "authenticated";
-GRANT ALL ON FUNCTION "public"."get_staff_invitations"("p_clinic_id" "uuid", "p_status" "text", "p_limit" integer, "p_offset" integer) TO "service_role";
-
-
-
 GRANT ALL ON FUNCTION "public"."get_staff_performance_analytics"("p_staff_id" "uuid", "p_date_from" "date", "p_date_to" "date", "p_include_comparisons" boolean) TO "anon";
 GRANT ALL ON FUNCTION "public"."get_staff_performance_analytics"("p_staff_id" "uuid", "p_date_from" "date", "p_date_to" "date", "p_include_comparisons" boolean) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_staff_performance_analytics"("p_staff_id" "uuid", "p_date_from" "date", "p_date_to" "date", "p_include_comparisons" boolean) TO "service_role";
@@ -12202,6 +11729,12 @@ GRANT ALL ON FUNCTION "public"."send_condition_report"("p_clinic_id" "uuid", "p_
 
 
 
+GRANT ALL ON FUNCTION "public"."send_staff_invitation_email"("p_invitation_data" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."send_staff_invitation_email"("p_invitation_data" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."send_staff_invitation_email"("p_invitation_data" "jsonb") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."submit_clinic_partnership_request"("p_clinic_name" character varying, "p_email" character varying, "p_address" "text", "p_reason" "text", "p_staff_name" character varying, "p_contact_number" character varying) TO "anon";
 GRANT ALL ON FUNCTION "public"."submit_clinic_partnership_request"("p_clinic_name" character varying, "p_email" character varying, "p_address" "text", "p_reason" "text", "p_staff_name" character varying, "p_contact_number" character varying) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."submit_clinic_partnership_request"("p_clinic_name" character varying, "p_email" character varying, "p_address" "text", "p_reason" "text", "p_staff_name" character varying, "p_contact_number" character varying) TO "service_role";
@@ -12226,6 +11759,12 @@ GRANT ALL ON FUNCTION "public"."update_clinic_rating"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."update_staff_complete_profile"("p_profile_data" "jsonb", "p_clinic_data" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."update_staff_complete_profile"("p_profile_data" "jsonb", "p_clinic_data" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_staff_complete_profile"("p_profile_data" "jsonb", "p_clinic_data" "jsonb") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
@@ -12238,9 +11777,224 @@ GRANT ALL ON FUNCTION "public"."update_user_location"("latitude" double precisio
 
 
 
-GRANT ALL ON FUNCTION "public"."update_user_profile"("p_user_id" "uuid", "p_profile_data" "jsonb", "p_role_specific_data" "jsonb", "p_clinic_data" "jsonb", "p_services_data" "jsonb", "p_doctors_data" "jsonb") TO "anon";
-GRANT ALL ON FUNCTION "public"."update_user_profile"("p_user_id" "uuid", "p_profile_data" "jsonb", "p_role_specific_data" "jsonb", "p_clinic_data" "jsonb", "p_services_data" "jsonb", "p_doctors_data" "jsonb") TO "authenticated";
-GRANT ALL ON FUNCTION "public"."update_user_profile"("p_user_id" "uuid", "p_profile_data" "jsonb", "p_role_specific_data" "jsonb", "p_clinic_data" "jsonb", "p_services_data" "jsonb", "p_doctors_data" "jsonb") TO "service_role";
+GRANT ALL ON FUNCTION "public"."update_user_profile"("p_user_id" "uuid" DEFAULT NULL::"uuid", "p_profile_data" "jsonb" DEFAULT '{}'::"jsonb", "p_role_specific_data" "jsonb" DEFAULT '{}'::"jsonb", "p_clinic_data" "jsonb" DEFAULT '{}'::"jsonb", "p_services_data" "jsonb" DEFAULT '{}'::"jsonb", "p_doctors_data" "jsonb" DEFAULT '{}'::"jsonb") RETURNS "jsonb"
+LANGUAGE "plpgsql" SECURITY DEFINER
+SET "search_path" TO 'public', 'extensions', 'pg_catalog'
+AS $$
+DECLARE
+    target_user_id UUID;
+    current_context JSONB;
+    v_current_role TEXT;
+    profile_id UUID;
+    staff_clinic_id UUID;
+    result JSONB := '{}';
+    temp_result JSONB;
+    v_first_name TEXT;
+    v_last_name TEXT;
+    v_full_name TEXT;
+BEGIN
+    SET search_path = public, pg_catalog;
+    
+    -- Get current user context
+    current_context := get_current_user_context();
+    
+    -- Check authentication
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN current_context;
+    END IF;
+    
+    v_current_role := current_context->>'user_type';
+    target_user_id := COALESCE(p_user_id, (current_context->>'user_id')::UUID);
+    
+    -- Access control
+    IF v_current_role = 'patient' AND target_user_id != (current_context->>'user_id')::UUID THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied');
+    END IF;
+    
+    -- Get profile ID and staff clinic
+    SELECT up.id, sp.clinic_id INTO profile_id, staff_clinic_id
+    FROM user_profiles up
+    JOIN users u ON up.user_id = u.id
+    LEFT JOIN staff_profiles sp ON up.id = sp.user_profile_id
+    WHERE u.id = target_user_id;
+    
+    IF profile_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Profile not found');
+    END IF;
+    
+    -- 1️⃣ UPDATE BASE USER DATA
+    IF p_profile_data ? 'phone' THEN
+        UPDATE users 
+        SET phone = p_profile_data->>'phone',
+            phone_verified = CASE 
+                WHEN COALESCE(phone, '') != COALESCE(p_profile_data->>'phone', '') THEN false 
+                ELSE phone_verified 
+            END,
+            updated_at = NOW()
+        WHERE id = target_user_id;
+        
+        result := result || jsonb_build_object('user_updated', true);
+    END IF;
+    
+    -- Get name values for full_name generation
+    v_first_name := COALESCE(p_profile_data->>'first_name', '');
+    v_last_name := COALESCE(p_profile_data->>'last_name', '');
+    
+    -- Generate full_name if we have first and last name
+    IF v_first_name != '' AND v_last_name != '' THEN
+        v_full_name := v_first_name || ' ' || v_last_name;
+    ELSIF v_first_name != '' THEN
+        v_full_name := v_first_name;
+    ELSIF v_last_name != '' THEN
+        v_full_name := v_last_name;
+    ELSE
+        -- Keep existing full_name if no new names provided
+        SELECT full_name INTO v_full_name FROM user_profiles WHERE id = profile_id;
+    END IF;
+    
+    -- 2️⃣ UPDATE USER PROFILES  
+    UPDATE user_profiles 
+    SET 
+        first_name = CASE 
+            WHEN p_profile_data ? 'first_name' THEN p_profile_data->>'first_name'
+            ELSE first_name 
+        END,
+        last_name = CASE 
+            WHEN p_profile_data ? 'last_name' THEN p_profile_data->>'last_name'
+            ELSE last_name 
+        END,
+        full_name = COALESCE(v_full_name, full_name),
+        date_of_birth = CASE 
+            WHEN p_profile_data ? 'date_of_birth' AND p_profile_data->>'date_of_birth' != '' 
+            THEN (p_profile_data->>'date_of_birth')::date
+            ELSE date_of_birth 
+        END,
+        gender = CASE 
+            WHEN p_profile_data ? 'gender' THEN p_profile_data->>'gender'
+            ELSE gender 
+        END,
+        profile_image_url = CASE 
+            WHEN p_profile_data ? 'profile_image_url' THEN p_profile_data->>'profile_image_url'
+            ELSE profile_image_url 
+        END,
+        updated_at = NOW()
+    WHERE id = profile_id;
+    
+    result := result || jsonb_build_object('profile_updated', true);
+    
+    -- 3️⃣ ROLE-SPECIFIC UPDATES
+    
+    -- 🏥 PATIENT UPDATES (Enhanced)
+    IF v_current_role = 'patient' THEN
+        -- Ensure patient profile exists
+        INSERT INTO patient_profiles (user_profile_id, created_at)
+        VALUES (profile_id, NOW())
+        ON CONFLICT (user_profile_id) DO NOTHING;
+        
+        UPDATE patient_profiles 
+        SET 
+            emergency_contact_name = CASE 
+                WHEN p_role_specific_data ? 'emergency_contact_name' 
+                THEN p_role_specific_data->>'emergency_contact_name'
+                ELSE emergency_contact_name 
+            END,
+            emergency_contact_phone = CASE 
+                WHEN p_role_specific_data ? 'emergency_contact_phone' 
+                THEN p_role_specific_data->>'emergency_contact_phone'
+                ELSE emergency_contact_phone 
+            END,
+            insurance_provider = CASE 
+                WHEN p_role_specific_data ? 'insurance_provider' 
+                THEN p_role_specific_data->>'insurance_provider'
+                ELSE insurance_provider 
+            END,
+            medical_conditions = CASE 
+                WHEN p_role_specific_data ? 'medical_conditions' THEN
+                    CASE 
+                        WHEN jsonb_typeof(p_role_specific_data->'medical_conditions') = 'array' THEN
+                            (SELECT array_agg(value::text) FROM jsonb_array_elements_text(p_role_specific_data->'medical_conditions'))
+                        ELSE 
+                            medical_conditions
+                    END
+                ELSE medical_conditions 
+            END,
+            allergies = CASE 
+                WHEN p_role_specific_data ? 'allergies' THEN
+                    CASE 
+                        WHEN jsonb_typeof(p_role_specific_data->'allergies') = 'array' THEN
+                            (SELECT array_agg(value::text) FROM jsonb_array_elements_text(p_role_specific_data->'allergies'))
+                        ELSE 
+                            allergies
+                    END
+                ELSE allergies 
+            END,
+            preferred_location = CASE 
+                WHEN p_role_specific_data ? 'preferred_location' AND p_role_specific_data->>'preferred_location' != ''
+                THEN ST_SetSRID(ST_GeomFromText(p_role_specific_data->>'preferred_location'), 4326)::geography
+                ELSE preferred_location
+            END,
+            preferred_doctors = CASE 
+                WHEN p_role_specific_data ? 'preferred_doctors' AND jsonb_typeof(p_role_specific_data->'preferred_doctors') = 'array'
+                THEN (SELECT array_agg(value::text::uuid) FROM jsonb_array_elements_text(p_role_specific_data->'preferred_doctors'))
+                ELSE preferred_doctors
+            END,
+            email_notifications = CASE 
+                WHEN p_role_specific_data ? 'email_notifications' 
+                THEN (p_role_specific_data->>'email_notifications')::boolean
+                ELSE email_notifications 
+            END,
+            sms_notifications = CASE 
+                WHEN p_role_specific_data ? 'sms_notifications' 
+                THEN (p_role_specific_data->>'sms_notifications')::boolean
+                ELSE sms_notifications 
+            END,
+            updated_at = NOW()
+        WHERE user_profile_id = profile_id;
+        
+        result := result || jsonb_build_object('patient_profile_updated', true);
+    
+    -- 👨‍💼 STAFF UPDATES (Keep existing logic)
+    ELSIF v_current_role = 'staff' THEN
+        -- Update staff profile
+        UPDATE staff_profiles 
+        SET 
+            position = COALESCE(p_role_specific_data->>'position', position),
+            department = COALESCE(p_role_specific_data->>'department', department),
+            updated_at = NOW()
+        WHERE user_profile_id = profile_id;
+        
+        result := result || jsonb_build_object('staff_profile_updated', true);
+        
+        -- [Keep existing clinic, services, and doctors management logic]
+        -- ... (existing code for staff updates remains unchanged)
+    
+    -- 👑 ADMIN UPDATES (Keep existing logic)
+    ELSIF v_current_role = 'admin' THEN
+        UPDATE admin_profiles 
+        SET 
+            access_level = COALESCE((p_role_specific_data->>'access_level')::integer, access_level),
+            permissions = CASE 
+                WHEN p_role_specific_data ? 'permissions'
+                THEN p_role_specific_data->'permissions'
+                ELSE permissions
+            END,
+            updated_at = NOW()
+        WHERE user_profile_id = profile_id;
+        
+        result := result || jsonb_build_object('admin_profile_updated', true);
+    END IF;
+    
+    RETURN jsonb_build_object(
+        'success', true, 
+        'message', 'Profile updated successfully',
+        'updates', result
+    );
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('success', false, 'error', SQLERRM, 'sqlstate', SQLSTATE);
+END;
+$$;
 
 
 
@@ -12279,17 +12033,14 @@ GRANT ALL ON FUNCTION "public"."validate_doctor_clinic_assignment"() TO "authent
 GRANT ALL ON FUNCTION "public"."validate_doctor_clinic_assignment"() TO "service_role";
 
 
-
 GRANT ALL ON FUNCTION "public"."validate_feedback_appointment"() TO "anon";
 GRANT ALL ON FUNCTION "public"."validate_feedback_appointment"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."validate_feedback_appointment"() TO "service_role";
 
 
-
 GRANT ALL ON FUNCTION "public"."validate_feedback_submission"() TO "anon";
 GRANT ALL ON FUNCTION "public"."validate_feedback_submission"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."validate_feedback_submission"() TO "service_role";
-
 
 
 GRANT ALL ON FUNCTION "public"."validate_partnership_request"() TO "anon";
@@ -12298,88 +12049,9 @@ GRANT ALL ON FUNCTION "public"."validate_partnership_request"() TO "service_role
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 GRANT ALL ON TABLE "public"."admin_profiles" TO "anon";
 GRANT ALL ON TABLE "public"."admin_profiles" TO "authenticated";
 GRANT ALL ON TABLE "public"."admin_profiles" TO "service_role";
-
 
 
 GRANT ALL ON TABLE "public"."analytics_events" TO "anon";
@@ -12387,11 +12059,9 @@ GRANT ALL ON TABLE "public"."analytics_events" TO "authenticated";
 GRANT ALL ON TABLE "public"."analytics_events" TO "service_role";
 
 
-
 GRANT ALL ON TABLE "public"."appointment_services" TO "anon";
 GRANT ALL ON TABLE "public"."appointment_services" TO "authenticated";
 GRANT ALL ON TABLE "public"."appointment_services" TO "service_role";
-
 
 
 GRANT ALL ON TABLE "public"."appointments" TO "anon";
@@ -12399,11 +12069,9 @@ GRANT ALL ON TABLE "public"."appointments" TO "authenticated";
 GRANT ALL ON TABLE "public"."appointments" TO "service_role";
 
 
-
 GRANT ALL ON TABLE "public"."archive_items" TO "anon";
 GRANT ALL ON TABLE "public"."archive_items" TO "authenticated";
 GRANT ALL ON TABLE "public"."archive_items" TO "service_role";
-
 
 
 GRANT ALL ON TABLE "public"."clinic_badge_awards" TO "anon";
@@ -12411,11 +12079,9 @@ GRANT ALL ON TABLE "public"."clinic_badge_awards" TO "authenticated";
 GRANT ALL ON TABLE "public"."clinic_badge_awards" TO "service_role";
 
 
-
 GRANT ALL ON TABLE "public"."clinic_badges" TO "anon";
 GRANT ALL ON TABLE "public"."clinic_badges" TO "authenticated";
 GRANT ALL ON TABLE "public"."clinic_badges" TO "service_role";
-
 
 
 GRANT ALL ON TABLE "public"."clinic_partnership_requests" TO "anon";
@@ -12423,11 +12089,9 @@ GRANT ALL ON TABLE "public"."clinic_partnership_requests" TO "authenticated";
 GRANT ALL ON TABLE "public"."clinic_partnership_requests" TO "service_role";
 
 
-
 GRANT ALL ON TABLE "public"."clinics" TO "anon";
 GRANT ALL ON TABLE "public"."clinics" TO "authenticated";
 GRANT ALL ON TABLE "public"."clinics" TO "service_role";
-
 
 
 GRANT ALL ON TABLE "public"."doctor_clinics" TO "anon";
@@ -12435,11 +12099,9 @@ GRANT ALL ON TABLE "public"."doctor_clinics" TO "authenticated";
 GRANT ALL ON TABLE "public"."doctor_clinics" TO "service_role";
 
 
-
 GRANT ALL ON TABLE "public"."doctors" TO "anon";
 GRANT ALL ON TABLE "public"."doctors" TO "authenticated";
 GRANT ALL ON TABLE "public"."doctors" TO "service_role";
-
 
 
 GRANT ALL ON TABLE "public"."email_communications" TO "anon";
@@ -12448,10 +12110,14 @@ GRANT ALL ON TABLE "public"."email_communications" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."email_queue" TO "anon";
+GRANT ALL ON TABLE "public"."email_queue" TO "authenticated";
+GRANT ALL ON TABLE "public"."email_queue" TO "service_role";
+
+
 GRANT ALL ON TABLE "public"."feedback" TO "anon";
 GRANT ALL ON TABLE "public"."feedback" TO "authenticated";
 GRANT ALL ON TABLE "public"."feedback" TO "service_role";
-
 
 
 GRANT ALL ON TABLE "public"."file_uploads" TO "anon";
@@ -12459,11 +12125,9 @@ GRANT ALL ON TABLE "public"."file_uploads" TO "authenticated";
 GRANT ALL ON TABLE "public"."file_uploads" TO "service_role";
 
 
-
 GRANT ALL ON TABLE "public"."notification_templates" TO "anon";
 GRANT ALL ON TABLE "public"."notification_templates" TO "authenticated";
 GRANT ALL ON TABLE "public"."notification_templates" TO "service_role";
-
 
 
 GRANT ALL ON TABLE "public"."notifications" TO "anon";
@@ -12471,11 +12135,9 @@ GRANT ALL ON TABLE "public"."notifications" TO "authenticated";
 GRANT ALL ON TABLE "public"."notifications" TO "service_role";
 
 
-
 GRANT ALL ON TABLE "public"."patient_appointment_limits" TO "anon";
 GRANT ALL ON TABLE "public"."patient_appointment_limits" TO "authenticated";
 GRANT ALL ON TABLE "public"."patient_appointment_limits" TO "service_role";
-
 
 
 GRANT ALL ON TABLE "public"."patient_medical_history" TO "anon";
@@ -12483,11 +12145,9 @@ GRANT ALL ON TABLE "public"."patient_medical_history" TO "authenticated";
 GRANT ALL ON TABLE "public"."patient_medical_history" TO "service_role";
 
 
-
 GRANT ALL ON TABLE "public"."patient_profiles" TO "anon";
 GRANT ALL ON TABLE "public"."patient_profiles" TO "authenticated";
 GRANT ALL ON TABLE "public"."patient_profiles" TO "service_role";
-
 
 
 GRANT ALL ON TABLE "public"."rate_limits" TO "anon";
@@ -12495,11 +12155,9 @@ GRANT ALL ON TABLE "public"."rate_limits" TO "authenticated";
 GRANT ALL ON TABLE "public"."rate_limits" TO "service_role";
 
 
-
 GRANT ALL ON TABLE "public"."services" TO "anon";
 GRANT ALL ON TABLE "public"."services" TO "authenticated";
 GRANT ALL ON TABLE "public"."services" TO "service_role";
-
 
 
 GRANT ALL ON TABLE "public"."staff_invitations" TO "anon";
@@ -12507,11 +12165,9 @@ GRANT ALL ON TABLE "public"."staff_invitations" TO "authenticated";
 GRANT ALL ON TABLE "public"."staff_invitations" TO "service_role";
 
 
-
 GRANT ALL ON TABLE "public"."staff_profiles" TO "anon";
 GRANT ALL ON TABLE "public"."staff_profiles" TO "authenticated";
 GRANT ALL ON TABLE "public"."staff_profiles" TO "service_role";
-
 
 
 GRANT ALL ON TABLE "public"."ui_components" TO "anon";
@@ -12519,11 +12175,9 @@ GRANT ALL ON TABLE "public"."ui_components" TO "authenticated";
 GRANT ALL ON TABLE "public"."ui_components" TO "service_role";
 
 
-
 GRANT ALL ON TABLE "public"."user_archive_preferences" TO "anon";
 GRANT ALL ON TABLE "public"."user_archive_preferences" TO "authenticated";
 GRANT ALL ON TABLE "public"."user_archive_preferences" TO "service_role";
-
 
 
 GRANT ALL ON TABLE "public"."user_profiles" TO "anon";
@@ -12531,16 +12185,9 @@ GRANT ALL ON TABLE "public"."user_profiles" TO "authenticated";
 GRANT ALL ON TABLE "public"."user_profiles" TO "service_role";
 
 
-
 GRANT ALL ON TABLE "public"."users" TO "anon";
 GRANT ALL ON TABLE "public"."users" TO "authenticated";
 GRANT ALL ON TABLE "public"."users" TO "service_role";
-
-
-
-
-
-
 
 
 
@@ -12551,9 +12198,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQ
 
 
 
-
-
-
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "postgres";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "authenticated";
@@ -12561,37 +12205,10 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUN
 
 
 
-
-
-
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "postgres";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

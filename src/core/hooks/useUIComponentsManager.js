@@ -11,7 +11,7 @@ export const useUIComponentsManager = () => {
 
   const manageComponents = useCallback(async (action, componentData = null, componentId = null) => {
     // ✅ Admin-only access
-    if (!isAdmin()) {
+    if (!isAdmin) {
       const error = 'Access denied: Admin required';
       setError(error);
       return { success: false, error };

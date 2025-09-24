@@ -72,7 +72,7 @@ export const useLocationService = () => {
 
   // Update user location with proper error handling
   const updateUserLocation = useCallback(async (latitude, longitude) => {
-    if (!isPatient()) {
+    if (!isPatient) {
       return { success: false, error: 'Only patients can update location preferences' };
     }
 
@@ -136,7 +136,7 @@ export const useLocationService = () => {
       const location = await getCurrentLocation();
 
       // If user is patient and saveToProfile is true, save to database
-      if (isPatient() && saveToProfile && location) {
+      if (isPatient && saveToProfile && location) {
         const updateResult = await updateUserLocation(location.latitude, location.longitude);
         
         if (!updateResult.success) {
@@ -149,7 +149,7 @@ export const useLocationService = () => {
       return { 
         success: true, 
         location, 
-        saved: isPatient() && saveToProfile 
+        saved: isPatient && saveToProfile 
       };
 
     } catch (error) {
@@ -194,7 +194,7 @@ export const useLocationService = () => {
   // Load saved location from user profile
 // Fixed loadSavedLocation method
   const loadSavedLocation = useCallback(async () => {
-    if (!isPatient() || !profile?.role_specific_data?.preferred_location) {
+    if (!isPatient || !profile?.role_specific_data?.preferred_location) {
       return { success: false, error: 'No saved location found' };
     }
 
@@ -273,7 +273,7 @@ export const useLocationService = () => {
       }
 
       // Try to load saved location for patients
-      if (isPatient() && profile?.role_specific_data?.preferred_location) {
+      if (isPatient && profile?.role_specific_data?.preferred_location) {
         await loadSavedLocation();
       }
     };

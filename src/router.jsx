@@ -95,7 +95,7 @@ const StaffHistory = lazy(() =>
   import("@/app/staff/pages/StaffAppointmentHistory")
 );
 const ClinicAnalytics = lazy(() => import("@/app/staff/pages/ClinicAnalytics"));
-const ClinicTeam = lazy(() => import("@/app/staff/pages/ClinicTeam"));
+const StaffProfile = lazy(() => import("@/app/staff/pages/StaffProfile"));
 const FeedbackManagement = lazy(() =>
   import("@/app/staff/pages/FeedbackManagement")
 );
@@ -110,6 +110,7 @@ const UserRecords = lazy(() => import("@/app/admin/pages/UserRecords"));
 const PartnershipRequestManager = lazy(() =>
   import("@/app/admin/pages/PartnershipRequestManager")
 );
+const AdminProfile = lazy(() => import("@/app/admin/pages/AdminProfile"));
 
 // Simple route creation
 const createProtectedRoute = (allowedRoles, LayoutComponent, children) => ({
@@ -200,7 +201,7 @@ export const router = createBrowserRouter([
             element: withSuspense(StaffHistory),
           },
           { path: "clinic-analytics", element: withSuspense(ClinicAnalytics) },
-          { path: "team", element: withSuspense(ClinicTeam) },
+          { path: "clinic-profile", element: withSuspense(StaffProfile) },
           { path: "feedbacks", element: withSuspense(FeedbackManagement) },
           { path: "settings", element: withSuspense(ClinicSettings) },
           { path: "help", element: withSuspense(Help) },
@@ -223,6 +224,7 @@ export const router = createBrowserRouter([
             path: "partnership-request-manager",
             element: withSuspense(PartnershipRequestManager),
           },
+          { path: "profile", element: withSuspense(AdminProfile) },
         ]),
       },
 

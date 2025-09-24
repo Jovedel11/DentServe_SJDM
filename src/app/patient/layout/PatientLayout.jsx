@@ -2,7 +2,6 @@ import { ThemeProvider } from "@/core/contexts/ThemeProvider";
 import { PDashboardLayout } from "../components/layout/patient-dashboard-layout";
 import { useNavigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/auth/context/AuthProvider";
-import WelcomeToast from "../components/welcome-toast";
 import { useState } from "react";
 
 const PatientLayout = () => {

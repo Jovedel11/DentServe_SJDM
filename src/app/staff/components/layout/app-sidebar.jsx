@@ -39,8 +39,8 @@ const data = {
       icon: IconChartBar,
     },
     {
-      title: "Team",
-      url: "/staff/team",
+      title: "Clinic Profile",
+      url: "/staff/clinic-profile",
       icon: IconUsers,
     },
     {

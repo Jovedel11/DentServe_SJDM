@@ -18,7 +18,7 @@ export const usePatientAppointments = () => {
 
   // fetch with proper user ID extraction
   const fetchAppointments = useCallback(async (options = {}) => {
-    if (!isPatient()) {
+    if (!isPatient) {
       return { success: false, error: 'Access denied: Patient only' };
     }
 
@@ -66,7 +66,7 @@ export const usePatientAppointments = () => {
       let rpcParams;
 
       // ✅ Route to appropriate function based on role
-      if (isPatient()) {
+      if (isPatient) {
         rpcFunction = 'get_user_appointments';
         rpcParams = {
           p_status: statusFilter,
@@ -75,7 +75,7 @@ export const usePatientAppointments = () => {
           p_limit: limit,
           p_offset: refresh ? 0 : offset
         };
-      } else if (isStaff() || isAdmin()) {
+      } else if (isStaff || isAdmin) {
         rpcFunction = 'get_appointments_by_role';
         rpcParams = {
           p_status: statusFilter,
@@ -154,7 +154,7 @@ export const usePatientAppointments = () => {
 
   // Cancel appointment with proper validation
   const cancelAppointment = useCallback(async (appointmentId, reason) => {
-    if (!isPatient()) {
+    if (!isPatient) {
       return { success: false, error: 'Access denied: Patient only' };
     }
 
@@ -349,7 +349,7 @@ export const usePatientAppointments = () => {
 
   // Auto-fetch when component mounts or tab changes
   useEffect(() => {
-    if (isPatient()) {
+    if (isPatient) {
       fetchAppointments({ refresh: true });
     }
   }, [activeTab, isPatient]);

@@ -28,7 +28,7 @@ const GmailInboxModal = ({ onClose, showInboxModal }) => {
   const [sendingReply, setSendingReply] = useState(false);
 
   // ✅ ACCESS CONTROL
-  if (!user || (!isStaff() && !isAdmin())) {
+  if (!user || (!isStaff && !isAdmin)) {
     return null;
   }
 

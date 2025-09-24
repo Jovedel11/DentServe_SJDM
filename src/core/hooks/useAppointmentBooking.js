@@ -277,7 +277,7 @@ export const useAppointmentBooking = () => {
   // ✅ ENHANCED: Book appointment with staff notification
   const bookAppointment = useCallback(async () => {
     // Role validation
-    if (!isPatient()) {
+    if (!isPatient) {
       setError('Only patients can book appointments');
       return { success: false, error: 'Access denied' };
     }

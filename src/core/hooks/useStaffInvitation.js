@@ -10,7 +10,7 @@ export const useStaffInvitation = () => {
 
   // Send staff invitation (admin only)
   const sendStaffInvitation = useCallback(async (invitationData) => {
-    if (!isAdmin()) {
+    if (!isAdmin) {
       const error = 'Access denied: Admin required';
       setError(error);
       return { success: false, error };
@@ -66,7 +66,7 @@ export const useStaffInvitation = () => {
 
   // Get staff invitations (admin only)
   const getStaffInvitations = useCallback(async (filters = {}) => {
-    if (!isAdmin()) {
+    if (!isAdmin) {
       const error = 'Access denied: Admin required';
       setError(error);
       return { success: false, error };
@@ -125,7 +125,7 @@ export const useStaffInvitation = () => {
 
   // Resend staff invitation (admin only)
   const resendStaffInvitation = useCallback(async (invitationId) => {
-    if (!isAdmin()) {
+    if (!isAdmin) {
       const error = 'Access denied: Admin required';
       setError(error);
       return { success: false, error };
@@ -169,7 +169,7 @@ export const useStaffInvitation = () => {
 
   // Cancel staff invitation (admin only)
   const cancelStaffInvitation = useCallback(async (invitationId) => {
-    if (!isAdmin()) {
+    if (!isAdmin) {
       const error = 'Access denied: Admin required';
       setError(error);
       return { success: false, error };
@@ -293,7 +293,7 @@ export const useStaffInvitation = () => {
 
   // Get invitation statistics (admin only)
   const getInvitationStats = useCallback(() => {
-    if (!isAdmin()) return null;
+    if (!isAdmin) return null;
 
     const total = invitations.length;
     const pending = invitations.filter(inv => inv.status === 'pending').length;
@@ -304,7 +304,7 @@ export const useStaffInvitation = () => {
       const invDate = new Date(inv.created_at);
       const now = new Date();
       return invDate.getMonth() === now.getMonth() && 
-             invDate.getFullYear() === now.getFullYear();
+            invDate.getFullYear() === now.getFullYear();
     }).length;
 
     return {
@@ -339,7 +339,7 @@ export const useStaffInvitation = () => {
 
     // Utilities
     clearError: () => setError(null),
-    canManageInvitations: isAdmin(),
+    canManageInvitations: isAdmin,
 
     // Helpers
     getInvitationById: (id) => invitations.find(inv => inv.id === id),

@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from "react";
+import React, { useCallback } from "react";
 import {
   Calendar,
   Clock,
@@ -17,15 +17,15 @@ import EmptyState from "@/core/components/ui/empty-state";
 import Loader from "@/core/components/Loader";
 
 // Specialized Components
-import StatsCard from "../components/appointments/stats-card";
-import SearchBar from "../components/appointments/search-bar";
-import UrgentReminders from "../components/appointments/urgent-reminders";
-import OngoingTreatments from "../components/appointments/ongoing-treatments";
-import AppointmentCard from "../components/appointments/appointment-card";
+import StatsCard from "../components/upcomming/stats-card";
+import SearchBar from "../components/upcomming/search-bar";
+import UrgentReminders from "../components/upcomming/urgent-reminders";
+import OngoingTreatments from "../components/upcomming/ongoing-treatments";
+import AppointmentCard from "../components/upcomming/appointment-card";
 
 // Modals
-import CancelModal from "../components/appointments/cancel-modal";
-import DetailsModal from "../components/appointments/details-modal";
+import CancelModal from "../components/upcomming/cancel-modal";
+import DetailsModal from "../components/upcomming/details-modal";
 
 // Logic Hook
 import { useAppointmentManagement } from "../hook/useUpcommingAppointment";
@@ -161,7 +161,7 @@ Email: ${appointment.clinic?.email || "N/A"}
   );
 
   // Access control
-  if (!user || !isPatient()) {
+  if (!user || !isPatient) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="max-w-md mx-auto text-center p-8 glass-effect rounded-xl border shadow-lg">

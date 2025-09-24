@@ -40,7 +40,7 @@ const StaffNotificationCenter = ({
   const [selectedFilter, setSelectedFilter] = useState("all");
 
   // ✅ ACCESS CONTROL
-  if (!user || (!isStaff() && !isAdmin())) {
+  if (!user || (!isStaff && !isAdmin)) {
     return null;
   }
 

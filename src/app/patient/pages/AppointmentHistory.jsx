@@ -42,15 +42,13 @@ import {
 } from "recharts";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { usePatientAppointmentHistory } from "@/core/hooks/usePatientAppointmentHistory";
-import { Toast } from "@/app/shared/components/toast";
+import Toast from "@/core/components/ui/toast";
 import Loader from "@/core/components/Loader";
-import { DeleteConfirmationModal } from "@/app/shared/components/delete-modal";
+import { DeleteConfirmationModal } from "../components/history/delete-modal";
 
-// ✅ MAIN COMPONENT - FULLY REFACTORED
 const AppointmentHistory = () => {
   const { user, isPatient } = useAuth();
 
-  // ✅ FIXED: Use the corrected hook with all proper integrations
   const {
     // State from hook
     loading,
@@ -97,7 +95,7 @@ const AppointmentHistory = () => {
     hasMore: paginationHasMore,
   } = usePatientAppointmentHistory();
 
-  // ✅ LOCAL STATE for UI interactions
+  // LOCAL STATE for UI interactions
   const [expandedAppointment, setExpandedAppointment] = useState(null);
   const [deleteModal, setDeleteModal] = useState({
     isOpen: false,
@@ -115,12 +113,12 @@ const AppointmentHistory = () => {
     refreshing: false,
   });
 
-  // ✅ UTILITY: Show toast helper
+  // Show toast helper
   const showToast = (message, type = "success") => {
     setToast({ show: true, message, type });
   };
 
-  // ✅ UTILITY: Prevent default event behavior
+  // Prevent default event behavior
   const preventDefaults = (e) => {
     if (e) {
       e.preventDefault();
@@ -128,7 +126,7 @@ const AppointmentHistory = () => {
     }
   };
 
-  // ✅ FIXED: Archive handler with proper state management
+  // Archive handler with proper state management
   const handleArchive = async (appointmentId, e = null) => {
     preventDefaults(e);
 
@@ -159,7 +157,7 @@ const AppointmentHistory = () => {
     return false;
   };
 
-  // ✅ FIXED: Unarchive handler
+  // Unarchive handler
   const handleUnarchive = async (appointmentId, e = null) => {
     preventDefaults(e);
 
@@ -190,14 +188,14 @@ const AppointmentHistory = () => {
     return false;
   };
 
-  // ✅ FIXED: Delete modal handler
+  // Delete modal handler
   const handleDeleteClick = (appointment, e = null) => {
     preventDefaults(e);
     setDeleteModal({ isOpen: true, appointment });
     return false;
   };
 
-  // ✅ FIXED: Delete confirmation handler
+  // Delete confirmation handler
   const handleDeleteConfirm = async () => {
     if (!deleteModal.appointment) return;
 
@@ -226,7 +224,7 @@ const AppointmentHistory = () => {
     }
   };
 
-  // ✅ FIXED: Archive view toggle
+  // Archive view toggle
   const handleToggleArchiveView = async (e = null) => {
     preventDefaults(e);
 
@@ -238,7 +236,7 @@ const AppointmentHistory = () => {
     return false;
   };
 
-  // ✅ FIXED: Download handler
+  // Download handler
   const handleDownload = (appointment, e = null) => {
     preventDefaults(e);
 
@@ -255,7 +253,7 @@ const AppointmentHistory = () => {
     return false;
   };
 
-  // ✅ FIXED: Manual refresh handler
+  // Manual refresh handler
   const handleManualRefresh = async (e = null) => {
     preventDefaults(e);
 
@@ -277,7 +275,7 @@ const AppointmentHistory = () => {
     return false;
   };
 
-  // ✅ FIXED: Load more appointments
+  // Load more appointments
   const handleLoadMore = async () => {
     if (loading || !paginationHasMore) return;
 
@@ -291,7 +289,7 @@ const AppointmentHistory = () => {
     }
   };
 
-  // ✅ ENHANCED: Chart data with proper error handling
+  // Chart data with proper error handling
   const chartData = useMemo(() => {
     if (!totalAppointments) {
       return {
@@ -412,7 +410,7 @@ const AppointmentHistory = () => {
   };
 
   // ✅ ACCESS CONTROL: Check user permissions
-  if (!user || !isPatient()) {
+  if (!user || !isPatient) {
     return (
       <div className="min-h-screen p-6 bg-background flex items-center justify-center">
         <motion.div

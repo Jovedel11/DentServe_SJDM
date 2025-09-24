@@ -55,7 +55,7 @@ const StaffAppointmentHistory = () => {
   const [itemsPerPage] = useState(20);
 
   useEffect(() => {
-    if (isStaff()) {
+    if (isStaff) {
       const filterParams = {
         ...filters,
         status: filters.status === "all" ? null : filters.status,
@@ -89,7 +89,7 @@ const StaffAppointmentHistory = () => {
 
   // Load appointments on component mount and filter changes
   useEffect(() => {
-    if (isStaff()) {
+    if (isStaff) {
       const filterParams = {
         ...filters,
         status: filters.status === "all" ? null : filters.status,
@@ -297,7 +297,7 @@ const StaffAppointmentHistory = () => {
   };
 
   // ✅ SECURITY: Return access denied for non-staff
-  if (!isStaff()) {
+  if (!isStaff) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">

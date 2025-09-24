@@ -10,7 +10,7 @@ export const useServiceManager = () => {
 
   // Get clinic ID for staff users
   const getClinicId = useCallback(() => {
-    if (isStaff()) {
+    if (isStaff) {
       return profile?.role_specific_data?.clinic_id;
     }
     return null;
@@ -62,7 +62,7 @@ export const useServiceManager = () => {
 
   // Create new service
   const createService = useCallback(async (serviceData, clinicId = null) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -134,7 +134,7 @@ export const useServiceManager = () => {
 
   // Update service
   const updateService = useCallback(async (serviceId, updates) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -189,7 +189,7 @@ export const useServiceManager = () => {
 
   // Toggle service status
   const toggleServiceStatus = useCallback(async (serviceId, isActive) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -233,7 +233,7 @@ export const useServiceManager = () => {
 
   // Delete service (admin only)
   const deleteService = useCallback(async (serviceId) => {
-    if (!isAdmin()) {
+    if (!isAdmin) {
       const error = 'Access denied: Admin required';
       setError(error);
       return { success: false, error };
@@ -282,7 +282,7 @@ export const useServiceManager = () => {
 
   // Bulk update service priorities
   const updateServicePriorities = useCallback(async (priorityUpdates) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -370,8 +370,8 @@ export const useServiceManager = () => {
 
     // Utilities
     clearError: () => setError(null),
-    canManageServices: isStaff() || isAdmin(),
-    canDeleteServices: isAdmin(),
+    canManageServices: isStaff || isAdmin,
+    canDeleteServices: isAdmin,
     clinicId: getClinicId(),
 
     // Helpers

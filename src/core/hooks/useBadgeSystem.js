@@ -93,7 +93,7 @@ export const useBadgeSystem = () => {
 
   // Create new badge (admin only)
   const createBadge = useCallback(async (badgeData) => {
-    if (!isAdmin()) {
+    if (!isAdmin) {
       const error = 'Access denied: Admin required';
       setError(error);
       return { success: false, error };
@@ -156,7 +156,7 @@ export const useBadgeSystem = () => {
 
   // Award badge to clinic (admin only)
   const awardBadge = useCallback(async (clinicId, badgeId, awardData = {}) => {
-    if (!isAdmin()) {
+    if (!isAdmin) {
       const error = 'Access denied: Admin required';
       setError(error);
       return { success: false, error };
@@ -224,7 +224,7 @@ export const useBadgeSystem = () => {
 
   // Revoke badge from clinic (admin only)
   const revokeBadge = useCallback(async (clinicId, badgeId, reason = '') => {
-    if (!isAdmin()) {
+    if (!isAdmin) {
       const error = 'Access denied: Admin required';
       setError(error);
       return { success: false, error };
@@ -267,7 +267,7 @@ export const useBadgeSystem = () => {
 
   // Update badge (admin only)
   const updateBadge = useCallback(async (badgeId, updates) => {
-    if (!isAdmin()) {
+    if (!isAdmin) {
       const error = 'Access denied: Admin required';
       setError(error);
       return { success: false, error };
@@ -317,7 +317,7 @@ export const useBadgeSystem = () => {
 
   // Toggle badge status (admin only)
   const toggleBadgeStatus = useCallback(async (badgeId, isActive) => {
-    if (!isAdmin()) {
+    if (!isAdmin) {
       const error = 'Access denied: Admin required';
       setError(error);
       return { success: false, error };
@@ -415,7 +415,7 @@ export const useBadgeSystem = () => {
 
     // Utilities
     clearError: () => setError(null),
-    canManageBadges: isAdmin(),
+    canManageBadges: isAdmin,
     clinicHasBadge,
 
     // Helpers

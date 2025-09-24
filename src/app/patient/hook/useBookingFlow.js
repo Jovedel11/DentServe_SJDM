@@ -28,7 +28,7 @@ export const useBookingFlow = () => {
 
   // Fetch clinics
   const fetchClinics = useCallback(async () => {
-    if (!isPatient()) return;
+    if (!isPatient) return;
 
     setClinicsLoading(true);
     try {
@@ -108,7 +108,7 @@ export const useBookingFlow = () => {
   }, [appointmentHook]);
 
   const handleSubmit = useCallback(async () => {
-    if (!isPatient()) {
+    if (!isPatient) {
       showToast("Only patients can book appointments", "error");
       return;
     }

@@ -63,7 +63,7 @@ export const useAppointmentManagement = () => {
 
   // Fetch ongoing treatments
   const fetchOngoingTreatments = useCallback(async () => {
-    if (!isPatient()) return;
+    if (!isPatient) return;
 
     try {
       setTreatmentsLoading(true);
@@ -228,7 +228,7 @@ export const useAppointmentManagement = () => {
 
   // Effects
   useEffect(() => {
-    if (!user || !isPatient()) return;
+    if (!user || !isPatient) return;
 
     fetchOngoingTreatments();
     enableRealtimeUpdates();

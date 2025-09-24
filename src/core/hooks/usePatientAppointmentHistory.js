@@ -36,7 +36,7 @@ export const usePatientAppointmentHistory = () => {
 
   //Fetch appointments with
   const fetchAppointmentData = useCallback(async (forceRefresh = false, loadMore = false) => {
-    if (!user || !isPatient()) {
+    if (!user || !isPatient) {
       setState(prev => ({ ...prev, loading: false }));
       return { success: false, error: 'User not authenticated or not a patient' };
     }

@@ -18,7 +18,7 @@ export const useDoctorManager = () => {
 
   // Fetch doctors for clinic
   const fetchDoctors = useCallback(async (clinicId = null) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -36,7 +36,7 @@ export const useDoctorManager = () => {
 
       const { data, error: rpcError } = await supabase.rpc('get_clinic_doctors', {
         p_clinic_id: targetClinicId,
-        p_include_inactive: isAdmin()
+        p_include_inactive: isAdmin
       });
 
       if (rpcError) throw new Error(rpcError.message);
@@ -65,7 +65,7 @@ export const useDoctorManager = () => {
 
   // Add doctor to clinic
   const addDoctor = useCallback(async (doctorData, clinicId = null) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -138,7 +138,7 @@ export const useDoctorManager = () => {
 
   // Update doctor information
   const updateDoctor = useCallback(async (doctorId, updates) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -181,7 +181,7 @@ export const useDoctorManager = () => {
 
   // Update doctor schedule
   const updateDoctorSchedule = useCallback(async (doctorId, schedule, clinicId = null) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -224,7 +224,7 @@ export const useDoctorManager = () => {
 
   // Toggle doctor availability
   const toggleDoctorAvailability = useCallback(async (doctorId, isAvailable) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -267,7 +267,7 @@ export const useDoctorManager = () => {
 
   // Remove doctor from clinic
   const removeDoctorFromClinic = useCallback(async (doctorId, clinicId = null) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const error = 'Access denied: Staff or Admin required';
       setError(error);
       return { success: false, error };
@@ -331,7 +331,7 @@ export const useDoctorManager = () => {
 
     // Utilities
     clearError: () => setError(null),
-    canManageDoctors: isStaff() || isAdmin(),
+    canManageDoctors: isStaff || isAdmin,
     clinicId: getClinicId()
   };
 };

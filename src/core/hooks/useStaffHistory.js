@@ -14,7 +14,7 @@ export const useStaffHistory = () => {
 
   // Get current clinic ID for staff scoping
   const clinicId = useMemo(() => {
-    if (isStaff()) {
+    if (isStaff) {
       return profile?.role_specific_data?.clinic_id;
     }
     return null;
@@ -22,7 +22,7 @@ export const useStaffHistory = () => {
 
   // Fetch staff appointment history with comprehensive filtering
   const fetchHistory = useCallback(async (filters = {}) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       const errorMsg = 'Access denied: Staff or Admin required';
       setError(errorMsg);
       return { success: false, error: errorMsg };
@@ -156,7 +156,7 @@ export const useStaffHistory = () => {
 
   // Delete appointment (permanent)
   const deleteAppointment = useCallback(async (appointmentId) => {
-    if (!isAdmin()) {
+    if (!isAdmin) {
       return { success: false, error: 'Delete operation requires admin privileges' };
     }
 
@@ -259,8 +259,8 @@ export const useStaffHistory = () => {
     
     // Computed
     hasAppointments: appointments.length > 0,
-    canDelete: isAdmin(),
-    canArchive: isStaff() || isAdmin(),
+    canDelete: isAdmin,
+    canArchive: isStaff || isAdmin,
     clinicId
   };
 };

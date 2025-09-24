@@ -237,7 +237,7 @@ const PatientFeedback = () => {
   };
 
   // ✅ ACCESS CONTROL
-  if (!user || !isPatient()) {
+  if (!user || !isPatient) {
     return (
       <div className="min-h-screen p-6 bg-background">
         <div className="max-w-7xl mx-auto text-center">

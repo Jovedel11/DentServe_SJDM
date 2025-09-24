@@ -18,7 +18,7 @@ export const useStaffNotifications = () => {
 
   // ✅ STAFF NOTIFICATION FETCH with proper filtering
   const fetchStaffNotifications = useCallback(async (options = {}) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       return { success: false, error: 'Staff or Admin access required' };
     }
 
@@ -178,7 +178,7 @@ export const useStaffNotifications = () => {
 
   // ✅ AUTO-FETCH on mount and filter changes
   useEffect(() => {
-    if (isStaff() || isAdmin()) {
+    if (isStaff || isAdmin) {
       fetchStaffNotifications({ refresh: true });
     }
   }, [filter, isStaff, isAdmin]);
@@ -186,7 +186,7 @@ export const useStaffNotifications = () => {
   // ✅ AUTO-REFRESH every 2 minutes (more frequent for staff)
   useEffect(() => {
     const interval = setInterval(() => {
-      if (isStaff() || isAdmin()) {
+      if (isStaff || isAdmin) {
         fetchStaffNotifications({ refresh: true });
       }
     }, 2 * 60 * 1000); // 2 minutes

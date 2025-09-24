@@ -17,7 +17,7 @@ export const useStaffCommunications = () => {
 
   // Fetch communications from email_communications table
   const fetchCommunications = useCallback(async (options = {}) => {
-    if (!isStaff() && !isAdmin()) {
+    if (!isStaff && !isAdmin) {
       return { success: false, error: 'Access denied: Staff only' };
     }
 
@@ -128,7 +128,7 @@ export const useStaffCommunications = () => {
   }, [communications]);
 
   useEffect(() => {
-    if (isStaff() || isAdmin()) {
+    if (isStaff || isAdmin) {
       fetchCommunications();
     }
   }, [isStaff, isAdmin, fetchCommunications]);

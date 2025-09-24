@@ -9,7 +9,7 @@ export const useConditionReports = () => {
 
   const sendConditionReport = useCallback(async (reportData) => {
     // ✅ Role validation
-    if (!isPatient()) {
+    if (!isPatient) {
       const error = 'Only patients can send condition reports';
       setError(error);
       return { success: false, error };
