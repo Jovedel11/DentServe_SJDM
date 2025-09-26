@@ -34,6 +34,11 @@ const data = {
       isActive: true,
     },
     {
+      title: "Appointment History",
+      url: "/staff/appointment-history",
+      icon: IconChartBar,
+    },
+    {
       title: "Clinic Analytics",
       url: "/staff/clinic-analytics",
       icon: IconChartBar,

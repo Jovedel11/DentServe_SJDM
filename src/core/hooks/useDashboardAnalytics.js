@@ -33,17 +33,8 @@ export const useDashboardAnalytics = () => {
         throw new Error('User not authenticated');
       }
 
-      // ✅ SINGLE REQUEST - Get user's internal ID first
-      const { data: userRow, error: userError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('auth_user_id', targetUserId)
-        .single();
-
-      if (userError) throw userError;
-
       const { data, error: rpcError } = await supabase.rpc('get_dashboard_data', {
-        p_user_id: userRow.id
+        p_user_id: null 
       });
 
       if (rpcError) throw new Error(rpcError.message);

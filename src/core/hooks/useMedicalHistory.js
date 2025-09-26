@@ -19,52 +19,37 @@ export const useMedicalHistory = () => {
   // Fetch medical history for patient
   const fetchMedicalHistory = useCallback(async (patientId = null) => {
     try {
-      setLoading(true);
-      setError(null);
-
       let targetPatientId = patientId;
       
-      // ✅ Role-based access control
       if (isPatient) {
-        // Patients can only view their own history
         targetPatientId = profile?.user_id;
-      } else if (isStaff || isAdmin) {
-        // Staff/Admin need explicit patient ID
-        if (!targetPatientId) {
-          throw new Error('Patient ID is required');
-        }
-      } else {
-        throw new Error('Access denied');
       }
-
-      const { data, error: rpcError } = await supabase.rpc('get_patient_medical_history', {
-        p_patient_id: targetPatientId,
-        p_include_deleted_appointments: isStaff || isAdmin
-      });
-
-      if (rpcError) throw new Error(rpcError.message);
-
-      if (!data?.success) {
-        throw new Error(data?.error || 'Failed to fetch medical history');
-      }
-
-      const historyData = data.data.medical_history || [];
-      setMedicalHistory(historyData);
-
-      return {
-        success: true,
-        history: historyData,
-        count: historyData.length
-      };
-
+  
+      const { data, error } = await supabase
+        .from('patient_medical_history')
+        .select(`
+          *,
+          appointments!left (
+            id,
+            appointment_date,
+            appointment_time,
+            status,
+            clinics (name, address),
+            doctors (first_name, last_name, specialization)
+          )
+        `)
+        .eq('patient_id', targetPatientId)
+        .order('created_at', { ascending: false });
+  
+      if (error) throw error;
+  
+      setMedicalHistory(data || []);
+      return { success: true, history: data || [] };
     } catch (err) {
-      const errorMessage = err.message || 'Failed to fetch medical history';
-      setError(errorMessage);
-      return { success: false, error: errorMessage };
-    } finally {
-      setLoading(false);
+      setError(err.message);
+      return { success: false, error: err.message };
     }
-  }, [isPatient, isStaff, isAdmin, profile]);
+  }, [isPatient, profile]);
 
   // Create medical history record (staff/admin only)
   const createMedicalRecord = useCallback(async (recordData) => {

@@ -9,7 +9,7 @@ export const useAppointmentNotifications = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('all');  
   const [pagination, setPagination] = useState({
     limit: 20,
     offset: 0,
@@ -17,7 +17,7 @@ export const useAppointmentNotifications = () => {
     hasMore: false
   });
 
-  //Fetch notifications
+  // Fetch notifications with proper notification types
   const fetchNotifications = useCallback(async (options = {}) => {
     if (!user) return { success: false, error: 'User not authenticated' };
 
@@ -32,11 +32,22 @@ export const useAppointmentNotifications = () => {
         refresh = false
       } = options;
 
+      // Use proper notification types from enum
+      const appointmentNotificationTypes = [
+        'appointment_confirmed',
+        'appointment_cancelled', 
+        'appointment_reminder',
+        'appointment_completed',
+        'appointment_rescheduled'
+      ];
+
       const { data, error } = await supabase.rpc('get_user_notifications', {
         p_user_id: null, // Uses current user context
         p_read_status: readStatus,
+        p_notification_types: appointmentNotificationTypes,
         p_limit: limit,
-        p_offset: refresh ? 0 : offset
+        p_offset: refresh ? 0 : offset,
+        p_include_related_data: true
       });
 
       if (error) throw new Error(error.message);
@@ -84,7 +95,7 @@ export const useAppointmentNotifications = () => {
     }
   }, [user, filter, pagination.limit, pagination.offset]);
 
-  // Mark as read
+  // Mark as read with proper error handling
   const markAsRead = useCallback(async (notificationIds) => {
     if (!user || !Array.isArray(notificationIds) || notificationIds.length === 0) {
       return { success: false, error: 'Invalid notification IDs' };
@@ -126,8 +137,8 @@ export const useAppointmentNotifications = () => {
 
       return {
         success: true,
-        updatedCount: data.updated_count,
-        message: data.message
+        updated_count: data.data?.updated_count || markedCount,
+        message: data.message || 'Notifications marked as read'
       };
 
     } catch (err) {
@@ -139,9 +150,22 @@ export const useAppointmentNotifications = () => {
     }
   }, [user, notifications]);
 
-  // Create appointment notification (for system use)
+  // Create appointment notification with proper validation
   const createAppointmentNotification = useCallback(async (userId, type, appointmentId, customMessage = null) => {
     try {
+      // Validate notification type
+      const validTypes = [
+        'appointment_confirmed',
+        'appointment_cancelled',
+        'appointment_reminder', 
+        'appointment_completed',
+        'appointment_rescheduled'
+      ];
+
+      if (!validTypes.includes(type)) {
+        throw new Error(`Invalid notification type: ${type}`);
+      }
+
       const { data, error } = await supabase.rpc('create_appointment_notification', {
         p_user_id: userId,
         p_notification_type: type,
@@ -155,14 +179,14 @@ export const useAppointmentNotifications = () => {
         throw new Error(data?.error || 'Failed to create notification');
       }
 
-      return { success: true, message: data.message };
+      return { success: true, message: data.message || 'Notification created successfully' };
     } catch (err) {
       console.error('Create notification error:', err);
       return { success: false, error: err.message };
     }
   }, []);
 
-  // Get notifications by type
+  // Get notifications by type with proper enum validation
   const getNotificationsByType = useCallback((type) => {
     return notifications.filter(notif => notif.type === type);
   }, [notifications]);
@@ -177,7 +201,7 @@ export const useAppointmentNotifications = () => {
     );
   }, [notifications]);
 
-  // Get notification statistics
+  // Get notification statistics with proper type counting
   const getStats = useCallback(() => {
     const today = new Date().toISOString().split('T')[0];
     
@@ -186,7 +210,7 @@ export const useAppointmentNotifications = () => {
       unread: unreadCount,
       read: notifications.length - unreadCount,
       todayCount: notifications.filter(notif => 
-        notif.created_at.split('T')[0] === today
+        notif.created_at?.split('T')[0] === today
       ).length,
       appointmentRelated: notifications.filter(notif => 
         notif.appointment_id !== null
@@ -195,25 +219,29 @@ export const useAppointmentNotifications = () => {
         appointment_confirmed: getNotificationsByType('appointment_confirmed').length,
         appointment_cancelled: getNotificationsByType('appointment_cancelled').length,
         appointment_reminder: getNotificationsByType('appointment_reminder').length,
-        feedback_request: getNotificationsByType('feedback_request').length,
-        partnership_request: getNotificationsByType('partnership_request').length
+        appointment_completed: getNotificationsByType('appointment_completed').length,
+        appointment_rescheduled: getNotificationsByType('appointment_rescheduled').length
       }
     };
   }, [notifications, unreadCount, getNotificationsByType]);
 
   // Auto-fetch on component mount and filter changes
   useEffect(() => {
-    fetchNotifications({ refresh: true });
-  }, [filter]);
+    if (user) {
+      fetchNotifications({ refresh: true });
+    }
+  }, [filter, user]);
 
   // Auto-refresh every 5 minutes
   useEffect(() => {
+    if (!user) return;
+
     const interval = setInterval(() => {
       fetchNotifications({ refresh: true });
     }, 5 * 60 * 1000); // 5 minutes
 
     return () => clearInterval(interval);
-  }, [fetchNotifications]);
+  }, [fetchNotifications, user]);
   
   return {
     // Data
@@ -228,8 +256,8 @@ export const useAppointmentNotifications = () => {
     createAppointmentNotification,
     getStats, 
     getRecentNotifications,
-    fetchNotifications, // with return values
-    markAsRead,         // with return values
+    fetchNotifications,
+    markAsRead,
     markSingleAsRead: (id) => markAsRead([id]),
     markAllAsRead: () => markAsRead(notifications.filter(n => !n.is_read).map(n => n.id)),
     updateFilter: (newFilter) => {
@@ -243,25 +271,11 @@ export const useAppointmentNotifications = () => {
       }
     },
 
-    //computed values
-    // stats: {
-    //   total: notifications.length,
-    //   unread: unreadCount,
-    //   read: notifications.length - unreadCount,
-    //   todayCount: notifications.filter(n => 
-    //     new Date(n.created_at).toDateString() === new Date().toDateString()
-    //   ).length,
-    //   byType: {
-    //     appointment_confirmed: notifications.filter(n => n.type === 'appointment_confirmed').length,
-    //     appointment_cancelled: notifications.filter(n => n.type === 'appointment_cancelled').length,
-    //     appointment_reminder: notifications.filter(n => n.type === 'appointment_reminder').length,
-    //     feedback_request: notifications.filter(n => n.type === 'feedback_request').length
-    //   }
-    // },
-
     // Utilities
     isEmpty: notifications.length === 0,
     hasUnread: unreadCount > 0,
-    hasMore: pagination.hasMore
+    hasMore: pagination.hasMore,
+    clearError: () => setError(null)
   };
-};
+
+}

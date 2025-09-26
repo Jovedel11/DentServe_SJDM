@@ -59,24 +59,25 @@ export const useFileUpload = () => {
 
       // Save file record to database
       const { data: fileRecord, error: dbError } = await supabase
-        .from('file_uploads')
-        .insert({
-          file_name: file.name,
-          file_type: file.type,
-          file_size: file.size,
-          storage_path: fileName,
-          bucket_name: bucket,
-          content_type: file.type,
-          upload_purpose: options.purpose || 'general',
-          related_id: options.relatedId || null,
-          metadata: {
-            original_name: file.name,
-            uploaded_at: new Date().toISOString(),
-            public_url: publicUrl
-          }
-        })
-        .select()
-        .single();
+      .from('file_uploads')
+      .insert({
+        file_name: file.name,
+        file_type: file.type,
+        file_size: file.size,
+        storage_path: fileName,
+        bucket_name: bucket,
+        content_type: file.type,
+        upload_purpose: options.purpose || 'general',
+        related_id: options.relatedId || null,
+        user_id: session?.user?.id || null, 
+        metadata: {
+          original_name: file.name,
+          uploaded_at: new Date().toISOString(),
+          public_url: publicUrl
+        }
+      })
+      .select()
+      .single();
 
       if (dbError) throw dbError;
 

@@ -18,50 +18,53 @@ export const useDoctorManager = () => {
 
   // Fetch doctors for clinic
   const fetchDoctors = useCallback(async (clinicId = null) => {
-    if (!isStaff && !isAdmin) {
-      const error = 'Access denied: Staff or Admin required';
-      setError(error);
-      return { success: false, error };
-    }
-
     try {
-      setLoading(true);
-      setError(null);
-
-      // Use current clinic for staff, require explicit clinic for admin
       const targetClinicId = clinicId || getClinicId();
-      if (!targetClinicId) {
-        throw new Error('Clinic ID is required');
-      }
-
-      const { data, error: rpcError } = await supabase.rpc('get_clinic_doctors', {
-        p_clinic_id: targetClinicId,
-        p_include_inactive: isAdmin
-      });
-
-      if (rpcError) throw new Error(rpcError.message);
-
-      if (!data?.success) {
-        throw new Error(data?.error || 'Failed to fetch doctors');
-      }
-
-      const fetchedDoctors = data.data.doctors || [];
-      setDoctors(fetchedDoctors);
-
-      return {
-        success: true,
-        doctors: fetchedDoctors,
-        count: fetchedDoctors.length
-      };
-
+      
+      const { data, error } = await supabase
+        .from('doctor_clinics')
+        .select(`
+          *,
+          doctors!inner (
+            id,
+            first_name,
+            last_name,
+            license_number,
+            specialization,
+            education,
+            experience_years,
+            bio,
+            consultation_fee,
+            profile_image_url,
+            languages_spoken,
+            certifications,
+            awards,
+            is_available,
+            rating,
+            total_reviews,
+            created_at,
+            updated_at
+          )
+        `)
+        .eq('clinic_id', targetClinicId)
+        .eq('is_active', true)
+        .order('doctors.first_name');
+  
+      if (error) throw error;
+  
+      const doctors = data.map(dc => ({
+        ...dc.doctors,
+        schedule: dc.schedule,
+        clinic_active: dc.is_active
+      }));
+  
+      setDoctors(doctors);
+      return { success: true, doctors };
     } catch (err) {
-      const errorMessage = err.message || 'Failed to fetch doctors';
-      setError(errorMessage);
-      return { success: false, error: errorMessage };
-    } finally {
-      setLoading(false);
+      setError(err.message);
+      return { success: false, error: err.message };
     }
-  }, [isStaff, isAdmin, getClinicId]);
+  }, [getClinicId]);
 
   // Add doctor to clinic
   const addDoctor = useCallback(async (doctorData, clinicId = null) => {

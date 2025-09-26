@@ -274,15 +274,15 @@ export const useStaffAppointments = () => {
         ? completionData 
         : completionData.notes || '';
 
-      const { data, error } = await supabase.rpc('complete_appointment', {
-        p_appointment_id: appointmentId,
-        p_completion_notes: completionNotes,
-        p_follow_up_required: completionData.follow_up_required || false,
-        p_follow_up_notes: completionData.follow_up_notes || '',
-        p_services_completed: completionData.services_completed || []
-      });
+        const { data, error } = await supabase.rpc('complete_appointment', {
+          p_appointment_id: appointmentId,
+          p_completion_notes: completionNotes,
+          p_services_completed: completionData.services_completed || [], 
+          p_follow_up_required: completionData.follow_up_required || false,
+          p_follow_up_notes: completionData.follow_up_notes || ''
+        });
 
-      console.log("🔍 RPC raw result:", { data, error });
+      console.log("RPC raw result:", { data, error });
 
       if (error) throw new Error(error.message);
 

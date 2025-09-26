@@ -17,15 +17,16 @@ export const useAppointmentRealtime = (options = {}) => {
   } = options;
 
   const subscriptionsRef = useRef([]);
+  const isConnectedRef = useRef(false);
 
-  // Get user details from current context
+  // Get user details with proper profile structure
   const getUserDetails = useCallback(() => {
     if (!user || !profile) return null;
 
     return {
       userId: profile.user_id || user.id,
       userRole: profile.user_type,
-      clinicId: profile.role_specific_data?.clinic_id
+      clinicId: profile.role_specific_data?.clinic_id || null
     };
   }, [user, profile]);
 
@@ -39,9 +40,10 @@ export const useAppointmentRealtime = (options = {}) => {
       }
     });
     subscriptionsRef.current = [];
+    isConnectedRef.current = false;
   }, []);
 
-  // Setup appointments subscription with correct user ID
+  // Setup appointments subscription with proper filtering
   const setupAppointmentSubscription = useCallback(() => {
     const userDetails = getUserDetails();
     if (!userDetails || !enableAppointments) return;
@@ -59,7 +61,7 @@ export const useAppointmentRealtime = (options = {}) => {
               event: '*',
               schema: 'public',
               table: 'appointments',
-              filter: `patient_id=eq.${userId}` // Use correct user ID
+              filter: `patient_id=eq.${userId}`
             },
             (payload) => {
               console.log('Patient appointment update:', payload);
@@ -69,10 +71,12 @@ export const useAppointmentRealtime = (options = {}) => {
                   type: payload.eventType,
                   appointment: payload.new || payload.old,
                   old: payload.old,
-                  isOwn: true
+                  isOwn: true,
+                  userType: 'patient'
                 });
               }
 
+              // Handle status changes properly
               if (payload.eventType === 'UPDATE' && onAppointmentStatusChange) {
                 const oldStatus = payload.old?.status;
                 const newStatus = payload.new?.status;
@@ -91,6 +95,7 @@ export const useAppointmentRealtime = (options = {}) => {
           )
           .subscribe((status) => {
             console.log('Patient appointments subscription status:', status);
+            isConnectedRef.current = status === 'SUBSCRIBED';
           });
         break;
 
@@ -104,7 +109,7 @@ export const useAppointmentRealtime = (options = {}) => {
                 event: '*',
                 schema: 'public',
                 table: 'appointments',
-                filter: `clinic_id=eq.${clinicId}` // Use clinic ID from profile
+                filter: `clinic_id=eq.${clinicId}`
               },
               (payload) => {
                 console.log('Staff appointment update:', payload);
@@ -114,7 +119,8 @@ export const useAppointmentRealtime = (options = {}) => {
                     type: payload.eventType,
                     appointment: payload.new || payload.old,
                     old: payload.old,
-                    clinicId: clinicId
+                    clinicId: clinicId,
+                    userType: 'staff'
                   });
                 }
 
@@ -137,6 +143,7 @@ export const useAppointmentRealtime = (options = {}) => {
             )
             .subscribe((status) => {
               console.log('Staff appointments subscription status:', status);
+              isConnectedRef.current = status === 'SUBSCRIBED';
             });
         }
         break;
@@ -162,10 +169,26 @@ export const useAppointmentRealtime = (options = {}) => {
                   userType: 'admin'
                 });
               }
+
+              if (payload.eventType === 'UPDATE' && onAppointmentStatusChange) {
+                const oldStatus = payload.old?.status;
+                const newStatus = payload.new?.status;
+                
+                if (oldStatus !== newStatus) {
+                  onAppointmentStatusChange({
+                    appointmentId: payload.new.id,
+                    oldStatus,
+                    newStatus,
+                    appointment: payload.new,
+                    userType: 'admin'
+                  });
+                }
+              }
             }
           )
           .subscribe((status) => {
             console.log('Admin appointments subscription status:', status);
+            isConnectedRef.current = status === 'SUBSCRIBED';
           });
         break;
     }
@@ -173,9 +196,9 @@ export const useAppointmentRealtime = (options = {}) => {
     if (appointmentSubscription) {
       subscriptionsRef.current.push(appointmentSubscription);
     }
-  }, []);
+  }, [getUserDetails, enableAppointments]);
 
-  // Notifications subscription
+  // Notifications subscription with better error handling
   const setupNotificationSubscription = useCallback(() => {
     const userDetails = getUserDetails();
     if (!userDetails || !enableNotifications) return;
@@ -190,7 +213,7 @@ export const useAppointmentRealtime = (options = {}) => {
           event: 'INSERT',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${userId}` // Use correct user ID
+          filter: `user_id=eq.${userId}`
         },
         (payload) => {
           console.log('New notification received:', payload);
@@ -232,7 +255,7 @@ export const useAppointmentRealtime = (options = {}) => {
     subscriptionsRef.current.push(notificationSubscription);
   }, [getUserDetails, enableNotifications, onNotificationReceived]);
 
-  // Initialize subscriptions
+  // Initialize subscriptions with proper cleanup
   useEffect(() => {
     const userDetails = getUserDetails();
     if (!userDetails) return;
@@ -243,7 +266,7 @@ export const useAppointmentRealtime = (options = {}) => {
     setupNotificationSubscription();
 
     return cleanup;
-  }, [user, profile, setupAppointmentSubscription, setupNotificationSubscription, cleanup]);
+  }, [user?.id, profile?.user_type, profile?.role_specific_data?.clinic_id, setupAppointmentSubscription, setupNotificationSubscription, cleanup]);
 
   return {
     // Controls
@@ -256,7 +279,7 @@ export const useAppointmentRealtime = (options = {}) => {
     disableRealtimeUpdates: cleanup,
 
     // State
-    isConnected: subscriptionsRef.current.length > 0,
+    isConnected: isConnectedRef.current && subscriptionsRef.current.length > 0,
     activeSubscriptions: subscriptionsRef.current.length,
     userDetails: getUserDetails(),
 
@@ -268,7 +291,11 @@ export const useAppointmentRealtime = (options = {}) => {
       notifications: subscriptionsRef.current.some(sub => 
         sub.topic.includes('notifications')
       ),
-      total: subscriptionsRef.current.length
-    })
+      total: subscriptionsRef.current.length,
+      isConnected: isConnectedRef.current
+    }),
+
+    // Cleanup
+    cleanup
   };
 };

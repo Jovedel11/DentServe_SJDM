@@ -30,10 +30,9 @@ export const usePatientFeedback = () => {
     selectedAppointment: null,
     feedbackForm: {
       rating: 0,
-      feedback_text: '',
-      is_anonymous: false,
-      recommend_to_others: null,
-      feedback_categories: []
+      comment: '',
+      feedback_type: 'general',
+      is_anonymous: false
     }
   });
 
@@ -232,7 +231,7 @@ export const usePatientFeedback = () => {
   const handleSubmitFeedback = useCallback(async () => {
     const { selectedAppointment, feedbackForm } = formState;
     
-    if (!selectedAppointment || !feedbackForm.rating || !feedbackForm.feedback_text.trim()) {
+    if (!selectedAppointment || !feedbackForm.rating || !feedbackForm.comment.trim()) {
       return handleError(new Error('Please complete all required fields'), 'submit feedback');
     }
 
@@ -243,12 +242,11 @@ export const usePatientFeedback = () => {
         clinic_id: selectedAppointment.clinic.id,
         appointment_id: selectedAppointment.id,
         rating: feedbackForm.rating,
-        feedback_text: feedbackForm.feedback_text,
-        is_anonymous: feedbackForm.is_anonymous,
-        recommend_to_others: feedbackForm.recommend_to_others,
-        feedback_categories: feedbackForm.feedback_categories
+        comment: feedbackForm.comment,
+        feedback_type: feedbackForm.feedback_type, 
+        is_anonymous: feedbackForm.is_anonymous
       });
-
+      
       if (!result.success) return result;
 
       console.log('✅ Feedback submitted successfully, staff will be notified');
@@ -261,13 +259,11 @@ export const usePatientFeedback = () => {
         selectedAppointment: null,
         feedbackForm: {
           rating: 0,
-          feedback_text: '',
+          comment: '',
+          feedback_type: 'general',
           is_anonymous: false,
-          recommend_to_others: null,
-          feedback_categories: []
         }
       }));
-
       // ✅ PERFORMANCE - Mark for refresh instead of immediate fetch
       fetchedRef.current.feedback = false;
       await fetchFeedbackHistory(true);
@@ -399,7 +395,6 @@ ID: ${feedback.id}
 Submitted: ${new Date(feedback.created_at).toLocaleDateString()}
 Rating: ${feedback.rating}/5 stars
 Anonymous: ${feedback.is_anonymous ? 'Yes' : 'No'}
-Recommend to Others: ${feedback.recommend_to_others ? 'Yes' : 'No'}
 
 APPOINTMENT DETAILS
 ==================
@@ -416,9 +411,9 @@ ${feedback.doctor?.specialization ? `Specialization: ${feedback.doctor.specializ
 
 FEEDBACK CONTENT
 ===============
-${feedback.message}
+${feedback.comment}
 
-${feedback.feedback_categories?.length ? `Categories: ${feedback.feedback_categories.join(', ')}` : ''}
+${feedback.feedback_type ? `Type: ${feedback.feedback_type}` : ''}
 
 CLINIC RESPONSE
 ==============
@@ -490,10 +485,9 @@ Generated on ${new Date().toLocaleString()}
       selectedAppointment: null,
       feedbackForm: {
         rating: 0,
-        feedback_text: '',
+        comment: '',
+        feedback_type: 'general',
         is_anonymous: false,
-        recommend_to_others: null,
-        feedback_categories: []
       }
     }));
   }, []);
@@ -511,13 +505,13 @@ Generated on ${new Date().toLocaleString()}
       averageRating: feedbackHistory.length > 0 
         ? (feedbackHistory.reduce((sum, fb) => sum + fb.rating, 0) / feedbackHistory.length).toFixed(1)
         : '0.0',
-      canSubmitFeedback: !!(selectedAppointment && feedbackForm.rating > 0 && feedbackForm.feedback_text.trim()),
+      canSubmitFeedback: !!(selectedAppointment && feedbackForm.rating > 0 && feedbackForm.comment.trim()),
       formProgress: (() => {
         let progress = 0;
         if (selectedClinic) progress += 25;
         if (selectedAppointment) progress += 25;
         if (feedbackForm.rating > 0) progress += 25;
-        if (feedbackForm.feedback_text.trim()) progress += 25;
+        if (feedbackForm.comment.trim()) progress += 25;
         return progress;
       })(),
       doctorsForSelectedClinic: selectedClinic?.doctors || [],

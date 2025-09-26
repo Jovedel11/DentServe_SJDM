@@ -23,194 +23,66 @@ export const useClinicDiscovery = () => {
     searchQuery: ""
   });
 
-  // ✅ FIXED: Prevent concurrent calls and rate limit persistence
+  // Prevent concurrent calls and rate limit persistence
   const isDiscoveringRef = useRef(false);
   const abortControllerRef = useRef(null);
   const lastCallTimeRef = useRef(0);
   const hasLoadedInitialClinics = useRef(false);
   const sessionId = useRef(`session_${Date.now()}_${Math.random()}`);
 
-  // ✅ FIXED: Get all clinics with proper badge relationship
+  // Get all clinics with proper badge relationship
   const getAllClinics = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-
+  
       // Cancel previous request
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
       abortControllerRef.current = new AbortController();
-
-      // ✅ FIXED: Use session-based rate limiting to avoid persistence across refreshes
-      const userIdentifier = `${user?.email || 'anonymous'}_${sessionId.current}`;
+  
+      // Use proper RPC function instead of direct queries
+      const { data, error } = await supabase.rpc('find_nearest_clinics', {
+        user_location: userLocation ? `POINT(${userLocation.longitude} ${userLocation.latitude})` : null,
+        max_distance_km: 100, // Get all within 100km
+        limit_count: 100,
+        services_filter: null,
+        min_rating: null
+      });
+  
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed to fetch clinics');
+  
+      const clinics = data.data?.clinics || [];
       
-      try {
-        const canProceed = await checkRateLimit(userIdentifier, 'clinic_search', 15, 10);
-        if (!canProceed) {
-          return { success: false, clinics: [], error: 'Too many search requests. Please wait a moment.' };
-        }
-      } catch (rateLimitError) {
-        console.warn('Rate limit check failed, proceeding anyway:', rateLimitError);
-      }
-
-      // ✅ FIXED: Get all active clinics with proper badge relationship
-      const { data: allClinicsData, error: clinicError } = await supabase
-        .from('clinics')
-        .select(`
-          *,
-          clinic_badge_awards!inner (
-            id,
-            is_current,
-            award_date,
-            clinic_badges (
-              id,
-              badge_name,
-              badge_description,
-              badge_icon_url,
-              badge_color
-            )
-          )
-        `)
-        .eq('is_active', true)
-        .eq('clinic_badge_awards.is_current', true)
-        .order('name')
-        .limit(100)
-        .abortSignal(abortControllerRef.current.signal);
-
-      // ✅ Also get clinics without badges
-      const { data: clinicsWithoutBadges, error: noBadgeError } = await supabase
-        .from('clinics')
-        .select('*')
-        .eq('is_active', true)
-        .not('id', 'in', `(${allClinicsData?.map(c => `'${c.id}'`).join(',') || "''"})`)
-        .order('name')
-        .limit(50)
-        .abortSignal(abortControllerRef.current.signal);
-
-      if (clinicError && noBadgeError) {
-        throw new Error('Failed to fetch clinics');
-      }
-
-      // ✅ FIXED: Combine and process clinic data
-      const combinedClinics = [
-        ...(allClinicsData || []),
-        ...(clinicsWithoutBadges || []).map(clinic => ({
-          ...clinic,
-          clinic_badge_awards: []
-        }))
-      ];
-
-      if (combinedClinics.length === 0) {
-        setClinics([]);
-        setFilteredClinics([]);
-        return { success: true, clinics: [], count: 0 };
-      }
-
-      // ✅ Calculate distances if user has location
-      let clinicsWithDistance = combinedClinics.map(clinic => ({
+      //  Process clinics data properly
+      const processedClinics = clinics.map(clinic => ({
         ...clinic,
-        // ✅ FIXED: Extract latitude and longitude from location geography
-        latitude: clinic.location ? extractLatFromLocation(clinic.location) : null,
-        longitude: clinic.location ? extractLngFromLocation(clinic.location) : null,
-        distance_km: userLocation && clinic.location ? calculateDistance(
-          userLocation.latitude,
-          userLocation.longitude,
-          extractLatFromLocation(clinic.location),
-          extractLngFromLocation(clinic.location)
-        ) : null,
-        // ✅ FIXED: Process badges properly
-        badges: clinic.clinic_badge_awards?.map(award => ({
-          id: award.clinic_badges?.id,
-          badge_name: award.clinic_badges?.badge_name,
-          description: award.clinic_badges?.badge_description,
-          icon_url: award.clinic_badges?.badge_icon_url,
-          color: award.clinic_badges?.badge_color,
-          award_date: award.award_date
-        })).filter(badge => badge.badge_name) || []
+        // Distance is already calculated by the RPC function
+        distance_km: clinic.distance_km,
+        // Badges are included in the RPC response
+        badges: clinic.badges || [],
+        // Doctors are included in the RPC response  
+        doctors: clinic.doctors || [],
+        availableDoctors: clinic.available_doctors || 0,
+        total_doctors: clinic.total_doctors || 0
       }));
-
-      // ✅ Get clinic IDs for doctor data
-      const clinicIds = clinicsWithDistance.map(clinic => clinic.id);
-      
-      const { data: clinicDoctors, error: doctorError } = await supabase
-        .from('doctor_clinics')
-        .select(`
-          clinic_id,
-          is_active,
-          schedule,
-          doctors (
-            id,
-            specialization,
-            consultation_fee,
-            experience_years,
-            is_available,
-            rating,
-            first_name,
-            last_name
-          )
-        `)
-        .in('clinic_id', clinicIds)
-        .eq('is_active', true)
-        .eq('doctors.is_available', true)
-        .abortSignal(abortControllerRef.current.signal);
-
-      if (doctorError && doctorError.name !== 'AbortError') {
-        console.warn('Doctor fetch error:', doctorError);
-      }
-
-      // ✅ Process doctor data
-      const doctorsByClinic = {};
-      clinicDoctors?.forEach(dc => {
-        if (!doctorsByClinic[dc.clinic_id]) {
-          doctorsByClinic[dc.clinic_id] = [];
-        }
-        
-        const doctor = dc.doctors;
-        if (!doctor) return;
-
-        const hasFullName = doctor.first_name && doctor.last_name;
-        const doctorName = hasFullName 
-          ? `Dr. ${doctor.first_name} ${doctor.last_name}`
-          : `Dr. ${doctor.specialization}`;
-
-        doctorsByClinic[dc.clinic_id].push({
-          ...doctor,
-          name: doctorName,
-          display_name: hasFullName 
-            ? `${doctor.first_name} ${doctor.last_name}` 
-            : doctor.specialization,
-          schedule: dc.schedule
-        });
-      });
-
-      // ✅ Enrich clinics with doctor data
-      const enrichedClinics = clinicsWithDistance.map(clinic => {
-        const doctors = doctorsByClinic[clinic.id] || [];
-        const availableDoctors = doctors.filter(doc => doc.is_available);
-        
-        return {
-          ...clinic,
-          doctors,
-          availableDoctors: availableDoctors.length,
-          total_doctors: doctors.length
-        };
-      });
-
-      setClinics(enrichedClinics);
+  
+      setClinics(processedClinics);
       hasLoadedInitialClinics.current = true;
       
       return { 
         success: true, 
-        clinics: enrichedClinics, 
-        count: enrichedClinics.length 
+        clinics: processedClinics, 
+        count: processedClinics.length 
       };
-
+  
     } catch (error) {
       if (error.name === 'AbortError') {
         return { success: false, clinics: [], error: 'Search cancelled' };
       }
-
+  
       console.error('Get all clinics error:', error);
       const errorMsg = error?.message || 'Failed to fetch clinics';
       setError(errorMsg);
@@ -219,7 +91,7 @@ export const useClinicDiscovery = () => {
       setLoading(false);
       abortControllerRef.current = null;
     }
-  }, [userLocation, checkRateLimit, user?.email]);
+  }, [userLocation]);
 
   // ✅ FIXED: Helper functions for PostGIS location extraction
   const extractLatFromLocation = useCallback((location) => {

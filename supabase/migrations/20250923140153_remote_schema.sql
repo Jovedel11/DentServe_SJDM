@@ -8555,10 +8555,19 @@ $$;
 ALTER FUNCTION "public"."update_user_location"("latitude" double precision, "longitude" double precision) OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."update_user_profile"("p_user_id" "uuid" DEFAULT NULL::"uuid", "p_profile_data" "jsonb" DEFAULT '{}'::"jsonb", "p_role_specific_data" "jsonb" DEFAULT '{}'::"jsonb", "p_clinic_data" "jsonb" DEFAULT '{}'::"jsonb", "p_services_data" "jsonb" DEFAULT '{}'::"jsonb", "p_doctors_data" "jsonb" DEFAULT '{}'::"jsonb") RETURNS "jsonb"
-    LANGUAGE "plpgsql" SECURITY DEFINER
-    SET "search_path" TO 'public', 'extensions', 'pg_catalog'
-    AS $$
+CREATE OR REPLACE FUNCTION public.update_user_profile(
+    p_user_id uuid DEFAULT NULL::uuid,
+    p_profile_data jsonb DEFAULT '{}'::jsonb,
+    p_role_specific_data jsonb DEFAULT '{}'::jsonb,
+    p_clinic_data jsonb DEFAULT '{}'::jsonb,
+    p_services_data jsonb DEFAULT '{}'::jsonb,
+    p_doctors_data jsonb DEFAULT '{}'::jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'extensions', 'pg_catalog'
+AS $function$
 DECLARE
     target_user_id UUID;
     current_context JSONB;
@@ -8569,34 +8578,34 @@ DECLARE
     temp_result JSONB;
 BEGIN
     SET search_path = public, pg_catalog;
-    
+
     -- Get current user context
     current_context := get_current_user_context();
-    
+
     -- Check authentication
     IF NOT (current_context->>'authenticated')::boolean THEN
         RETURN current_context;
     END IF;
-    
+
     v_current_role := current_context->>'user_type';
     target_user_id := COALESCE(p_user_id, (current_context->>'user_id')::UUID);
-    
+
     -- Access control
     IF v_current_role = 'patient' AND target_user_id != (current_context->>'user_id')::UUID THEN
         RETURN jsonb_build_object('success', false, 'error', 'Access denied');
     END IF;
-    
+
     -- Get profile ID and staff clinic
     SELECT up.id, sp.clinic_id INTO profile_id, staff_clinic_id
     FROM user_profiles up
     JOIN users u ON up.user_id = u.id
     LEFT JOIN staff_profiles sp ON up.id = sp.user_profile_id
     WHERE u.id = target_user_id;
-    
+
     IF profile_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Profile not found');
     END IF;
-    
+
     -- 1️⃣ UPDATE BASE USER DATA
     IF p_profile_data ? 'phone' THEN
         UPDATE users 
@@ -8607,10 +8616,10 @@ BEGIN
             END,
             updated_at = NOW()
         WHERE id = target_user_id;
-        
+
         result := result || jsonb_build_object('user_updated', true);
     END IF;
-    
+
     -- 2️⃣ UPDATE USER PROFILES  
     UPDATE user_profiles 
     SET 
@@ -8621,17 +8630,17 @@ BEGIN
         profile_image_url = COALESCE(p_profile_data->>'profile_image_url', profile_image_url),
         updated_at = NOW()
     WHERE id = profile_id;
-    
+
     result := result || jsonb_build_object('profile_updated', true);
-    
+
     -- 3️⃣ ROLE-SPECIFIC UPDATES
-    
-    -- 🏥 PATIENT UPDATES (Enhanced)
+
+    -- 🏥 PATIENT UPDATES
     IF v_current_role = 'patient' THEN
         INSERT INTO patient_profiles (user_profile_id, created_at)
         VALUES (profile_id, NOW())
         ON CONFLICT (user_profile_id) DO NOTHING;
-        
+
         UPDATE patient_profiles 
         SET 
             emergency_contact_name = COALESCE(p_role_specific_data->>'emergency_contact_name', emergency_contact_name),
@@ -8658,13 +8667,12 @@ BEGIN
                 ELSE preferred_doctors
             END,
             email_notifications = COALESCE((p_role_specific_data->>'email_notifications')::boolean, email_notifications),
-            sms_notifications = COALESCE((p_role_specific_data->>'sms_notifications')::boolean, sms_notifications),
             updated_at = NOW()
         WHERE user_profile_id = profile_id;
-        
+
         result := result || jsonb_build_object('patient_profile_updated', true);
-    
-    -- 👨‍💼 STAFF UPDATES (MAJOR ENHANCEMENT)
+
+    -- 👨‍💼 STAFF UPDATES
     ELSIF v_current_role = 'staff' THEN
         -- Update staff profile
         UPDATE staff_profiles 
@@ -8673,10 +8681,10 @@ BEGIN
             department = COALESCE(p_role_specific_data->>'department', department),
             updated_at = NOW()
         WHERE user_profile_id = profile_id;
-        
+
         result := result || jsonb_build_object('staff_profile_updated', true);
-        
-        -- 🏥 CLINIC MANAGEMENT (Staff can update their clinic)
+
+        -- 🏥 CLINIC MANAGEMENT
         IF p_clinic_data != '{}' AND staff_clinic_id IS NOT NULL THEN
             UPDATE clinics 
             SET 
@@ -8709,10 +8717,10 @@ BEGIN
                 cancellation_policy_hours = COALESCE((p_clinic_data->>'cancellation_policy_hours')::integer, cancellation_policy_hours),
                 updated_at = NOW()
             WHERE id = staff_clinic_id;
-            
+
             result := result || jsonb_build_object('clinic_updated', true);
         END IF;
-        
+
         -- 🏥 SERVICES MANAGEMENT
         IF p_services_data != '{}' AND staff_clinic_id IS NOT NULL THEN
             -- Add new services
@@ -8729,10 +8737,10 @@ BEGIN
                     COALESCE((service->>'is_active')::boolean, true)
                 FROM jsonb_array_elements(p_services_data->'add_services') AS service
                 WHERE service->>'name' IS NOT NULL;
-                
+
                 result := result || jsonb_build_object('services_added', jsonb_array_length(p_services_data->'add_services'));
             END IF;
-            
+
             -- Update existing services
             IF p_services_data ? 'update_services' THEN
                 UPDATE services 
@@ -8753,10 +8761,10 @@ BEGIN
                 ) AS updates
                 WHERE services.id = updates.service_id 
                 AND services.clinic_id = staff_clinic_id;
-                
+
                 result := result || jsonb_build_object('services_updated', true);
             END IF;
-            
+
             -- Remove services (soft delete)
             IF p_services_data ? 'remove_services' THEN
                 UPDATE services 
@@ -8766,11 +8774,11 @@ BEGIN
                     SELECT (value::text)::uuid 
                     FROM jsonb_array_elements_text(p_services_data->'remove_services')
                 );
-                
+
                 result := result || jsonb_build_object('services_removed', jsonb_array_length(p_services_data->'remove_services'));
             END IF;
         END IF;
-        
+
         -- 👨‍⚕️ DOCTORS MANAGEMENT 
         IF p_doctors_data != '{}' AND staff_clinic_id IS NOT NULL THEN
             -- Add new doctors
@@ -8819,10 +8827,10 @@ BEGIN
                         ELSE NULL
                     END
                 FROM new_doctors nd, jsonb_array_elements(p_doctors_data->'add_doctors') AS doctor;
-                
+
                 result := result || jsonb_build_object('doctors_added', jsonb_array_length(p_doctors_data->'add_doctors'));
             END IF;
-            
+
             -- Update existing doctors
             IF p_doctors_data ? 'update_doctors' THEN
                 UPDATE doctors 
@@ -8864,7 +8872,7 @@ BEGIN
                     WHERE dc.doctor_id = doctors.id 
                     AND dc.clinic_id = staff_clinic_id
                 );
-                
+
                 -- Update doctor schedules
                 UPDATE doctor_clinics 
                 SET schedule = CASE 
@@ -8880,10 +8888,10 @@ BEGIN
                 ) AS updates
                 WHERE doctor_clinics.doctor_id = updates.doctor_id
                 AND doctor_clinics.clinic_id = staff_clinic_id;
-                
+
                 result := result || jsonb_build_object('doctors_updated', true);
             END IF;
-            
+
             -- Remove doctors from clinic (soft delete)
             IF p_doctors_data ? 'remove_doctors' THEN
                 UPDATE doctor_clinics 
@@ -8893,12 +8901,12 @@ BEGIN
                     SELECT (value::text)::uuid 
                     FROM jsonb_array_elements_text(p_doctors_data->'remove_doctors')
                 );
-                
+
                 result := result || jsonb_build_object('doctors_removed', jsonb_array_length(p_doctors_data->'remove_doctors'));
             END IF;
         END IF;
-    
-    -- 👑 ADMIN UPDATES (Enhanced)
+
+    -- 👑 ADMIN UPDATES
     ELSIF v_current_role = 'admin' THEN
         UPDATE admin_profiles 
         SET 
@@ -8910,21 +8918,21 @@ BEGIN
             END,
             updated_at = NOW()
         WHERE user_profile_id = profile_id;
-        
+
         result := result || jsonb_build_object('admin_profile_updated', true);
     END IF;
-    
+
     RETURN jsonb_build_object(
         'success', true, 
         'message', 'Profile updated successfully',
         'updates', result
     );
-    
+
 EXCEPTION
     WHEN OTHERS THEN
         RETURN jsonb_build_object('success', false, 'error', SQLERRM, 'sqlstate', SQLSTATE);
 END;
-$$;
+$function$;
 
 
 ALTER FUNCTION "public"."update_user_profile"("p_user_id" "uuid", "p_profile_data" "jsonb", "p_role_specific_data" "jsonb", "p_clinic_data" "jsonb", "p_services_data" "jsonb", "p_doctors_data" "jsonb") OWNER TO "postgres";

@@ -53,20 +53,19 @@ export const useFeedback = () => {
       }
 
       const { data, error: rpcError } = await supabase.rpc('submit_feedback', {
-        p_clinic_id: feedbackData.clinic_id,
-        p_appointment_id: feedbackData.appointment_id || null,
         p_rating: feedbackData.rating,
-        p_feedback_text: feedbackData.feedback_text,
-        p_is_anonymous: feedbackData.is_anonymous || false,
-        p_recommend_to_others: feedbackData.recommend_to_others,
-        p_feedback_categories: feedbackData.feedback_categories || null
+        p_comment: feedbackData.feedback_text, 
+        p_appointment_id: feedbackData.appointment_id || null,
+        p_clinic_id: feedbackData.clinic_id || null, 
+        p_feedback_type: feedbackData.feedback_type || 'general', 
+        p_is_anonymous: feedbackData.is_anonymous || false
       });
 
       if (rpcError) {
         throw new Error(rpcError.message);
       }
 
-      // ✅ Handle function response structure
+     
       if (!data.success) {
         throw new Error(data.error || 'Failed to submit feedback');
       }
@@ -89,7 +88,7 @@ export const useFeedback = () => {
     }
   }, [isPatient]);
 
-  // ✅ Helper to check if feedback already submitted for appointment
+ 
   const checkFeedbackEligibility = useCallback(async (appointmentId) => {
     try {
       // This would typically be a separate RPC or part of appointment data
