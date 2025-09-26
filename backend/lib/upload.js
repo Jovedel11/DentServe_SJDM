@@ -13,7 +13,7 @@ export const uploadLimiter = rateLimit({
 // multer for memory storage (cloudinary)
 export const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5mb
+  limits: { fileSize: 40 * 1024 * 1024 }, // 20mb
   fileFilter: (req, file, cb) => {
     // only image file
     if (file.mimetype.startsWith('image/')) {

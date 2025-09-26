@@ -8555,6 +8555,8 @@ $$;
 ALTER FUNCTION "public"."update_user_location"("latitude" double precision, "longitude" double precision) OWNER TO "postgres";
 
 
+-- Updated update_user_profile function with proper staff management
+-- ✅ FIXED: Enhanced update_user_profile function with better data handling
 CREATE OR REPLACE FUNCTION public.update_user_profile(
     p_user_id uuid DEFAULT NULL::uuid,
     p_profile_data jsonb DEFAULT '{}'::jsonb,
@@ -8576,6 +8578,12 @@ DECLARE
     staff_clinic_id UUID;
     result JSONB := '{}';
     temp_result JSONB;
+    v_first_name TEXT;
+    v_last_name TEXT;
+    v_full_name TEXT;
+    service_record JSONB;
+    doctor_record JSONB;
+    new_doctor_id UUID;
 BEGIN
     SET search_path = public, pg_catalog;
 
@@ -8606,12 +8614,12 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Profile not found');
     END IF;
 
-    -- 1️⃣ UPDATE BASE USER DATA
+    -- ✅ UPDATE BASE USER DATA
     IF p_profile_data ? 'phone' THEN
         UPDATE users 
         SET phone = p_profile_data->>'phone',
             phone_verified = CASE 
-                WHEN phone != p_profile_data->>'phone' THEN false 
+                WHEN COALESCE(phone, '') != COALESCE(p_profile_data->>'phone', '') THEN false 
                 ELSE phone_verified 
             END,
             updated_at = NOW()
@@ -8620,71 +8628,73 @@ BEGIN
         result := result || jsonb_build_object('user_updated', true);
     END IF;
 
-    -- 2️⃣ UPDATE USER PROFILES  
+    -- Get name values for full_name generation
+    v_first_name := COALESCE(p_profile_data->>'first_name', '');
+    v_last_name := COALESCE(p_profile_data->>'last_name', '');
+
+    -- Generate full_name if we have first and last name
+    IF v_first_name != '' AND v_last_name != '' THEN
+        v_full_name := v_first_name || ' ' || v_last_name;
+    ELSIF v_first_name != '' THEN
+        v_full_name := v_first_name;
+    ELSIF v_last_name != '' THEN
+        v_full_name := v_last_name;
+    ELSE
+        -- Keep existing full_name if no new names provided
+        SELECT full_name INTO v_full_name FROM user_profiles WHERE id = profile_id;
+    END IF;
+
+    -- ✅ UPDATE USER PROFILES  
     UPDATE user_profiles 
     SET 
-        first_name = COALESCE(p_profile_data->>'first_name', first_name),
-        last_name = COALESCE(p_profile_data->>'last_name', last_name),
-        date_of_birth = COALESCE((p_profile_data->>'date_of_birth')::date, date_of_birth),
-        gender = COALESCE(p_profile_data->>'gender', gender),
-        profile_image_url = COALESCE(p_profile_data->>'profile_image_url', profile_image_url),
+        first_name = CASE 
+            WHEN p_profile_data ? 'first_name' THEN p_profile_data->>'first_name'
+            ELSE first_name 
+        END,
+        last_name = CASE 
+            WHEN p_profile_data ? 'last_name' THEN p_profile_data->>'last_name'
+            ELSE last_name 
+        END,
+        full_name = COALESCE(v_full_name, full_name),
+        date_of_birth = CASE 
+            WHEN p_profile_data ? 'date_of_birth' AND p_profile_data->>'date_of_birth' != '' 
+            THEN (p_profile_data->>'date_of_birth')::date
+            ELSE date_of_birth 
+        END,
+        gender = CASE 
+            WHEN p_profile_data ? 'gender' THEN p_profile_data->>'gender'
+            ELSE gender 
+        END,
+        profile_image_url = CASE 
+            WHEN p_profile_data ? 'profile_image_url' THEN p_profile_data->>'profile_image_url'
+            ELSE profile_image_url 
+        END,
         updated_at = NOW()
     WHERE id = profile_id;
 
     result := result || jsonb_build_object('profile_updated', true);
 
-    -- 3️⃣ ROLE-SPECIFIC UPDATES
+    -- ✅ ROLE-SPECIFIC UPDATES
 
-    -- 🏥 PATIENT UPDATES
-    IF v_current_role = 'patient' THEN
-        INSERT INTO patient_profiles (user_profile_id, created_at)
-        VALUES (profile_id, NOW())
-        ON CONFLICT (user_profile_id) DO NOTHING;
-
-        UPDATE patient_profiles 
-        SET 
-            emergency_contact_name = COALESCE(p_role_specific_data->>'emergency_contact_name', emergency_contact_name),
-            emergency_contact_phone = COALESCE(p_role_specific_data->>'emergency_contact_phone', emergency_contact_phone),
-            insurance_provider = COALESCE(p_role_specific_data->>'insurance_provider', insurance_provider),
-            medical_conditions = CASE 
-                WHEN p_role_specific_data ? 'medical_conditions' 
-                THEN (SELECT array_agg(value::text) FROM jsonb_array_elements_text(p_role_specific_data->'medical_conditions'))
-                ELSE medical_conditions 
-            END,
-            allergies = CASE 
-                WHEN p_role_specific_data ? 'allergies' 
-                THEN (SELECT array_agg(value::text) FROM jsonb_array_elements_text(p_role_specific_data->'allergies'))
-                ELSE allergies 
-            END,
-            preferred_location = CASE 
-                WHEN p_role_specific_data ? 'preferred_location' AND p_role_specific_data->>'preferred_location' != ''
-                THEN ST_SetSRID(ST_GeomFromText(p_role_specific_data->>'preferred_location'), 4326)::geography
-                ELSE preferred_location
-            END,
-            preferred_doctors = CASE 
-                WHEN p_role_specific_data ? 'preferred_doctors'
-                THEN (SELECT array_agg(value::text::uuid) FROM jsonb_array_elements_text(p_role_specific_data->'preferred_doctors'))
-                ELSE preferred_doctors
-            END,
-            email_notifications = COALESCE((p_role_specific_data->>'email_notifications')::boolean, email_notifications),
-            updated_at = NOW()
-        WHERE user_profile_id = profile_id;
-
-        result := result || jsonb_build_object('patient_profile_updated', true);
-
-    -- 👨‍💼 STAFF UPDATES
-    ELSIF v_current_role = 'staff' THEN
+    -- 👨‍💼 STAFF UPDATES (ENHANCED FOR ARRAY HANDLING)
+    IF v_current_role = 'staff' THEN
         -- Update staff profile
         UPDATE staff_profiles 
         SET 
             position = COALESCE(p_role_specific_data->>'position', position),
             department = COALESCE(p_role_specific_data->>'department', department),
+            employee_id = COALESCE(p_role_specific_data->>'employee_id', employee_id),
+            hire_date = CASE 
+                WHEN p_role_specific_data ? 'hire_date' AND p_role_specific_data->>'hire_date' != ''
+                THEN (p_role_specific_data->>'hire_date')::date
+                ELSE hire_date 
+            END,
             updated_at = NOW()
         WHERE user_profile_id = profile_id;
 
         result := result || jsonb_build_object('staff_profile_updated', true);
 
-        -- 🏥 CLINIC MANAGEMENT
+        -- ✅ CLINIC MANAGEMENT
         IF p_clinic_data != '{}' AND staff_clinic_id IS NOT NULL THEN
             UPDATE clinics 
             SET 
@@ -8721,216 +8731,177 @@ BEGIN
             result := result || jsonb_build_object('clinic_updated', true);
         END IF;
 
-        -- 🏥 SERVICES MANAGEMENT
+        -- ✅ SERVICES MANAGEMENT (ENHANCED FOR DIRECT ARRAY HANDLING)
         IF p_services_data != '{}' AND staff_clinic_id IS NOT NULL THEN
-            -- Add new services
-            IF p_services_data ? 'add_services' THEN
-                INSERT INTO services (clinic_id, name, description, category, duration_minutes, min_price, max_price, is_active)
-                SELECT 
-                    staff_clinic_id,
-                    service->>'name',
-                    service->>'description', 
-                    service->>'category',
-                    COALESCE((service->>'duration_minutes')::integer, 60),
-                    (service->>'min_price')::numeric,
-                    (service->>'max_price')::numeric,
-                    COALESCE((service->>'is_active')::boolean, true)
-                FROM jsonb_array_elements(p_services_data->'add_services') AS service
-                WHERE service->>'name' IS NOT NULL;
+            -- Handle direct array of services (from frontend)
+            IF jsonb_typeof(p_services_data) = 'array' THEN
+                -- Process each service in the array
+                FOR service_record IN SELECT * FROM jsonb_array_elements(p_services_data)
+                LOOP
+                    -- Check if service has an ID (update existing) or not (create new)
+                    IF service_record ? 'id' AND service_record->>'id' != '' AND service_record->>'id' != 'new' THEN
+                        -- Update existing service
+                        UPDATE services 
+                        SET 
+                            name = COALESCE(service_record->>'name', name),
+                            description = COALESCE(service_record->>'description', description),
+                            category = COALESCE(service_record->>'category', category),
+                            duration_minutes = COALESCE((service_record->>'duration_minutes')::integer, duration_minutes),
+                            min_price = COALESCE((service_record->>'min_price')::numeric, min_price),
+                            max_price = COALESCE((service_record->>'max_price')::numeric, max_price),
+                            is_active = COALESCE((service_record->>'is_active')::boolean, is_active),
+                            updated_at = NOW()
+                        WHERE id = (service_record->>'id')::uuid 
+                        AND clinic_id = staff_clinic_id;
+                    ELSE
+                        -- Create new service
+                        INSERT INTO services (
+                            clinic_id, name, description, category, 
+                            duration_minutes, min_price, max_price, is_active, 
+                            created_at, updated_at
+                        ) VALUES (
+                            staff_clinic_id,
+                            service_record->>'name',
+                            COALESCE(service_record->>'description', ''),
+                            COALESCE(service_record->>'category', 'General'),
+                            COALESCE((service_record->>'duration_minutes')::integer, 60),
+                            COALESCE((service_record->>'min_price')::numeric, 0),
+                            COALESCE((service_record->>'max_price')::numeric, 0),
+                            COALESCE((service_record->>'is_active')::boolean, true),
+                            NOW(),
+                            NOW()
+                        );
+                    END IF;
+                END LOOP;
 
-                result := result || jsonb_build_object('services_added', jsonb_array_length(p_services_data->'add_services'));
-            END IF;
-
-            -- Update existing services
-            IF p_services_data ? 'update_services' THEN
-                UPDATE services 
-                SET 
-                    name = COALESCE(update_data->>'name', name),
-                    description = COALESCE(update_data->>'description', description),
-                    category = COALESCE(update_data->>'category', category),
-                    duration_minutes = COALESCE((update_data->>'duration_minutes')::integer, duration_minutes),
-                    min_price = COALESCE((update_data->>'min_price')::numeric, min_price),
-                    max_price = COALESCE((update_data->>'max_price')::numeric, max_price),
-                    is_active = COALESCE((update_data->>'is_active')::boolean, is_active),
-                    updated_at = NOW()
-                FROM (
-                    SELECT 
-                        (service->>'id')::uuid as service_id,
-                        service as update_data
-                    FROM jsonb_array_elements(p_services_data->'update_services') AS service
-                ) AS updates
-                WHERE services.id = updates.service_id 
-                AND services.clinic_id = staff_clinic_id;
-
-                result := result || jsonb_build_object('services_updated', true);
-            END IF;
-
-            -- Remove services (soft delete)
-            IF p_services_data ? 'remove_services' THEN
-                UPDATE services 
-                SET is_active = false, updated_at = NOW()
-                WHERE clinic_id = staff_clinic_id 
-                AND id = ANY(
-                    SELECT (value::text)::uuid 
-                    FROM jsonb_array_elements_text(p_services_data->'remove_services')
-                );
-
-                result := result || jsonb_build_object('services_removed', jsonb_array_length(p_services_data->'remove_services'));
+                result := result || jsonb_build_object('services_processed', jsonb_array_length(p_services_data));
             END IF;
         END IF;
 
-        -- 👨‍⚕️ DOCTORS MANAGEMENT 
+        -- ✅ DOCTORS MANAGEMENT (ENHANCED FOR DIRECT ARRAY HANDLING)
         IF p_doctors_data != '{}' AND staff_clinic_id IS NOT NULL THEN
-            -- Add new doctors
-            IF p_doctors_data ? 'add_doctors' THEN
-                WITH new_doctors AS (
-                    INSERT INTO doctors (
-                        license_number, specialization, first_name, last_name,
-                        education, experience_years, bio, consultation_fee,
-                        languages_spoken, certifications, awards, image_url, is_available
-                    )
-                    SELECT 
-                        doctor->>'license_number',
-                        doctor->>'specialization',
-                        doctor->>'first_name', 
-                        doctor->>'last_name',
-                        doctor->>'education',
-                        (doctor->>'experience_years')::integer,
-                        doctor->>'bio',
-                        (doctor->>'consultation_fee')::numeric,
-                        CASE 
-                            WHEN doctor ? 'languages_spoken'
-                            THEN (SELECT array_agg(value::text) FROM jsonb_array_elements_text(doctor->'languages_spoken'))
-                            ELSE NULL
-                        END,
-                        CASE 
-                            WHEN doctor ? 'certifications'
-                            THEN doctor->'certifications'
-                            ELSE NULL
-                        END,
-                        CASE 
-                            WHEN doctor ? 'awards'
-                            THEN (SELECT array_agg(value::text) FROM jsonb_array_elements_text(doctor->'awards'))
-                            ELSE NULL
-                        END,
-                        doctor->>'image_url',
-                        COALESCE((doctor->>'is_available')::boolean, true)
-                    FROM jsonb_array_elements(p_doctors_data->'add_doctors') AS doctor
-                    WHERE doctor->>'license_number' IS NOT NULL 
-                    AND doctor->>'specialization' IS NOT NULL
-                    RETURNING id
-                )
-                INSERT INTO doctor_clinics (doctor_id, clinic_id, is_active, schedule)
-                SELECT nd.id, staff_clinic_id, true, 
-                    CASE 
-                        WHEN doctor ? 'schedule' THEN doctor->'schedule'
-                        ELSE NULL
-                    END
-                FROM new_doctors nd, jsonb_array_elements(p_doctors_data->'add_doctors') AS doctor;
+            -- Handle direct array of doctors (from frontend)
+            IF jsonb_typeof(p_doctors_data) = 'array' THEN
+                -- Process each doctor in the array
+                FOR doctor_record IN SELECT * FROM jsonb_array_elements(p_doctors_data)
+                LOOP
+                    -- Check if doctor has an ID (update existing) or not (create new)
+                    IF doctor_record ? 'id' AND doctor_record->>'id' != '' AND doctor_record->>'id' != 'new' THEN
+                        -- Update existing doctor
+                        UPDATE doctors 
+                        SET 
+                            first_name = COALESCE(doctor_record->>'first_name', first_name),
+                            last_name = COALESCE(doctor_record->>'last_name', last_name),
+                            specialization = COALESCE(doctor_record->>'specialization', specialization),
+                            license_number = COALESCE(doctor_record->>'license_number', license_number),
+                            education = COALESCE(doctor_record->>'education', education),
+                            experience_years = COALESCE((doctor_record->>'experience_years')::integer, experience_years),
+                            bio = COALESCE(doctor_record->>'bio', bio),
+                            consultation_fee = COALESCE((doctor_record->>'consultation_fee')::numeric, consultation_fee),
+                            image_url = COALESCE(doctor_record->>'image_url', image_url),
+                            languages_spoken = CASE 
+                                WHEN doctor_record ? 'languages_spoken' AND jsonb_typeof(doctor_record->'languages_spoken') = 'array'
+                                THEN (SELECT array_agg(value::text) FROM jsonb_array_elements_text(doctor_record->'languages_spoken'))
+                                ELSE languages_spoken
+                            END,
+                            certifications = CASE 
+                                WHEN doctor_record ? 'certifications'
+                                THEN doctor_record->'certifications'
+                                ELSE certifications
+                            END,
+                            awards = CASE 
+                                WHEN doctor_record ? 'awards' AND jsonb_typeof(doctor_record->'awards') = 'array'
+                                THEN (SELECT array_agg(value::text) FROM jsonb_array_elements_text(doctor_record->'awards'))
+                                ELSE awards
+                            END,
+                            is_available = COALESCE((doctor_record->>'is_available')::boolean, is_available),
+                            updated_at = NOW()
+                        WHERE id = (doctor_record->>'id')::uuid
+                        AND EXISTS (
+                            SELECT 1 FROM doctor_clinics dc 
+                            WHERE dc.doctor_id = doctors.id 
+                            AND dc.clinic_id = staff_clinic_id
+                        );
+                    ELSE
+                        -- Create new doctor
+                        INSERT INTO doctors (
+                            license_number, specialization, first_name, last_name,
+                            education, experience_years, bio, consultation_fee,
+                            languages_spoken, certifications, awards, image_url, is_available,
+                            created_at, updated_at
+                        ) VALUES (
+                            doctor_record->>'license_number',
+                            doctor_record->>'specialization',
+                            doctor_record->>'first_name', 
+                            doctor_record->>'last_name',
+                            COALESCE(doctor_record->>'education', ''),
+                            COALESCE((doctor_record->>'experience_years')::integer, 0),
+                            COALESCE(doctor_record->>'bio', ''),
+                            COALESCE((doctor_record->>'consultation_fee')::numeric, 0),
+                            CASE 
+                                WHEN doctor_record ? 'languages_spoken' AND jsonb_typeof(doctor_record->'languages_spoken') = 'array'
+                                THEN (SELECT array_agg(value::text) FROM jsonb_array_elements_text(doctor_record->'languages_spoken'))
+                                ELSE ARRAY['English', 'Filipino']
+                            END,
+                            CASE 
+                                WHEN doctor_record ? 'certifications'
+                                THEN doctor_record->'certifications'
+                                ELSE NULL
+                            END,
+                            CASE 
+                                WHEN doctor_record ? 'awards' AND jsonb_typeof(doctor_record->'awards') = 'array'
+                                THEN (SELECT array_agg(value::text) FROM jsonb_array_elements_text(doctor_record->'awards'))
+                                ELSE NULL
+                            END,
+                            doctor_record->>'image_url',
+                            COALESCE((doctor_record->>'is_available')::boolean, true),
+                            NOW(),
+                            NOW()
+                        ) RETURNING id INTO new_doctor_id;
 
-                result := result || jsonb_build_object('doctors_added', jsonb_array_length(p_doctors_data->'add_doctors'));
-            END IF;
+                        -- Link doctor to clinic
+                        INSERT INTO doctor_clinics (doctor_id, clinic_id, is_active, schedule, created_at)
+                        VALUES (
+                            new_doctor_id, 
+                            staff_clinic_id, 
+                            true, 
+                            CASE 
+                                WHEN doctor_record ? 'schedule' 
+                                THEN doctor_record->'schedule'
+                                ELSE NULL
+                            END,
+                            NOW()
+                        );
+                    END IF;
+                END LOOP;
 
-            -- Update existing doctors
-            IF p_doctors_data ? 'update_doctors' THEN
-                UPDATE doctors 
-                SET 
-                    first_name = COALESCE(update_data->>'first_name', first_name),
-                    last_name = COALESCE(update_data->>'last_name', last_name),
-                    specialization = COALESCE(update_data->>'specialization', specialization),
-                    education = COALESCE(update_data->>'education', education),
-                    experience_years = COALESCE((update_data->>'experience_years')::integer, experience_years),
-                    bio = COALESCE(update_data->>'bio', bio),
-                    consultation_fee = COALESCE((update_data->>'consultation_fee')::numeric, consultation_fee),
-                    image_url = COALESCE(update_data->>'image_url', image_url),
-                    languages_spoken = CASE 
-                        WHEN update_data ? 'languages_spoken'
-                        THEN (SELECT array_agg(value::text) FROM jsonb_array_elements_text(update_data->'languages_spoken'))
-                        ELSE languages_spoken
-                    END,
-                    certifications = CASE 
-                        WHEN update_data ? 'certifications'
-                        THEN update_data->'certifications'
-                        ELSE certifications
-                    END,
-                    awards = CASE 
-                        WHEN update_data ? 'awards'
-                        THEN (SELECT array_agg(value::text) FROM jsonb_array_elements_text(update_data->'awards'))
-                        ELSE awards
-                    END,
-                    is_available = COALESCE((update_data->>'is_available')::boolean, is_available),
-                    updated_at = NOW()
-                FROM (
-                    SELECT 
-                        (doctor->>'id')::uuid as doctor_id,
-                        doctor as update_data
-                    FROM jsonb_array_elements(p_doctors_data->'update_doctors') AS doctor
-                ) AS updates
-                WHERE doctors.id = updates.doctor_id
-                AND EXISTS (
-                    SELECT 1 FROM doctor_clinics dc 
-                    WHERE dc.doctor_id = doctors.id 
-                    AND dc.clinic_id = staff_clinic_id
-                );
-
-                -- Update doctor schedules
-                UPDATE doctor_clinics 
-                SET schedule = CASE 
-                    WHEN update_data ? 'schedule' 
-                    THEN update_data->'schedule'
-                    ELSE schedule
-                END
-                FROM (
-                    SELECT 
-                        (doctor->>'id')::uuid as doctor_id,
-                        doctor as update_data
-                    FROM jsonb_array_elements(p_doctors_data->'update_doctors') AS doctor
-                ) AS updates
-                WHERE doctor_clinics.doctor_id = updates.doctor_id
-                AND doctor_clinics.clinic_id = staff_clinic_id;
-
-                result := result || jsonb_build_object('doctors_updated', true);
-            END IF;
-
-            -- Remove doctors from clinic (soft delete)
-            IF p_doctors_data ? 'remove_doctors' THEN
-                UPDATE doctor_clinics 
-                SET is_active = false
-                WHERE clinic_id = staff_clinic_id 
-                AND doctor_id = ANY(
-                    SELECT (value::text)::uuid 
-                    FROM jsonb_array_elements_text(p_doctors_data->'remove_doctors')
-                );
-
-                result := result || jsonb_build_object('doctors_removed', jsonb_array_length(p_doctors_data->'remove_doctors'));
+                result := result || jsonb_build_object('doctors_processed', jsonb_array_length(p_doctors_data));
             END IF;
         END IF;
 
-    -- 👑 ADMIN UPDATES
-    ELSIF v_current_role = 'admin' THEN
-        UPDATE admin_profiles 
-        SET 
-            access_level = COALESCE((p_role_specific_data->>'access_level')::integer, access_level),
-            permissions = CASE 
-                WHEN p_role_specific_data ? 'permissions'
-                THEN p_role_specific_data->'permissions'
-                ELSE permissions
-            END,
-            updated_at = NOW()
-        WHERE user_profile_id = profile_id;
+    END IF; -- End staff updates
 
-        result := result || jsonb_build_object('admin_profile_updated', true);
-    END IF;
-
+    -- ✅ RETURN SUCCESS WITH COMPREHENSIVE UPDATE INFORMATION
     RETURN jsonb_build_object(
-        'success', true, 
+        'success', true,
         'message', 'Profile updated successfully',
-        'updates', result
+        'updates', result,
+        'user_id', target_user_id,
+        'profile_id', profile_id,
+        'timestamp', NOW()
     );
 
 EXCEPTION
     WHEN OTHERS THEN
-        RETURN jsonb_build_object('success', false, 'error', SQLERRM, 'sqlstate', SQLSTATE);
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Profile update failed: ' || SQLERRM,
+            'details', jsonb_build_object(
+                'user_id', target_user_id,
+                'profile_id', profile_id,
+                'timestamp', NOW()
+            )
+        );
 END;
 $function$;
 

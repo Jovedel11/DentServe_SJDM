@@ -23,6 +23,23 @@ export const useProfileManager = (options = {}) => {
     isPatient
   } = useAuth();
 
+  const clinicId = isStaff ? profile?.role_specific_data?.clinic_id : null;
+  const staffProfileId = isStaff ? profile?.role_specific_data?.staff_profile_id : null;
+  
+  // External hooks (conditionally run if staff)
+  const { clinic, loading: clinicLoading } = useClinic(staffProfileId);
+  const { services, loading: servicesLoading } = useServices(clinicId);
+  const { doctors, loading: doctorsLoading } = useDoctors(clinicId);
+
+  // Debug logs
+  console.log('🔍 ProfileManager Debug:');
+  console.log('  → clinicId:', clinicId);
+  console.log('  → staffProfileId:', staffProfileId);
+  console.log('  → clinic:', clinic);
+  console.log('  → services:', services);
+  console.log('  → doctors:', doctors);
+  console.log('  → profile role_specific_data:', profile?.role_specific_data);
+
   // Local state
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -31,11 +48,11 @@ export const useProfileManager = (options = {}) => {
   const [success, setSuccess] = useState('');
   const [editedData, setEditedData] = useState(null);
 
-
   const profileData = useMemo(() => {
     if (!profile) return null;
 
-    return {
+    // ✅ FIXED: Properly structure the data for the UI
+    const baseData = {
       // User basic info
       user_id: profile.user_id,
       email: profile.email || '',
@@ -58,15 +75,24 @@ export const useProfileManager = (options = {}) => {
 
       // Statistics
       statistics: profile.statistics || {},
-
-      // Staff-specific data (only if staff)
-      ...(isStaff && {
-        clinic_data: profile.clinic_data || {},
-        services_data: profile.services_data || [],
-        doctors_data: profile.doctors_data || []
-      })
     };
-  }, [profile, isStaff]);
+
+    // ✅ FIXED: Only add staff-specific data if user is staff AND data is available
+    if (isStaff) {
+      baseData.clinic_data = clinic || {};
+      baseData.services_data = services || [];
+      baseData.doctors_data = doctors || [];
+      
+      // Add clinic loading state
+      baseData._loading = {
+        clinic: clinicLoading,
+        services: servicesLoading,
+        doctors: doctorsLoading
+      };
+    }
+
+    return baseData;
+  }, [profile, isStaff, clinic, services, doctors, clinicLoading, servicesLoading, doctorsLoading]);
 
   // Calculate profile completion
   const profileCompletion = useMemo(() => {
@@ -155,6 +181,30 @@ export const useProfileManager = (options = {}) => {
     });
   }, []);
 
+  // ✅ NEW: Handle array updates for services and doctors
+  const handleArrayUpdate = useCallback((arrayName, index, field, value) => {
+    setEditedData(prev => {
+      if (!prev) return prev;
+      
+      const updated = { ...prev };
+      
+      // Ensure array exists
+      if (!updated[arrayName]) {
+        updated[arrayName] = [];
+      }
+      
+      // Ensure item at index exists
+      if (!updated[arrayName][index]) {
+        updated[arrayName][index] = {};
+      }
+      
+      // Update the specific field
+      updated[arrayName][index][field] = value;
+      
+      return updated;
+    });
+  }, []);
+
   // Process arrays and objects for backend compatibility
   const processDataForBackend = useCallback((data) => {
     if (!data) return data;
@@ -198,7 +248,7 @@ export const useProfileManager = (options = {}) => {
   const handleSave = useCallback(async (customData = null) => {
     const rawData = customData || editedData;
     
-    if (!rawData || !profile.user_id) {
+    if (!rawData || !profile?.user_id) {
       setError('Invalid data or user not found');
       return { success: false };
     }
@@ -228,17 +278,17 @@ export const useProfileManager = (options = {}) => {
 
       // Staff-specific data
       const clinicUpdateData = (isStaff && enableClinicManagement) ? dataToSave.clinic_data || {} : {};
-      const servicesUpdateData = (isStaff && enableServiceManagement) ? dataToSave.services_data || {} : {};
-      const doctorsUpdateData = (isStaff && enableDoctorManagement) ? dataToSave.doctors_data || {}: {};
+      const servicesUpdateData = (isStaff && enableServiceManagement) ? dataToSave.services_data || [] : [];
+      const doctorsUpdateData = (isStaff && enableDoctorManagement) ? dataToSave.doctors_data || [] : [];
 
       // ✅ CALL WITH CORRECT PARAMETER ORDER
       const result = await updateProfile(
-        profile.user_id,
-        profileUpdateData,  
-        roleSpecificUpdateData,  
-        clinicUpdateData,  
-        servicesUpdateData,  
-        doctorsUpdateData  
+        profile.user_id,          // 1st - user_id  
+        profileUpdateData,        // 2nd - profile_data
+        roleSpecificUpdateData,   // 3rd - role_specific_data
+        clinicUpdateData,         // 4th - clinic_data
+        servicesUpdateData,       // 5th - services_data  
+        doctorsUpdateData         // 6th - doctors_data
       );
 
       if (result.success) {
@@ -257,7 +307,7 @@ export const useProfileManager = (options = {}) => {
     } finally {
       setSaving(false);
     }
-  }, [editedData, user?.id, updateProfile, handleRefreshProfile, processDataForBackend, isStaff, enableClinicManagement, enableServiceManagement, enableDoctorManagement]);
+  }, [editedData, profile?.user_id, updateProfile, handleRefreshProfile, processDataForBackend, isStaff, enableClinicManagement, enableServiceManagement, enableDoctorManagement]);
 
   // Handle edit toggle
   const handleEditToggle = useCallback(() => {
@@ -273,12 +323,12 @@ export const useProfileManager = (options = {}) => {
   const handleImageUpdate = useCallback(async (newImageUrl) => {
     try {
       const result = await updateProfile(
+        profile?.user_id,
         { profile_image_url: newImageUrl },
         {},
-        user?.id,
         {},
-        {},
-        {}
+        [],
+        []
       );
 
       if (result.success) {
@@ -293,7 +343,7 @@ export const useProfileManager = (options = {}) => {
       setError('Failed to update profile image');
       return { success: false, error: error.message };
     }
-  }, [updateProfile, user?.id, handleRefreshProfile]);
+  }, [updateProfile, profile?.user_id, handleRefreshProfile]);
 
   // Staff-specific clinic management functions
   const handleClinicUpdate = useCallback(async (clinicData) => {
@@ -307,12 +357,12 @@ export const useProfileManager = (options = {}) => {
       setError(null);
 
       const result = await updateProfile(
-        profile.user_id,
+        profile?.user_id,
         {},
         {},
         clinicData,
-        {},
-        {}
+        [],
+        []
       );
 
       if (result.success) {
@@ -330,7 +380,8 @@ export const useProfileManager = (options = {}) => {
     } finally {
       setSaving(false);
     }
-  }, [isStaff, enableClinicManagement, updateProfile, user?.id, handleRefreshProfile]);
+  }, [isStaff, enableClinicManagement, updateProfile, profile?.user_id, handleRefreshProfile]);
+
   // Staff-specific services management
   const handleServicesUpdate = useCallback(async (servicesData) => {
     if (!isStaff || !enableServiceManagement) {
@@ -343,12 +394,12 @@ export const useProfileManager = (options = {}) => {
       setError(null);
 
       const result = await updateProfile(
+        profile?.user_id,
         {},
         {},
-        user?.id,
         {},
-        servicesData,
-        {}
+        servicesData,  // Pass services array directly
+        []
       );
 
       if (result.success) {
@@ -366,7 +417,7 @@ export const useProfileManager = (options = {}) => {
     } finally {
       setSaving(false);
     }
-  }, [isStaff, enableServiceManagement, updateProfile, user?.id, handleRefreshProfile]);
+  }, [isStaff, enableServiceManagement, updateProfile, profile?.user_id, handleRefreshProfile]);
 
   // Staff-specific doctors management
   const handleDoctorsUpdate = useCallback(async (doctorsData) => {
@@ -380,12 +431,12 @@ export const useProfileManager = (options = {}) => {
       setError(null);
 
       const result = await updateProfile(
+        profile?.user_id,
         {},
         {},
-        user?.id,
         {},
-        {},
-        doctorsData
+        [],
+        doctorsData  // Pass doctors array directly
       );
 
       if (result.success) {
@@ -403,14 +454,8 @@ export const useProfileManager = (options = {}) => {
     } finally {
       setSaving(false);
     }
-  }, [isStaff, enableDoctorManagement, updateProfile, user?.id, handleRefreshProfile]);
+  }, [isStaff, enableDoctorManagement, updateProfile, profile?.user_id, handleRefreshProfile]);
 
-  const clinicId = isStaff ? profile?.role_specific_data?.clinic_id : null;
-
-  // External hooks (conditionally run if staff)
-  const { clinic, loading: clinicLoading } = useClinic(clinicId);
-  const { services } = useServices(clinicId);
-  const { doctors } = useDoctors(clinicId);
 
   return {
     // Data
@@ -430,6 +475,7 @@ export const useProfileManager = (options = {}) => {
     // Actions
     handleRefresh,
     handleInputChange,
+    handleArrayUpdate,  // ✅ NOW AVAILABLE
     handleSave,
     handleEditToggle,
     handleImageUpdate,
@@ -458,6 +504,7 @@ export const useProfileManager = (options = {}) => {
     clinic,
     services,
     doctors,
-    clinicLoading
+    clinicLoading,
+    clinicId
   };
 };

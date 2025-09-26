@@ -22,6 +22,7 @@ import ConfirmationStep from "../components/booking/confirmation-step";
 
 // Logic Hook
 import { useBookingFlow } from "../hook/useBookingFlow";
+import { Navigate } from "react-router-dom";
 
 const BOOKING_STEPS = [
   "Clinic",
@@ -133,7 +134,9 @@ const BookAppointment = () => {
           </p>
           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <div className="animate-spin rounded-full h-4 w-4 border-2 border-muted border-t-primary" />
-            <span>Redirecting to your appointments...</span>
+            <Navigate to="patient/appointments/upcoming">
+              Redirecting to your upcoming appointments...
+            </Navigate>
           </div>
         </div>
       </div>

@@ -23,6 +23,7 @@ const StaffProfile = () => {
   const {
     profileData,
     currentData,
+    editedData,
     profileCompletion,
     isEditing,
     saving,
@@ -32,13 +33,13 @@ const StaffProfile = () => {
     success,
     handleRefresh,
     handleInputChange,
+    handleArrayUpdate,
     handleSave,
     handleEditToggle,
     handleImageUpdate,
     handleClinicUpdate,
     handleServicesUpdate,
     handleDoctorsUpdate,
-    clinicId,
     services,
     doctors,
   } = useProfileManager({
@@ -48,8 +49,12 @@ const StaffProfile = () => {
   });
 
   const [activeSection, setActiveSection] = useState("profile");
-  const [editingService, setEditingService] = useState(null);
-  const [editingDoctor, setEditingDoctor] = useState(null);
+
+  const isDataLoading =
+    loading ||
+    profileData?._loading?.clinic ||
+    profileData?._loading?.services ||
+    profileData?._loading?.doctors;
 
   // Gender options
   const genderOptions = [
@@ -79,7 +84,7 @@ const StaffProfile = () => {
 
   // Handle clinic save
   const handleClinicSave = async () => {
-    const clinicData = currentData?.clinic_data || {};
+    const clinicData = editedData?.clinic_data || {};
     const result = await handleClinicUpdate(clinicData);
     return result;
   };
@@ -87,6 +92,7 @@ const StaffProfile = () => {
   // Handle service operations
   const handleAddService = () => {
     const newService = {
+      id: "new", // Temporary ID for new services
       name: "New Service",
       description: "Service description",
       category: "General",
@@ -96,27 +102,19 @@ const StaffProfile = () => {
       is_active: true,
     };
 
-    const updatedServices = [...(currentData?.services_data || []), newService];
-    handleInputChange("services_data", "add_services", [newService]);
+    const currentServices = editedData?.services_data || [];
+    const updatedServices = [...currentServices, newService];
+    handleInputChange("services_data", "", updatedServices);
   };
 
   const handleRemoveService = (index) => {
-    const services = currentData?.services_data || [];
-    const serviceToRemove = services[index];
-
-    if (serviceToRemove?.id) {
-      handleInputChange("services_data", "remove_services", [
-        serviceToRemove.id,
-      ]);
-    } else {
-      // Remove from local array if it's a new service
-      const updatedServices = services.filter((_, i) => i !== index);
-      handleInputChange("services_data", "update_services", updatedServices);
-    }
+    const currentServices = editedData?.services_data || [];
+    const updatedServices = currentServices.filter((_, i) => i !== index);
+    handleInputChange("services_data", "", updatedServices);
   };
 
   const handleServiceSave = async () => {
-    const servicesData = currentData?.services_data || {};
+    const servicesData = editedData?.services_data || [];
     const result = await handleServicesUpdate(servicesData);
     return result;
   };
@@ -124,6 +122,7 @@ const StaffProfile = () => {
   // Handle doctor operations
   const handleAddDoctor = () => {
     const newDoctor = {
+      id: "new", // Temporary ID for new doctors
       license_number: "",
       specialization: "",
       first_name: "",
@@ -132,30 +131,37 @@ const StaffProfile = () => {
       experience_years: 0,
       bio: "",
       consultation_fee: 1500,
-      languages_spoken: ["English", "Filipino"],
       is_available: true,
+      image_url: "",
     };
 
-    handleInputChange("doctors_data", "add_doctors", [newDoctor]);
+    const currentDoctors = editedData?.doctors_data || [];
+    const updatedDoctors = [...currentDoctors, newDoctor];
+    handleInputChange("doctors_data", "", updatedDoctors);
   };
 
   const handleRemoveDoctor = (index) => {
-    const doctors = currentData?.doctors_data || [];
-    const doctorToRemove = doctors[index];
-
-    if (doctorToRemove?.id) {
-      handleInputChange("doctors_data", "remove_doctors", [doctorToRemove.id]);
-    }
+    const currentDoctors = editedData?.doctors_data || [];
+    const updatedDoctors = currentDoctors.filter((_, i) => i !== index);
+    handleInputChange("doctors_data", "", updatedDoctors);
   };
 
   const handleDoctorSave = async () => {
-    const doctorsData = currentData?.doctors_data || {};
+    const doctorsData = editedData?.doctors_data || [];
     const result = await handleDoctorsUpdate(doctorsData);
     return result;
   };
 
   if (loading) {
     return <Loader message="Loading staff profile... Please wait a moment" />;
+  }
+
+  if (isDataLoading && activeSection !== "profile") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <Loader message={`Loading ${activeSection} data... Please wait`} />
+      </div>
+    );
   }
 
   if (!profileData && !loading) {
@@ -427,6 +433,16 @@ const StaffProfile = () => {
                 placeholder="Enter clinic name"
               />
 
+              {/* ✅ FIXED: Corrected ProfileAvatar usage */}
+              <ProfileAvatar
+                imageUrl={currentData?.clinic_data?.image_url}
+                name={currentData?.clinic_data?.name || "Clinic"}
+                onImageUpdate={(newUrl) =>
+                  handleInputChange("clinic_data", "image_url", newUrl)
+                }
+                size="lg"
+              />
+
               <ProfileField
                 label="Phone"
                 value={currentData?.clinic_data?.phone}
@@ -552,9 +568,12 @@ const StaffProfile = () => {
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {(services || []).map((service, index) => (
+                {(isEditing
+                  ? editedData?.services_data
+                  : services || currentData?.services_data || []
+                ).map((service, index) => (
                   <div
-                    key={index}
+                    key={service.id || index}
                     className="p-4 border border-border rounded-lg"
                   >
                     <div className="flex justify-between items-start mb-4">
@@ -564,8 +583,9 @@ const StaffProfile = () => {
                             type="text"
                             value={service.name || ""}
                             onChange={(e) =>
-                              handleInputChange(
-                                `services_data.${index}`,
+                              handleArrayUpdate(
+                                "services_data",
+                                index,
                                 "name",
                                 e.target.value
                               )
@@ -592,8 +612,9 @@ const StaffProfile = () => {
                         <textarea
                           value={service.description || ""}
                           onChange={(e) =>
-                            handleInputChange(
-                              `services_data.${index}`,
+                            handleArrayUpdate(
+                              "services_data",
+                              index,
                               "description",
                               e.target.value
                             )
@@ -607,8 +628,9 @@ const StaffProfile = () => {
                             type="number"
                             value={service.min_price || ""}
                             onChange={(e) =>
-                              handleInputChange(
-                                `services_data.${index}`,
+                              handleArrayUpdate(
+                                "services_data",
+                                index,
                                 "min_price",
                                 parseFloat(e.target.value)
                               )
@@ -620,8 +642,9 @@ const StaffProfile = () => {
                             type="number"
                             value={service.max_price || ""}
                             onChange={(e) =>
-                              handleInputChange(
-                                `services_data.${index}`,
+                              handleArrayUpdate(
+                                "services_data",
+                                index,
                                 "max_price",
                                 parseFloat(e.target.value)
                               )
@@ -630,6 +653,34 @@ const StaffProfile = () => {
                             placeholder="Max Price"
                           />
                         </div>
+                        <input
+                          type="text"
+                          value={service.category || ""}
+                          onChange={(e) =>
+                            handleArrayUpdate(
+                              "services_data",
+                              index,
+                              "category",
+                              e.target.value
+                            )
+                          }
+                          className="w-full px-2 py-1 border border-border rounded"
+                          placeholder="Category"
+                        />
+                        <input
+                          type="number"
+                          value={service.duration_minutes || ""}
+                          onChange={(e) =>
+                            handleArrayUpdate(
+                              "services_data",
+                              index,
+                              "duration_minutes",
+                              parseInt(e.target.value)
+                            )
+                          }
+                          className="w-full px-2 py-1 border border-border rounded"
+                          placeholder="Duration (minutes)"
+                        />
                       </div>
                     ) : (
                       <>
@@ -656,6 +707,12 @@ const StaffProfile = () => {
                   </div>
                 ))}
               </div>
+
+              {!isEditing && (!services || services.length === 0) && (
+                <div className="col-span-2 text-center py-8 text-muted-foreground">
+                  <p>No services found. Click "Edit" to add services.</p>
+                </div>
+              )}
 
               {isEditing && (
                 <div className="flex justify-end">
@@ -698,9 +755,12 @@ const StaffProfile = () => {
               )}
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {(doctors || []).map((doctor, index) => (
+                {(isEditing
+                  ? editedData?.doctors_data
+                  : doctors || currentData?.doctors_data || []
+                ).map((doctor, index) => (
                   <div
-                    key={index}
+                    key={doctor.id || index}
                     className="p-4 border border-border rounded-lg"
                   >
                     <div className="flex justify-between items-start mb-4">
@@ -711,8 +771,9 @@ const StaffProfile = () => {
                               type="text"
                               value={doctor.first_name || ""}
                               onChange={(e) =>
-                                handleInputChange(
-                                  `doctors_data.${index}`,
+                                handleArrayUpdate(
+                                  "doctors_data",
+                                  index,
                                   "first_name",
                                   e.target.value
                                 )
@@ -724,8 +785,9 @@ const StaffProfile = () => {
                               type="text"
                               value={doctor.last_name || ""}
                               onChange={(e) =>
-                                handleInputChange(
-                                  `doctors_data.${index}`,
+                                handleArrayUpdate(
+                                  "doctors_data",
+                                  index,
                                   "last_name",
                                   e.target.value
                                 )
@@ -755,8 +817,9 @@ const StaffProfile = () => {
                           type="text"
                           value={doctor.specialization || ""}
                           onChange={(e) =>
-                            handleInputChange(
-                              `doctors_data.${index}`,
+                            handleArrayUpdate(
+                              "doctors_data",
+                              index,
                               "specialization",
                               e.target.value
                             )
@@ -768,8 +831,9 @@ const StaffProfile = () => {
                           type="text"
                           value={doctor.license_number || ""}
                           onChange={(e) =>
-                            handleInputChange(
-                              `doctors_data.${index}`,
+                            handleArrayUpdate(
+                              "doctors_data",
+                              index,
                               "license_number",
                               e.target.value
                             )
@@ -782,8 +846,9 @@ const StaffProfile = () => {
                             type="number"
                             value={doctor.experience_years || ""}
                             onChange={(e) =>
-                              handleInputChange(
-                                `doctors_data.${index}`,
+                              handleArrayUpdate(
+                                "doctors_data",
+                                index,
                                 "experience_years",
                                 parseInt(e.target.value)
                               )
@@ -795,8 +860,9 @@ const StaffProfile = () => {
                             type="number"
                             value={doctor.consultation_fee || ""}
                             onChange={(e) =>
-                              handleInputChange(
-                                `doctors_data.${index}`,
+                              handleArrayUpdate(
+                                "doctors_data",
+                                index,
                                 "consultation_fee",
                                 parseFloat(e.target.value)
                               )
@@ -808,8 +874,9 @@ const StaffProfile = () => {
                         <textarea
                           value={doctor.bio || ""}
                           onChange={(e) =>
-                            handleInputChange(
-                              `doctors_data.${index}`,
+                            handleArrayUpdate(
+                              "doctors_data",
+                              index,
                               "bio",
                               e.target.value
                             )
@@ -818,9 +885,49 @@ const StaffProfile = () => {
                           placeholder="Doctor bio"
                           rows={3}
                         />
+                        <input
+                          type="url"
+                          value={doctor.image_url || ""}
+                          onChange={(e) =>
+                            handleArrayUpdate(
+                              "doctors_data",
+                              index,
+                              "image_url",
+                              e.target.value
+                            )
+                          }
+                          className="w-full px-2 py-1 border border-border rounded"
+                          placeholder="Doctor image URL"
+                        />
+                        <input
+                          type="text"
+                          value={doctor.education || ""}
+                          onChange={(e) =>
+                            handleArrayUpdate(
+                              "doctors_data",
+                              index,
+                              "education",
+                              e.target.value
+                            )
+                          }
+                          className="w-full px-2 py-1 border border-border rounded"
+                          placeholder="Education"
+                        />
                       </div>
                     ) : (
                       <>
+                        {doctor.image_url && (
+                          <div className="mb-3">
+                            <img
+                              src={doctor.image_url}
+                              alt={`Dr. ${doctor.first_name} ${doctor.last_name}`}
+                              className="w-16 h-16 rounded-full object-cover"
+                              onError={(e) => {
+                                e.target.style.display = "none";
+                              }}
+                            />
+                          </div>
+                        )}
                         <p className="text-sm text-primary font-medium mb-1">
                           {doctor.specialization || "No specialization"}
                         </p>
@@ -864,6 +971,12 @@ const StaffProfile = () => {
                 </div>
               )}
             </div>
+
+            {!isEditing && (!doctors || doctors.length === 0) && (
+              <div className="col-span-2 text-center py-8 text-muted-foreground">
+                <p>No doctors found. Click "Edit" to add doctors.</p>
+              </div>
+            )}
           </ProfileCard>
         )}
       </div>
