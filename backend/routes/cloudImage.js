@@ -163,7 +163,7 @@ router.post('/profile-image',
       
       // Update profile_image_url in supabase with retry logic
       let updateAttempts = 0;
-      const maxUpdateAttempts = 3;
+      const maxUpdateAttempts = 5;
       let updateData, updateError;
 
       while (updateAttempts < maxUpdateAttempts) {

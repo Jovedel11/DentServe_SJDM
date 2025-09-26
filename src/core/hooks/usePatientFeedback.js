@@ -30,7 +30,7 @@ export const usePatientFeedback = () => {
     selectedAppointment: null,
     feedbackForm: {
       rating: 0,
-      comment: '',
+      comment: '', // ✅ FIXED: Use 'comment' to match database
       feedback_type: 'general',
       is_anonymous: false
     }
@@ -84,7 +84,7 @@ export const usePatientFeedback = () => {
 
       const appointments = data.data.appointments || [];
       
-      // ✅ OPTIMIZED - Better data transformation
+      // ✅ FIXED: Transform data to match component expectations
       const transformedAppointments = appointments.map(apt => ({
         id: apt.id,
         appointment_date: apt.appointment_date,
@@ -195,9 +195,38 @@ export const usePatientFeedback = () => {
       // ✅ ENHANCED - Better archive status mapping
       const archivedItemIds = new Set(archivedItems.map(item => item.item_id));
       
+      // ✅ FIXED: Transform data to match component structure
       const processedFeedback = feedbackData.map(fb => ({
-        ...fb,
-        isArchived: archivedItemIds.has(fb.id)
+        id: fb.id,
+        rating: fb.rating,
+        comment: fb.comment, // ✅ FIXED: Use comment field
+        message: fb.comment, // ✅ COMPATIBILITY: Add message alias for component
+        feedback_text: fb.comment, // ✅ COMPATIBILITY: Add feedback_text alias
+        is_anonymous: fb.is_anonymous,
+        is_public: fb.is_public,
+        feedback_type: fb.feedback_type,
+        created_at: fb.created_at,
+        clinic_response: fb.response,
+        responded_at: fb.responded_at,
+        recommend_to_others: fb.recommend_to_others,
+        isArchived: archivedItemIds.has(fb.id),
+        // ✅ FIXED: Structure nested objects properly
+        clinic: {
+          id: fb.clinic_id,
+          name: fb.clinic_name,
+          address: fb.clinic_address
+        },
+        doctor: fb.doctor_id ? {
+          id: fb.doctor_id,
+          name: fb.doctor_name,
+          specialization: fb.doctor_specialization
+        } : null,
+        appointment: fb.appointment_id ? {
+          id: fb.appointment_id,
+          date: fb.appointment_date,
+          time: fb.appointment_time,
+          services: fb.services || []
+        } : null
       }));
 
       const activeFeedback = processedFeedback.filter(fb => !fb.isArchived);
@@ -242,7 +271,7 @@ export const usePatientFeedback = () => {
         clinic_id: selectedAppointment.clinic.id,
         appointment_id: selectedAppointment.id,
         rating: feedbackForm.rating,
-        comment: feedbackForm.comment,
+        comment: feedbackForm.comment, // ✅ FIXED: Use comment field
         feedback_type: feedbackForm.feedback_type, 
         is_anonymous: feedbackForm.is_anonymous
       });
@@ -259,11 +288,12 @@ export const usePatientFeedback = () => {
         selectedAppointment: null,
         feedbackForm: {
           rating: 0,
-          comment: '',
+          comment: '', // ✅ FIXED: Use comment field
           feedback_type: 'general',
           is_anonymous: false,
         }
       }));
+      
       // ✅ PERFORMANCE - Mark for refresh instead of immediate fetch
       fetchedRef.current.feedback = false;
       await fetchFeedbackHistory(true);
@@ -398,14 +428,14 @@ Anonymous: ${feedback.is_anonymous ? 'Yes' : 'No'}
 
 APPOINTMENT DETAILS
 ==================
-Date: ${new Date(feedback.appointment.date).toLocaleDateString()}
-Time: ${feedback.appointment.time}
-Services: ${feedback.appointment.services?.join(', ') || 'General Appointment'}
+Date: ${feedback.appointment ? new Date(feedback.appointment.date).toLocaleDateString() : 'N/A'}
+Time: ${feedback.appointment?.time || 'N/A'}
+Services: ${feedback.appointment?.services?.join(', ') || 'General Appointment'}
 
 PROVIDER DETAILS
 ===============
 Clinic: ${feedback.clinic.name}
-Address: ${feedback.clinic.address}
+Address: ${feedback.clinic.address || 'Not specified'}
 Doctor: ${feedback.doctor?.name || 'Not specified'}
 ${feedback.doctor?.specialization ? `Specialization: ${feedback.doctor.specialization}` : ''}
 
@@ -429,7 +459,7 @@ Generated on ${new Date().toLocaleString()}
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `feedback-${feedback.id}-${feedback.appointment.date}.txt`;
+      a.download = `feedback-${feedback.id}-${feedback.appointment?.date || 'general'}.txt`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -485,7 +515,7 @@ Generated on ${new Date().toLocaleString()}
       selectedAppointment: null,
       feedbackForm: {
         rating: 0,
-        comment: '',
+        comment: '', // ✅ FIXED: Use comment field
         feedback_type: 'general',
         is_anonymous: false,
       }

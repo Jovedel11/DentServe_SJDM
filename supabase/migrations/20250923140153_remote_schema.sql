@@ -2172,6 +2172,256 @@ BEGIN
 END;
 $$;
 
+-- ✅ CREATE MISSING STAFF FEEDBACK FUNCTIONS
+
+-- 1. Get Staff Feedback List Function
+CREATE OR REPLACE FUNCTION "public"."get_staff_feedback_list"(
+    "p_clinic_id" "uuid" DEFAULT NULL,
+    "p_include_responses" boolean DEFAULT true,
+    "p_limit" integer DEFAULT 50,
+    "p_offset" integer DEFAULT 0
+) RETURNS "jsonb"
+LANGUAGE "plpgsql" SECURITY DEFINER
+SET "search_path" TO 'public', 'pg_catalog', 'extensions'
+AS $$
+DECLARE
+    current_context JSONB;
+    staff_clinic_id UUID;
+    result JSONB;
+BEGIN
+    current_context := get_current_user_context();
+    
+    -- Only staff and admin can access
+    IF NOT (current_context->>'authenticated')::boolean OR 
+       (current_context->>'user_type') NOT IN ('staff', 'admin') THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Staff or Admin access required');
+    END IF;
+    
+    -- Get staff clinic ID if not provided
+    IF p_clinic_id IS NULL THEN
+        SELECT sp.clinic_id INTO staff_clinic_id
+        FROM staff_profiles sp
+        JOIN user_profiles up ON sp.user_profile_id = up.id
+        WHERE up.user_id = (current_context->>'user_id')::UUID
+        AND sp.is_active = true;
+        
+        IF staff_clinic_id IS NULL THEN
+            RETURN jsonb_build_object('success', false, 'error', 'No clinic association found');
+        END IF;
+    ELSE
+        staff_clinic_id := p_clinic_id;
+    END IF;
+    
+    WITH feedback_data AS (
+        SELECT 
+            f.id,
+            f.rating,
+            f.comment,
+            f.is_anonymous,
+            f.is_public,
+            f.feedback_type,
+            f.response,
+            f.responded_by,
+            f.responded_at,
+            f.created_at,
+            f.appointment_id,
+            f.clinic_id,
+            f.doctor_id,
+            -- Patient info (respecting anonymity)
+            CASE 
+                WHEN f.is_anonymous THEN NULL
+                ELSE p.first_name || ' ' || p.last_name
+            END as patient_name,
+            CASE 
+                WHEN f.is_anonymous THEN NULL
+                ELSE p.email
+            END as patient_email,
+            CASE 
+                WHEN f.is_anonymous THEN NULL
+                ELSE p.profile_image
+            END as patient_image,
+            -- Appointment details
+            a.appointment_date,
+            a.appointment_time,
+            -- Doctor details
+            d.first_name || ' ' || d.last_name as doctor_name,
+            d.specialization as doctor_specialization,
+            -- Responder details
+            resp.first_name || ' ' || resp.last_name as responder_name,
+            -- Services
+            (SELECT jsonb_agg(s.name) FROM appointment_services aps 
+             JOIN services s ON aps.service_id = s.id 
+             WHERE aps.appointment_id = f.appointment_id) as services
+        FROM feedback f
+        LEFT JOIN appointments a ON f.appointment_id = a.id
+        LEFT JOIN patient_profiles pp ON f.patient_id = pp.user_profile_id
+        LEFT JOIN user_profiles p ON pp.user_profile_id = p.id
+        LEFT JOIN doctors d ON f.doctor_id = d.id
+        LEFT JOIN user_profiles resp ON f.responded_by = resp.user_id
+        WHERE f.clinic_id = staff_clinic_id
+        ORDER BY f.created_at DESC
+        LIMIT p_limit OFFSET p_offset
+    ),
+    feedback_stats AS (
+        SELECT 
+            COUNT(*) as total_count,
+            COUNT(*) FILTER (WHERE response IS NOT NULL) as responded_count,
+            AVG(rating) as average_rating,
+            COUNT(*) FILTER (WHERE rating >= 4) as positive_count,
+            COUNT(*) FILTER (WHERE rating <= 2) as negative_count
+        FROM feedback 
+        WHERE clinic_id = staff_clinic_id
+    )
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'feedback_list', (SELECT jsonb_agg(row_to_json(fd)) FROM feedback_data fd),
+            'pagination', jsonb_build_object(
+                'limit', p_limit,
+                'offset', p_offset,
+                'total_count', (SELECT total_count FROM feedback_stats)
+            ),
+            'statistics', jsonb_build_object(
+                'total_feedback', (SELECT total_count FROM feedback_stats),
+                'response_rate', CASE 
+                    WHEN (SELECT total_count FROM feedback_stats) > 0 
+                    THEN ROUND((SELECT responded_count FROM feedback_stats)::numeric / (SELECT total_count FROM feedback_stats) * 100, 1)
+                    ELSE 0 
+                END,
+                'average_rating', ROUND((SELECT average_rating FROM feedback_stats), 1),
+                'positive_feedback', (SELECT positive_count FROM feedback_stats),
+                'negative_feedback', (SELECT negative_count FROM feedback_stats)
+            )
+        )
+    ) INTO result;
+    
+    RETURN result;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Failed to fetch feedback list');
+END;
+$$;
+
+-- 2. Respond to Feedback Function
+CREATE OR REPLACE FUNCTION "public"."respond_to_feedback"(
+    "p_feedback_id" "uuid",
+    "p_response" "text"
+) RETURNS "jsonb"
+LANGUAGE "plpgsql" SECURITY DEFINER
+SET "search_path" TO 'public', 'pg_catalog', 'extensions'
+AS $$
+DECLARE
+    current_context JSONB;
+    staff_clinic_id UUID;
+    feedback_record RECORD;
+    responder_id UUID;
+BEGIN
+    current_context := get_current_user_context();
+    
+    -- Only staff and admin can respond
+    IF NOT (current_context->>'authenticated')::boolean OR 
+       (current_context->>'user_type') NOT IN ('staff', 'admin') THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Staff or Admin access required');
+    END IF;
+    
+    responder_id := (current_context->>'user_id')::UUID;
+    
+    -- Validate response
+    IF p_response IS NULL OR TRIM(p_response) = '' OR LENGTH(p_response) > 1000 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Response is required and must be under 1000 characters');
+    END IF;
+    
+    -- Get staff clinic ID
+    SELECT sp.clinic_id INTO staff_clinic_id
+    FROM staff_profiles sp
+    JOIN user_profiles up ON sp.user_profile_id = up.id
+    WHERE up.user_id = responder_id
+    AND sp.is_active = true;
+    
+    IF staff_clinic_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'No clinic association found');
+    END IF;
+    
+    -- Get and validate feedback
+    SELECT 
+        f.id,
+        f.clinic_id,
+        f.patient_id,
+        f.response as existing_response,
+        f.rating,
+        f.comment
+    INTO feedback_record
+    FROM feedback f
+    WHERE f.id = p_feedback_id;
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Feedback not found');
+    END IF;
+    
+    -- Check if staff can respond to this feedback (same clinic)
+    IF feedback_record.clinic_id != staff_clinic_id THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Cannot respond to feedback from different clinic');
+    END IF;
+    
+    -- Check if already responded
+    IF feedback_record.existing_response IS NOT NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Feedback already has a response');
+    END IF;
+    
+    -- Update feedback with response
+    UPDATE feedback SET
+        response = TRIM(p_response),
+        responded_by = responder_id,
+        responded_at = NOW()
+    WHERE id = p_feedback_id;
+    
+    -- Create notification for patient
+    INSERT INTO notifications (
+        user_id,
+        notification_type,
+        title,
+        message
+    ) VALUES (
+        feedback_record.patient_id,
+        'feedback_request',
+        'Response to Your Feedback',
+        format('We have responded to your %s-star feedback. Thank you for helping us improve our services.', feedback_record.rating)
+    );
+    
+    -- Analytics event
+    INSERT INTO analytics_events (
+        clinic_id,
+        user_id,
+        event_type,
+        metadata
+    ) VALUES (
+        staff_clinic_id,
+        responder_id,
+        'feedback_responded',
+        jsonb_build_object(
+            'feedback_id', p_feedback_id,
+            'response_length', LENGTH(TRIM(p_response)),
+            'original_rating', feedback_record.rating
+        )
+    );
+    
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Response submitted successfully',
+        'data', jsonb_build_object(
+            'feedback_id', p_feedback_id,
+            'responded_at', NOW(),
+            'responder_id', responder_id
+        )
+    );
+
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Failed to submit response');
+END;
+$$;
+
 
 ALTER FUNCTION "public"."create_user_email_only"("p_email" character varying, "p_first_name" character varying, "p_last_name" character varying, "p_user_type" "public"."user_type") OWNER TO "postgres";
 
@@ -8555,8 +8805,9 @@ $$;
 ALTER FUNCTION "public"."update_user_location"("latitude" double precision, "longitude" double precision) OWNER TO "postgres";
 
 
--- Updated update_user_profile function with proper staff management
--- ✅ FIXED: Enhanced update_user_profile function with better data handling
+-- ✅ CRITICAL FIX: Enhanced update_user_profile function for proper staff management
+-- Fix the update_user_profile function to handle image_url correctly and improve CRUD operations
+
 CREATE OR REPLACE FUNCTION public.update_user_profile(
     p_user_id uuid DEFAULT NULL::uuid,
     p_profile_data jsonb DEFAULT '{}'::jsonb,
@@ -8575,6 +8826,7 @@ DECLARE
     current_context JSONB;
     v_current_role TEXT;
     profile_id UUID;
+    staff_profile_id UUID;
     staff_clinic_id UUID;
     result JSONB := '{}';
     temp_result JSONB;
@@ -8584,6 +8836,10 @@ DECLARE
     service_record JSONB;
     doctor_record JSONB;
     new_doctor_id UUID;
+    service_update_count INTEGER := 0;
+    doctor_update_count INTEGER := 0;
+    service_delete_count INTEGER := 0;
+    doctor_delete_count INTEGER := 0;
 BEGIN
     SET search_path = public, pg_catalog;
 
@@ -8603,8 +8859,9 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Access denied');
     END IF;
 
-    -- Get profile ID and staff clinic
-    SELECT up.id, sp.clinic_id INTO profile_id, staff_clinic_id
+    -- ✅ FIXED: Get profile ID, staff_profile_id and staff clinic correctly
+    SELECT up.id, sp.id, sp.clinic_id 
+    INTO profile_id, staff_profile_id, staff_clinic_id
     FROM user_profiles up
     JOIN users u ON up.user_id = u.id
     LEFT JOIN staff_profiles sp ON up.id = sp.user_profile_id
@@ -8677,7 +8934,7 @@ BEGIN
     -- ✅ ROLE-SPECIFIC UPDATES
 
     -- 👨‍💼 STAFF UPDATES (ENHANCED FOR ARRAY HANDLING)
-    IF v_current_role = 'staff' THEN
+    IF v_current_role = 'staff' AND staff_profile_id IS NOT NULL THEN
         -- Update staff profile
         UPDATE staff_profiles 
         SET 
@@ -8690,7 +8947,7 @@ BEGIN
                 ELSE hire_date 
             END,
             updated_at = NOW()
-        WHERE user_profile_id = profile_id;
+        WHERE id = staff_profile_id;
 
         result := result || jsonb_build_object('staff_profile_updated', true);
 
@@ -8708,11 +8965,6 @@ BEGIN
                 email = COALESCE(p_clinic_data->>'email', email),
                 website_url = COALESCE(p_clinic_data->>'website_url', website_url),
                 image_url = COALESCE(p_clinic_data->>'image_url', image_url),
-                location = CASE 
-                    WHEN p_clinic_data ? 'location' AND p_clinic_data->>'location' != ''
-                    THEN ST_SetSRID(ST_GeomFromText(p_clinic_data->>'location'), 4326)::geography
-                    ELSE location
-                END,
                 operating_hours = CASE 
                     WHEN p_clinic_data ? 'operating_hours'
                     THEN p_clinic_data->'operating_hours'
@@ -8735,12 +8987,15 @@ BEGIN
         IF p_services_data != '{}' AND staff_clinic_id IS NOT NULL THEN
             -- Handle direct array of services (from frontend)
             IF jsonb_typeof(p_services_data) = 'array' THEN
+                -- First, mark all existing services as potentially deleted
+                UPDATE services SET is_active = false WHERE clinic_id = staff_clinic_id;
+                
                 -- Process each service in the array
                 FOR service_record IN SELECT * FROM jsonb_array_elements(p_services_data)
                 LOOP
                     -- Check if service has an ID (update existing) or not (create new)
                     IF service_record ? 'id' AND service_record->>'id' != '' AND service_record->>'id' != 'new' THEN
-                        -- Update existing service
+                        -- Update existing service and mark as active
                         UPDATE services 
                         SET 
                             name = COALESCE(service_record->>'name', name),
@@ -8749,10 +9004,14 @@ BEGIN
                             duration_minutes = COALESCE((service_record->>'duration_minutes')::integer, duration_minutes),
                             min_price = COALESCE((service_record->>'min_price')::numeric, min_price),
                             max_price = COALESCE((service_record->>'max_price')::numeric, max_price),
-                            is_active = COALESCE((service_record->>'is_active')::boolean, is_active),
+                            is_active = COALESCE((service_record->>'is_active')::boolean, true),
                             updated_at = NOW()
                         WHERE id = (service_record->>'id')::uuid 
                         AND clinic_id = staff_clinic_id;
+                        
+                        IF FOUND THEN
+                            service_update_count := service_update_count + 1;
+                        END IF;
                     ELSE
                         -- Create new service
                         INSERT INTO services (
@@ -8771,23 +9030,28 @@ BEGIN
                             NOW(),
                             NOW()
                         );
+                        
+                        service_update_count := service_update_count + 1;
                     END IF;
                 END LOOP;
 
-                result := result || jsonb_build_object('services_processed', jsonb_array_length(p_services_data));
+                result := result || jsonb_build_object('services_processed', service_update_count);
             END IF;
         END IF;
 
-        -- ✅ DOCTORS MANAGEMENT (ENHANCED FOR DIRECT ARRAY HANDLING)
+        -- ✅ DOCTORS MANAGEMENT (ENHANCED FOR DIRECT ARRAY HANDLING WITH FIXED IMAGE_URL)
         IF p_doctors_data != '{}' AND staff_clinic_id IS NOT NULL THEN
             -- Handle direct array of doctors (from frontend)
             IF jsonb_typeof(p_doctors_data) = 'array' THEN
+                -- First, deactivate all doctor-clinic relationships for this clinic
+                UPDATE doctor_clinics SET is_active = false WHERE clinic_id = staff_clinic_id;
+                
                 -- Process each doctor in the array
                 FOR doctor_record IN SELECT * FROM jsonb_array_elements(p_doctors_data)
                 LOOP
                     -- Check if doctor has an ID (update existing) or not (create new)
                     IF doctor_record ? 'id' AND doctor_record->>'id' != '' AND doctor_record->>'id' != 'new' THEN
-                        -- Update existing doctor
+                        -- ✅ FIXED: Update existing doctor with correct image_url field
                         UPDATE doctors 
                         SET 
                             first_name = COALESCE(doctor_record->>'first_name', first_name),
@@ -8798,62 +9062,53 @@ BEGIN
                             experience_years = COALESCE((doctor_record->>'experience_years')::integer, experience_years),
                             bio = COALESCE(doctor_record->>'bio', bio),
                             consultation_fee = COALESCE((doctor_record->>'consultation_fee')::numeric, consultation_fee),
+                            -- ✅ FIXED: Use image_url field (not profile_image_url)
                             image_url = COALESCE(doctor_record->>'image_url', image_url),
-                            languages_spoken = CASE 
-                                WHEN doctor_record ? 'languages_spoken' AND jsonb_typeof(doctor_record->'languages_spoken') = 'array'
-                                THEN (SELECT array_agg(value::text) FROM jsonb_array_elements_text(doctor_record->'languages_spoken'))
-                                ELSE languages_spoken
-                            END,
-                            certifications = CASE 
-                                WHEN doctor_record ? 'certifications'
-                                THEN doctor_record->'certifications'
-                                ELSE certifications
-                            END,
-                            awards = CASE 
-                                WHEN doctor_record ? 'awards' AND jsonb_typeof(doctor_record->'awards') = 'array'
-                                THEN (SELECT array_agg(value::text) FROM jsonb_array_elements_text(doctor_record->'awards'))
-                                ELSE awards
-                            END,
                             is_available = COALESCE((doctor_record->>'is_available')::boolean, is_available),
                             updated_at = NOW()
-                        WHERE id = (doctor_record->>'id')::uuid
-                        AND EXISTS (
-                            SELECT 1 FROM doctor_clinics dc 
-                            WHERE dc.doctor_id = doctors.id 
-                            AND dc.clinic_id = staff_clinic_id
-                        );
+                        WHERE id = (doctor_record->>'id')::uuid;
+                        
+                        -- Reactivate or create doctor-clinic relationship
+                        INSERT INTO doctor_clinics (doctor_id, clinic_id, is_active, schedule, created_at)
+                        VALUES (
+                            (doctor_record->>'id')::uuid,
+                            staff_clinic_id,
+                            true,
+                            CASE 
+                                WHEN doctor_record ? 'schedule' 
+                                THEN doctor_record->'schedule'
+                                ELSE NULL
+                            END,
+                            NOW()
+                        )
+                        ON CONFLICT (doctor_id, clinic_id) 
+                        DO UPDATE SET 
+                            is_active = true,
+                            schedule = CASE 
+                                WHEN doctor_record ? 'schedule' 
+                                THEN doctor_record->'schedule'
+                                ELSE doctor_clinics.schedule
+                            END,
+                            created_at = NOW();
+                        
+                        doctor_update_count := doctor_update_count + 1;
                     ELSE
-                        -- Create new doctor
+                        -- ✅ FIXED: Create new doctor with correct image_url field
                         INSERT INTO doctors (
                             license_number, specialization, first_name, last_name,
                             education, experience_years, bio, consultation_fee,
-                            languages_spoken, certifications, awards, image_url, is_available,
-                            created_at, updated_at
+                            image_url, is_available, created_at, updated_at
                         ) VALUES (
-                            doctor_record->>'license_number',
-                            doctor_record->>'specialization',
-                            doctor_record->>'first_name', 
-                            doctor_record->>'last_name',
+                            COALESCE(doctor_record->>'license_number', ''),
+                            COALESCE(doctor_record->>'specialization', ''),
+                            COALESCE(doctor_record->>'first_name', ''), 
+                            COALESCE(doctor_record->>'last_name', ''),
                             COALESCE(doctor_record->>'education', ''),
                             COALESCE((doctor_record->>'experience_years')::integer, 0),
                             COALESCE(doctor_record->>'bio', ''),
                             COALESCE((doctor_record->>'consultation_fee')::numeric, 0),
-                            CASE 
-                                WHEN doctor_record ? 'languages_spoken' AND jsonb_typeof(doctor_record->'languages_spoken') = 'array'
-                                THEN (SELECT array_agg(value::text) FROM jsonb_array_elements_text(doctor_record->'languages_spoken'))
-                                ELSE ARRAY['English', 'Filipino']
-                            END,
-                            CASE 
-                                WHEN doctor_record ? 'certifications'
-                                THEN doctor_record->'certifications'
-                                ELSE NULL
-                            END,
-                            CASE 
-                                WHEN doctor_record ? 'awards' AND jsonb_typeof(doctor_record->'awards') = 'array'
-                                THEN (SELECT array_agg(value::text) FROM jsonb_array_elements_text(doctor_record->'awards'))
-                                ELSE NULL
-                            END,
-                            doctor_record->>'image_url',
+                            -- ✅ FIXED: Use image_url field (not profile_image_url)
+                            COALESCE(doctor_record->>'image_url', ''),
                             COALESCE((doctor_record->>'is_available')::boolean, true),
                             NOW(),
                             NOW()
@@ -8862,9 +9117,9 @@ BEGIN
                         -- Link doctor to clinic
                         INSERT INTO doctor_clinics (doctor_id, clinic_id, is_active, schedule, created_at)
                         VALUES (
-                            new_doctor_id, 
-                            staff_clinic_id, 
-                            true, 
+                            new_doctor_id,
+                            staff_clinic_id,
+                            true,
                             CASE 
                                 WHEN doctor_record ? 'schedule' 
                                 THEN doctor_record->'schedule'
@@ -8872,24 +9127,34 @@ BEGIN
                             END,
                             NOW()
                         );
+                        
+                        doctor_update_count := doctor_update_count + 1;
                     END IF;
                 END LOOP;
 
-                result := result || jsonb_build_object('doctors_processed', jsonb_array_length(p_doctors_data));
+                result := result || jsonb_build_object('doctors_processed', doctor_update_count);
             END IF;
         END IF;
+    END IF;
 
-    END IF; -- End staff updates
+    -- 🏥 ADMIN UPDATES (Future implementation)
+    IF v_current_role = 'admin' THEN
+        -- Admin-specific updates can be added here
+        result := result || jsonb_build_object('admin_profile_updated', true);
+    END IF;
 
-    -- ✅ RETURN SUCCESS WITH COMPREHENSIVE UPDATE INFORMATION
-    RETURN jsonb_build_object(
+    -- Return success result
+    result := result || jsonb_build_object(
         'success', true,
         'message', 'Profile updated successfully',
-        'updates', result,
-        'user_id', target_user_id,
-        'profile_id', profile_id,
-        'timestamp', NOW()
+        'updates', jsonb_build_object(
+            'services_count', service_update_count,
+            'doctors_count', doctor_update_count,
+            'timestamp', NOW()
+        )
     );
+
+    RETURN result;
 
 EXCEPTION
     WHEN OTHERS THEN
@@ -8899,6 +9164,8 @@ EXCEPTION
             'details', jsonb_build_object(
                 'user_id', target_user_id,
                 'profile_id', profile_id,
+                'staff_profile_id', staff_profile_id,
+                'staff_clinic_id', staff_clinic_id,
                 'timestamp', NOW()
             )
         );

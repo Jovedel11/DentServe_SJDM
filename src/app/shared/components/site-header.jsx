@@ -12,7 +12,7 @@ import { Button } from "@/core/components/ui/button";
 import { Separator } from "@/core/components/ui/separator";
 import { useSidebar } from "@/core/components/ui/sidebar";
 import { ModeToggle } from "@/core/components/ui/mode-toggle";
-import StaffNotificationCenter from "@/app/staff/components/staff-notification-center";
+import UnifiedNotificationBell from "@/app/shared/components/notification-bell";
 
 export function SiteHeader() {
   const { toggleSidebar } = useSidebar();
@@ -37,7 +37,7 @@ export function SiteHeader() {
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink
-                href="/patient/dashboard"
+                href="/staff/dashboard"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 Dashboard
@@ -55,7 +55,9 @@ export function SiteHeader() {
         {/* Right Side Actions */}
         <div className="ml-auto flex items-center gap-2">
           <SearchForm className="hidden sm:flex" />
-          <StaffNotificationCenter variant="icon" />
+
+          {/* Unified Notification Bell */}
+          <UnifiedNotificationBell />
 
           <ModeToggle />
         </div>

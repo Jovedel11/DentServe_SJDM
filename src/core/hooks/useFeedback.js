@@ -19,20 +19,23 @@ export const useFeedback = () => {
       setLoading(true);
       setError(null);
 
+      // ✅ FIXED: Use 'comment' field to match database schema
+      const comment = feedbackData.comment || feedbackData.feedback_text;
+      
       // ✅ Input validation
       if (!feedbackData.rating || feedbackData.rating < 1 || feedbackData.rating > 5) {
         throw new Error('Rating must be between 1 and 5 stars');
       }
 
-      if (!feedbackData.feedback_text || feedbackData.feedback_text.trim().length === 0) {
-        throw new Error('Feedback text is required');
+      if (!comment || comment.trim().length === 0) {
+        throw new Error('Feedback comment is required');
       }
 
-      if (feedbackData.feedback_text.length > 1000) {
+      if (comment.length > 1000) {
         throw new Error('Feedback must be under 1000 characters');
       }
 
-      if (feedbackData.feedback_text.trim().length < 10) {
+      if (comment.trim().length < 10) {
         throw new Error('Feedback must be at least 10 characters long');
       }
 
@@ -41,23 +44,20 @@ export const useFeedback = () => {
         throw new Error('Either appointment ID or clinic ID is required');
       }
 
-      // ✅ Validate feedback categories if provided
-      const validCategories = ['service', 'staff', 'facility', 'wait_time', 'cleanliness', 'overall'];
-      if (feedbackData.feedback_categories) {
-        const invalidCategories = feedbackData.feedback_categories.filter(
-          cat => !validCategories.includes(cat)
-        );
-        if (invalidCategories.length > 0) {
-          throw new Error(`Invalid feedback categories: ${invalidCategories.join(', ')}`);
-        }
+      // ✅ FIXED: Validate feedback_type enum values
+      const validFeedbackTypes = ['general', 'service', 'doctor', 'facility'];
+      const feedbackType = feedbackData.feedback_type || 'general';
+      if (!validFeedbackTypes.includes(feedbackType)) {
+        throw new Error(`Invalid feedback type. Must be one of: ${validFeedbackTypes.join(', ')}`);
       }
 
+      // ✅ FIXED: Call RPC with correct parameter names matching database function
       const { data, error: rpcError } = await supabase.rpc('submit_feedback', {
         p_rating: feedbackData.rating,
-        p_comment: feedbackData.feedback_text, 
+        p_comment: comment, // ✅ FIXED: Use comment not feedback_text
         p_appointment_id: feedbackData.appointment_id || null,
         p_clinic_id: feedbackData.clinic_id || null, 
-        p_feedback_type: feedbackData.feedback_type || 'general', 
+        p_feedback_type: feedbackType, // ✅ FIXED: Use enum value
         p_is_anonymous: feedbackData.is_anonymous || false
       });
 
@@ -65,15 +65,15 @@ export const useFeedback = () => {
         throw new Error(rpcError.message);
       }
 
-     
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to submit feedback');
+      // ✅ FIXED: Handle RPC response structure
+      if (!data || !data.success) {
+        throw new Error(data?.error || 'Failed to submit feedback');
       }
 
       return {
         success: true,
         data: data.data,
-        message: data.message || 'Feedback submitted successfully'
+        message: data.message || 'Feedback submitted successfully and staff notified'
       };
 
     } catch (err) {
@@ -88,22 +88,63 @@ export const useFeedback = () => {
     }
   }, [isPatient]);
 
- 
+  // ✅ FIXED: Check feedback eligibility using proper RPC
   const checkFeedbackEligibility = useCallback(async (appointmentId) => {
     try {
-      // This would typically be a separate RPC or part of appointment data
-      // For now, we'll assume it's allowed
+      setLoading(true);
+      
+      // Check if appointment exists and is completed
+      const { data: appointments, error } = await supabase.rpc('get_appointments_by_role', {
+        p_status: ['completed'],
+        p_date_from: null,
+        p_date_to: null,
+        p_limit: 1,
+        p_offset: 0
+      });
+
+      if (error) throw error;
+
+      const appointment = appointments?.data?.appointments?.find(apt => apt.id === appointmentId);
+      
+      if (!appointment) {
+        return {
+          can_submit: false,
+          already_submitted: false,
+          appointment_status: 'not_found',
+          error: 'Appointment not found or not completed'
+        };
+      }
+
+      // Check if feedback already exists
+      const { data: feedbackHistory, error: feedbackError } = await supabase.rpc('get_patient_feedback_history', {
+        p_patient_id: null,
+        p_include_archived: false,
+        p_limit: 100,
+        p_offset: 0
+      });
+
+      if (feedbackError) throw feedbackError;
+
+      const existingFeedback = feedbackHistory?.data?.feedback_history?.find(
+        fb => fb.appointment_id === appointmentId
+      );
+
       return {
-        can_submit: true,
-        already_submitted: false,
-        appointment_status: 'completed'
+        can_submit: !existingFeedback,
+        already_submitted: !!existingFeedback,
+        appointment_status: appointment.status,
+        appointment: appointment
       };
+
     } catch (err) {
       console.error('Error checking feedback eligibility:', err);
       return {
-        can_submit: true,
-        already_submitted: false
+        can_submit: false,
+        already_submitted: false,
+        error: err.message
       };
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -114,6 +155,9 @@ export const useFeedback = () => {
     
     // Actions
     submitFeedback,
-    checkFeedbackEligibility
+    checkFeedbackEligibility,
+    
+    // Utilities
+    clearError: () => setError(null)
   };
 };

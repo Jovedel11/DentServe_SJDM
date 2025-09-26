@@ -12,7 +12,7 @@ import { Button } from "@/core/components/ui/button";
 import { Separator } from "@/core/components/ui/separator";
 import { useSidebar } from "@/core/components/ui/sidebar";
 import { ModeToggle } from "@/core/components/ui/mode-toggle";
-import NotificationBell from "@/app/shared/components/notification-bell";
+import UnifiedNotificationBell from "@/app/shared/components/notification-bell";
 
 export function SiteHeader() {
   const { toggleSidebar } = useSidebar();
@@ -56,12 +56,8 @@ export function SiteHeader() {
         <div className="ml-auto flex items-center gap-2">
           <SearchForm className="hidden sm:flex" />
 
-          {/* Notifications */}
-          <NotificationBell
-            variant="ghost"
-            size="icon"
-            className="cursor-pointer"
-          />
+          {/* Unified Notification Bell */}
+          <UnifiedNotificationBell />
 
           <ModeToggle />
         </div>

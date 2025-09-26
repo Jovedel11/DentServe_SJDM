@@ -2,8 +2,8 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 
-export const useStaffNotifications = () => {
-  const { user, profile, isStaff, isAdmin } = useAuth();
+export const useUnifiedNotifications = () => {
+  const { user, profile, isPatient, isStaff, isAdmin } = useAuth();
   
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -16,10 +16,56 @@ export const useStaffNotifications = () => {
     hasMore: false
   });
 
-  // ✅ STAFF NOTIFICATION FETCH with proper filtering
-  const fetchStaffNotifications = useCallback(async (options = {}) => {
-    if (!isStaff && !isAdmin) {
-      return { success: false, error: 'Staff or Admin access required' };
+  // ✅ DETERMINE USER TYPE AND NOTIFICATION TYPES
+  const userContext = useMemo(() => {
+    if (!user || !profile) return null;
+    
+    const userType = profile.user_type;
+    let notificationTypes = [];
+    
+    // Define notification types based on user role
+    switch (userType) {
+      case 'patient':
+        notificationTypes = [
+          'appointment_reminder',
+          'appointment_confirmed',
+          'appointment_cancelled',
+          'feedback_request'
+        ];
+        break;
+      case 'staff':
+        notificationTypes = [
+          'appointment_confirmed',
+          'appointment_cancelled',
+          'appointment_reminder',
+          'feedback_request'
+        ];
+        break;
+      case 'admin':
+        notificationTypes = [
+          'appointment_confirmed',
+          'appointment_cancelled',
+          'appointment_reminder',
+          'feedback_request',
+          'partnership_request'
+        ];
+        break;
+      default:
+        notificationTypes = [];
+    }
+    
+    return {
+      userType,
+      notificationTypes,
+      userId: profile.user_id || user.id,
+      clinicId: profile.role_specific_data?.clinic_id || null
+    };
+  }, [user, profile, isPatient, isStaff, isAdmin]);
+
+  // ✅ UNIFIED FETCH NOTIFICATIONS
+  const fetchNotifications = useCallback(async (options = {}) => {
+    if (!userContext) {
+      return { success: false, error: 'User context not available' };
     }
 
     try {
@@ -30,15 +76,13 @@ export const useStaffNotifications = () => {
         readStatus = filter === 'all' ? null : filter === 'unread' ? false : true,
         limit = pagination.limit,
         offset = pagination.offset,
-        refresh = false,
-        // ✅ FIXED: Use correct notification types from enum (aligned with database schema)
-        notificationTypes = ['appointment_confirmed', 'appointment_cancelled', 'appointment_reminder', 'feedback_request', 'partnership_request']
+        refresh = false
       } = options;
 
       const { data, error } = await supabase.rpc('get_user_notifications', {
         p_user_id: null, // Uses current user context
         p_read_status: readStatus,
-        p_notification_types: notificationTypes,
+        p_notification_types: userContext.notificationTypes,
         p_limit: limit,
         p_offset: refresh ? 0 : offset,
         p_include_related_data: true
@@ -52,7 +96,7 @@ export const useStaffNotifications = () => {
       }
 
       if (!data?.success) {
-        throw new Error(data?.error || 'Failed to fetch staff notifications');
+        throw new Error(data?.error || 'Failed to fetch notifications');
       }
 
       const notificationData = data.data;
@@ -83,16 +127,16 @@ export const useStaffNotifications = () => {
       };
 
     } catch (err) {
-      const errorMsg = err?.message || 'Failed to load staff notifications';
+      const errorMsg = err?.message || 'Failed to load notifications';
       setError(errorMsg);
-      console.error('Fetch staff notifications error:', err);
+      console.error('Fetch unified notifications error:', err);
       return { success: false, error: errorMsg };
     } finally {
       setLoading(false);
     }
-  }, [isStaff, isAdmin, filter, pagination.limit, pagination.offset]);
+  }, [userContext, filter, pagination.limit, pagination.offset]);
 
-  // ✅ MARK AS READ with staff context
+  // ✅ MARK AS READ
   const markAsRead = useCallback(async (notificationIds) => {
     if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
       return { success: false, error: 'Invalid notification IDs' };
@@ -118,8 +162,8 @@ export const useStaffNotifications = () => {
 
       return {
         success: true,
-        updatedCount: data.updated_count,
-        message: data.message
+        updatedCount: data.data?.updated_count || notificationIds.length,
+        message: data.message || 'Notifications marked as read'
       };
 
     } catch (err) {
@@ -129,8 +173,39 @@ export const useStaffNotifications = () => {
     }
   }, []);
 
-  // ✅ COMPUTED VALUES for staff dashboard (aligned with database enum values)
-  const statsAndFilters = useMemo(() => {
+  // ✅ CREATE NOTIFICATION (for feedback and other events)
+  const createNotification = useCallback(async (userId, type, appointmentId, customMessage = null) => {
+    try {
+      // Validate notification type
+      if (!userContext?.notificationTypes.includes(type)) {
+        throw new Error(`Invalid notification type: ${type} for user role: ${userContext?.userType}`);
+      }
+
+      const { data, error } = await supabase.rpc('create_appointment_notification', {
+        p_user_id: userId,
+        p_notification_type: type,
+        p_appointment_id: appointmentId,
+        p_custom_message: customMessage
+      });
+
+      if (error) throw new Error(error.message);
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to create notification');
+      }
+
+      // Refresh notifications to include the new one
+      fetchNotifications({ refresh: true });
+
+      return { success: true, message: data.message || 'Notification created successfully' };
+    } catch (err) {
+      console.error('Create notification error:', err);
+      return { success: false, error: err.message };
+    }
+  }, [userContext, fetchNotifications]);
+
+  // ✅ COMPUTED VALUES
+  const computedValues = useMemo(() => {
     const unreadCount = notifications.filter(n => !n.is_read).length;
     const todayCount = notifications.filter(n => {
       const notifDate = new Date(n.created_at).toDateString();
@@ -138,14 +213,10 @@ export const useStaffNotifications = () => {
       return notifDate === today;
     }).length;
 
-    // ✅ FIXED: Use correct notification types from database enum
-    const byType = {
-      appointment_confirmed: notifications.filter(n => n.notification_type === 'appointment_confirmed').length,
-      appointment_cancelled: notifications.filter(n => n.notification_type === 'appointment_cancelled').length,
-      appointment_reminder: notifications.filter(n => n.notification_type === 'appointment_reminder').length,
-      feedback_request: notifications.filter(n => n.notification_type === 'feedback_request').length,
-      partnership_request: notifications.filter(n => n.notification_type === 'partnership_request').length
-    };
+    const byType = userContext?.notificationTypes.reduce((acc, type) => {
+      acc[type] = notifications.filter(n => n.notification_type === type).length;
+      return acc;
+    }, {}) || {};
 
     const urgent = notifications.filter(n => n.priority === 1 && !n.is_read).length;
 
@@ -155,11 +226,13 @@ export const useStaffNotifications = () => {
       byType,
       urgent,
       total: notifications.length,
-      read: notifications.length - unreadCount
+      read: notifications.length - unreadCount,
+      hasUnread: unreadCount > 0,
+      isEmpty: notifications.length === 0
     };
-  }, [notifications]);
+  }, [notifications, userContext]);
 
-  // ✅ FILTER NOTIFICATIONS by type/priority (using correct enum values)
+  // ✅ FILTER NOTIFICATIONS
   const getFilteredNotifications = useCallback((filterType = 'all') => {
     switch (filterType) {
       case 'unread':
@@ -172,8 +245,6 @@ export const useStaffNotifications = () => {
         );
       case 'feedback':
         return notifications.filter(n => n.notification_type === 'feedback_request');
-      case 'partnerships':
-        return notifications.filter(n => n.notification_type === 'partnership_request');
       case 'today':
         const today = new Date().toDateString();
         return notifications.filter(n => 
@@ -186,21 +257,24 @@ export const useStaffNotifications = () => {
 
   // ✅ AUTO-FETCH on mount and filter changes
   useEffect(() => {
-    if (isStaff || isAdmin) {
-      fetchStaffNotifications({ refresh: true });
+    if (userContext) {
+      fetchNotifications({ refresh: true });
     }
-  }, [filter, isStaff, isAdmin]);
+  }, [filter, userContext?.userType]);
 
-  // ✅ AUTO-REFRESH every 2 minutes (more frequent for staff)
+  // ✅ AUTO-REFRESH based on user type
   useEffect(() => {
+    if (!userContext) return;
+
+    // Different refresh intervals based on user type
+    const refreshInterval = userContext.userType === 'staff' ? 2 * 60 * 1000 : 5 * 60 * 1000;
+    
     const interval = setInterval(() => {
-      if (isStaff || isAdmin) {
-        fetchStaffNotifications({ refresh: true });
-      }
-    }, 2 * 60 * 1000); // 2 minutes
+      fetchNotifications({ refresh: true });
+    }, refreshInterval);
 
     return () => clearInterval(interval);
-  }, [fetchStaffNotifications, isStaff, isAdmin]);
+  }, [fetchNotifications, userContext]);
 
   return {
     // State
@@ -209,35 +283,37 @@ export const useStaffNotifications = () => {
     error,
     filter,
     pagination,
-    stats: statsAndFilters,
+    userContext,
+    
+    // Computed
+    ...computedValues,
 
     // Actions
-    fetchStaffNotifications,
+    fetchNotifications,
     markAsRead,
     markSingleAsRead: (id) => markAsRead([id]),
     markAllAsRead: () => markAsRead(notifications.filter(n => !n.is_read).map(n => n.id)),
+    createNotification,
     updateFilter: (newFilter) => {
       setFilter(newFilter);
       setPagination(prev => ({ ...prev, offset: 0 }));
     },
-    refresh: () => fetchStaffNotifications({ refresh: true }),
+    refresh: () => fetchNotifications({ refresh: true }),
     loadMore: () => {
       if (!loading && pagination.hasMore) {
-        fetchStaffNotifications({ offset: pagination.offset });
+        fetchNotifications({ offset: pagination.offset });
       }
     },
 
-    // Computed
-    isEmpty: notifications.length === 0,
-    hasUnread: statsAndFilters.unreadCount > 0,
-    hasMore: pagination.hasMore,
-    
     // Utilities
     getFilteredNotifications,
     getNotificationById: (id) => notifications.find(n => n.id === id),
     getUrgentNotifications: () => getFilteredNotifications('urgent'),
     getTodayNotifications: () => getFilteredNotifications('today'),
+    getAppointmentNotifications: () => getFilteredNotifications('appointments'),
     getFeedbackNotifications: () => getFilteredNotifications('feedback'),
-    getPartnershipNotifications: () => getFilteredNotifications('partnerships')
+    
+    // Cleanup
+    clearError: () => setError(null)
   };
 };

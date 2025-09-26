@@ -56,6 +56,7 @@ const UpcomingAppointments = () => {
     selectedAppointment,
     setSelectedAppointment,
     cancelModal,
+    setCancelModal,
 
     // Real-time
     isConnected,

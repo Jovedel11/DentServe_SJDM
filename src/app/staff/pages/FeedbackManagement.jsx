@@ -29,9 +29,12 @@ import {
   ThumbsDown,
   Calendar as CalendarIcon,
 } from "lucide-react";
-import { mockFeedbacks } from "@/data/staff/mock-feedbacks";
+import { useAuth } from "@/auth/context/AuthProvider";
+import { supabase } from "@/lib/supabaseClient";
 
 const FeedbackManagement = () => {
+  const { user, profile, isStaff, isAdmin } = useAuth();
+
   const [feedbacks, setFeedbacks] = useState([]);
   const [filteredFeedbacks, setFilteredFeedbacks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -54,95 +57,84 @@ const FeedbackManagement = () => {
     byRating: {},
   });
 
-  // Load feedback data
-  useEffect(() => {
-    const loadFeedbacks = async () => {
-      setLoading(true);
-      try {
-        // TODO: Replace with actual Supabase calls
-        // const { data: feedbackData, error } = await supabase
-        //   .from('feedback')
-        //   .select(`
-        //     *,
-        //     patient:users!feedback_patient_id_fkey(
-        //       id,
-        //       full_name,
-        //       profile_image_url,
-        //       email
-        //     ),
-        //     doctor:doctors!feedback_doctor_id_fkey(
-        //       id,
-        //       user:users(full_name, profile_image_url)
-        //     ),
-        //     appointment:appointments!feedback_appointment_id_fkey(
-        //       id,
-        //       appointment_date
-        //     ),
-        //     responder:users!feedback_responded_by_fkey(
-        //       full_name
-        //     )
-        //   `)
-        //   .eq('clinic_id', currentClinicId)
-        //   .order('created_at', { ascending: false });
+  // ✅ FIXED: Load feedback data from Supabase RPC using correct function
+  const loadFeedbacks = async () => {
+    setLoading(true);
+    try {
+      // ✅ FIXED: Use the correct RPC function that exists in database
+      const { data, error } = await supabase.rpc("get_staff_feedback_list", {
+        p_clinic_id: profile?.role_specific_data?.clinic_id || null,
+        p_include_responses: true,
+        p_limit: 100,
+        p_offset: 0,
+      });
 
-        // if (error) throw error;
+      if (error) throw error;
 
-        // Simulate API delay
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        // Enhanced mock data based on your feedback table structure
-
-        setFeedbacks(mockFeedbacks);
-        setFilteredFeedbacks(mockFeedbacks);
-
-        // Calculate statistics
-        const totalFeedbacks = mockFeedbacks.length;
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 7);
-
-        const thisWeekFeedbacks = mockFeedbacks.filter(
-          (f) => new Date(f.created_at) >= weekAgo
-        ).length;
-
-        const ratingsSum = mockFeedbacks.reduce(
-          (sum, f) => sum + (f.rating || 0),
-          0
-        );
-        const avgRating =
-          ratingsSum / mockFeedbacks.filter((f) => f.rating).length;
-
-        const respondedCount = mockFeedbacks.filter((f) => f.response).length;
-        const responseRate = (respondedCount / totalFeedbacks) * 100;
-
-        const byType = mockFeedbacks.reduce((acc, f) => {
-          acc[f.feedback_type] = (acc[f.feedback_type] || 0) + 1;
-          return acc;
-        }, {});
-
-        const byRating = mockFeedbacks.reduce((acc, f) => {
-          if (f.rating) {
-            acc[f.rating] = (acc[f.rating] || 0) + 1;
-          }
-          return acc;
-        }, {});
-
-        setStats({
-          total: totalFeedbacks,
-          thisWeek: thisWeekFeedbacks,
-          avgRating: Number(avgRating.toFixed(1)),
-          responseRate: Number(responseRate.toFixed(1)),
-          byType,
-          byRating,
-        });
-      } catch (error) {
-        console.error("Error loading feedback:", error);
-      } finally {
-        setLoading(false);
+      if (!data?.success) {
+        throw new Error(data?.error || "Failed to fetch feedback");
       }
-    };
 
-    loadFeedbacks();
-  }, []);
+      const feedbackData = data.data.feedback_list || [];
+
+      setFeedbacks(feedbackData);
+      setFilteredFeedbacks(feedbackData);
+
+      // ✅ FIXED: Calculate statistics using correct field names
+      const totalFeedbacks = feedbackData.length;
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+
+      const thisWeekFeedbacks = feedbackData.filter(
+        (f) => new Date(f.created_at) >= weekAgo
+      ).length;
+
+      const ratingsSum = feedbackData.reduce(
+        (sum, f) => sum + (f.rating || 0),
+        0
+      );
+      const avgRating =
+        ratingsSum / feedbackData.filter((f) => f.rating).length || 0;
+
+      const respondedCount = feedbackData.filter((f) => f.response).length;
+      const responseRate =
+        totalFeedbacks > 0 ? (respondedCount / totalFeedbacks) * 100 : 0;
+
+      const byType = feedbackData.reduce((acc, f) => {
+        acc[f.feedback_type] = (acc[f.feedback_type] || 0) + 1;
+        return acc;
+      }, {});
+
+      const byRating = feedbackData.reduce((acc, f) => {
+        if (f.rating) {
+          acc[f.rating] = (acc[f.rating] || 0) + 1;
+        }
+        return acc;
+      }, {});
+
+      setStats({
+        total: totalFeedbacks,
+        thisWeek: thisWeekFeedbacks,
+        avgRating: Number(avgRating.toFixed(1)),
+        responseRate: Number(responseRate.toFixed(1)),
+        byType,
+        byRating,
+      });
+    } catch (error) {
+      console.error("Error loading feedback:", error);
+      setFeedbacks([]);
+      setFilteredFeedbacks([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load feedback data on mount
+  useEffect(() => {
+    if ((isStaff || isAdmin) && user) {
+      loadFeedbacks();
+    }
+  }, [isStaff, isAdmin, user]);
 
   // Filter feedbacks based on selected criteria
   useEffect(() => {
@@ -184,36 +176,28 @@ const FeedbackManagement = () => {
         (f) =>
           f.comment?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (!f.is_anonymous &&
-            f.patient?.full_name
-              .toLowerCase()
-              .includes(searchTerm.toLowerCase())) ||
-          f.doctor?.user?.full_name
-            .toLowerCase()
-            .includes(searchTerm.toLowerCase())
+            f.patient_name?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+          f.doctor_name?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
     setFilteredFeedbacks(filtered);
   }, [feedbacks, selectedPeriod, selectedType, selectedRating, searchTerm]);
 
-  // Handle reply submission
+  // ✅ FIXED: Handle reply submission using correct RPC function
   const handleReplySubmit = async (feedbackId) => {
     setSendingReply(true);
     try {
-      // TODO: Replace with actual Supabase call
-      // const { error } = await supabase
-      //   .from('feedback')
-      //   .update({
-      //     response: replyText,
-      //     responded_by: currentUserId,
-      //     responded_at: new Date().toISOString()
-      //   })
-      //   .eq('id', feedbackId);
+      const { data, error } = await supabase.rpc("respond_to_feedback", {
+        p_feedback_id: feedbackId,
+        p_response: replyText.trim(),
+      });
 
-      // if (error) throw error;
+      if (error) throw error;
 
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!data?.success) {
+        throw new Error(data?.error || "Failed to submit response");
+      }
 
       // Update local state
       setFeedbacks((prev) =>
@@ -222,9 +206,9 @@ const FeedbackManagement = () => {
             ? {
                 ...f,
                 response: replyText,
-                responded_by: "current-user-id",
+                responded_by: user.id,
                 responded_at: new Date().toISOString(),
-                responder: { full_name: "Current User (Staff)" },
+                responder_name: `${profile?.first_name} ${profile?.last_name}`,
               }
             : f
         )
@@ -235,6 +219,7 @@ const FeedbackManagement = () => {
       console.log("Reply sent successfully");
     } catch (error) {
       console.error("Error sending reply:", error);
+      alert(error.message || "Failed to send reply");
     } finally {
       setSendingReply(false);
     }
@@ -278,6 +263,22 @@ const FeedbackManagement = () => {
         return "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400";
     }
   };
+
+  // ✅ ACCESS CONTROL
+  if (!user || (!isStaff && !isAdmin)) {
+    return (
+      <div className="p-6">
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-foreground mb-4">
+            Access Denied
+          </h1>
+          <p className="text-muted-foreground">
+            Only staff and admin users can access feedback management.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -499,10 +500,10 @@ const FeedbackManagement = () => {
                       <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center">
                         <UserX className="w-6 h-6 text-muted-foreground" />
                       </div>
-                    ) : feedback.patient?.profile_image_url ? (
+                    ) : feedback.patient_image ? (
                       <img
-                        src={feedback.patient.profile_image_url}
-                        alt={feedback.patient.full_name}
+                        src={feedback.patient_image}
+                        alt={feedback.patient_name}
                         className="w-12 h-12 rounded-full object-cover"
                       />
                     ) : (
@@ -521,7 +522,7 @@ const FeedbackManagement = () => {
                         </span>
                       ) : (
                         <span className="font-medium text-card-foreground">
-                          {feedback.patient?.full_name}
+                          {feedback.patient_name}
                         </span>
                       )}
 
@@ -536,9 +537,9 @@ const FeedbackManagement = () => {
                         </span>
                       </span>
 
-                      {feedback.doctor && (
+                      {feedback.doctor_name && (
                         <span className="text-xs text-muted-foreground">
-                          • {feedback.doctor.user.full_name}
+                          • {feedback.doctor_name}
                         </span>
                       )}
                     </div>
@@ -617,19 +618,17 @@ const FeedbackManagement = () => {
               {/* Expanded Details */}
               {expandedFeedback === feedback.id && (
                 <div className="border-t border-border pt-4 space-y-3">
-                  {feedback.appointment && (
+                  {feedback.appointment_date && (
                     <div className="text-sm text-muted-foreground">
                       <span className="font-medium">Related Appointment:</span>{" "}
-                      {new Date(
-                        feedback.appointment.appointment_date
-                      ).toLocaleDateString()}
+                      {new Date(feedback.appointment_date).toLocaleDateString()}
                     </div>
                   )}
 
-                  {!feedback.is_anonymous && feedback.patient && (
+                  {!feedback.is_anonymous && feedback.patient_email && (
                     <div className="text-sm text-muted-foreground">
                       <span className="font-medium">Contact:</span>{" "}
-                      {feedback.patient.email}
+                      {feedback.patient_email}
                     </div>
                   )}
                 </div>
@@ -642,7 +641,7 @@ const FeedbackManagement = () => {
                     <div className="flex items-center space-x-2">
                       <Reply className="w-4 h-4 text-primary" />
                       <span className="text-sm font-medium text-primary">
-                        Response from {feedback.responder?.full_name}
+                        Response from {feedback.responder_name || "Staff"}
                       </span>
                     </div>
                     <span className="text-xs text-muted-foreground">
@@ -711,7 +710,10 @@ const FeedbackManagement = () => {
       {filteredFeedbacks.length > 0 &&
         filteredFeedbacks.length < feedbacks.length && (
           <div className="text-center">
-            <button className="inline-flex items-center px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
+            <button
+              onClick={loadFeedbacks}
+              className="inline-flex items-center px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            >
               Load More Feedback
             </button>
           </div>
