@@ -235,29 +235,119 @@ export const authService = {
     }
   },
 
-  // update user profile
-  async updateProfile(userId = null, profileData = {}, roleSpecificData = {}, clinicData = {}, servicesData = {}, doctorsData = {}) {
+  // update user profiles
+  async updatePatientProfile(profileData, patientData) {
     try {
-      const { data, error } = await supabase.rpc('update_user_profile', {
-        p_user_id: userId,                    // 1st - UUID
-        p_profile_data: profileData,          // 2nd - JSONB
-        p_role_specific_data: roleSpecificData, // 3rd - JSONB
-        p_clinic_data: clinicData,            // 4th - JSONB
-        p_services_data: servicesData,        // 5th - JSONB
-        p_doctors_data: doctorsData           // 6th - JSONB
+      const { data, error } = await supabase.rpc('update_patient_profile', {
+        p_profile_data: {
+          first_name: profileData.firstName,
+          last_name: profileData.lastName,
+          date_of_birth: profileData.dateOfBirth,
+          gender: profileData.gender,
+          phone: profileData.phone,
+          profile_image_url: profileData.profileImageUrl
+        },
+        p_patient_data: {
+          emergency_contact_name: patientData.emergencyContactName,
+          emergency_contact_phone: patientData.emergencyContactPhone,
+          insurance_provider: patientData.insuranceProvider,
+          medical_conditions: patientData.medicalConditions,
+          allergies: patientData.allergies,
+          preferred_doctors: patientData.preferredDoctors
+        }
       });
 
-      if (error) throw error;
-      if (!data?.success) {
-        throw new Error(data?.error || 'Profile update failed');
+      if (error) {
+        console.error('Update patient profile error:', error);
+        return { success: false, error: error.message || 'Failed to update profile' };
       }
       
-      return { success: true, data };
+      // Check if the function returned an error
+      if (data && !data.success) {
+        return { success: false, error: data.error || 'Failed to update profile' };
+      }
+
+      return { success: true, data, message: 'Profile updated successfully' };
     } catch (error) {
-      return { success: false, error: error.message || 'Profile update failed' };
+      console.error('Update patient profile error:', error);
+      return { success: false, error: error.message || 'Failed to update profile' };
     }
   },
 
+  async updateStaffProfile(profileData, staffData, clinicData, servicesData, doctorsData) {
+    try {
+      const { data, error } = await supabase.rpc('update_staff_profile', {
+        p_profile_data: {
+          first_name: profileData.firstName,
+          last_name: profileData.lastName,
+          phone: profileData.phone,
+          profile_image_url: profileData.profileImageUrl,
+          date_of_birth: profileData.dateOfBirth,
+          gender: profileData.gender
+        },
+        p_staff_data: {
+          position: staffData.position,
+          department: staffData.department
+        },
+        p_clinic_data: {
+          name: clinicData.name,
+          description: clinicData.description,
+          address: clinicData.address,
+          city: clinicData.city,
+          province: clinicData.province,
+          phone: clinicData.phone,
+          email: clinicData.email,
+          website_url: clinicData.websiteUrl,
+          image_url: clinicData.imageUrl
+        },
+        p_services_data: servicesData,
+        p_doctors_data: doctorsData
+      });
+      
+      if (error) {
+        console.error('Update staff profile error:', error);
+        return { success: false, error: error.message || 'Failed to update profile' };
+      }
+      
+      if (data && !data.success) {
+        return { success: false, error: data.error || 'Failed to update profile' };
+      }
+
+      return { success: true, data, message: 'Profile updated successfully' };
+    } catch (error) {
+      console.error('Update staff profile error:', error);
+      return { success: false, error: error.message || 'Failed to update profile' };
+    }
+  },
+
+  async updateAdminProfile(profileData) {
+    try {
+      const { data, error } = await supabase.rpc('update_admin_profile', {
+        p_profile_data: {
+          first_name: profileData.firstName,
+          last_name: profileData.lastName,
+          phone: profileData.phone,
+          profile_image_url: profileData.profileImageUrl,
+          date_of_birth: profileData.dateOfBirth,
+          gender: profileData.gender
+        }
+      });
+      
+      if (error) {
+        console.error('Update admin profile error:', error);
+        return { success: false, error: error.message || 'Failed to update profile' };
+      }
+      
+      if (data && !data.success) {
+        return { success: false, error: data.error || 'Failed to update profile' };
+      }
+
+      return { success: true, data, message: 'Profile updated successfully' };
+    } catch (error) {
+      console.error('Update admin profile error:', error);
+      return { success: false, error: error.message || 'Failed to update profile' };
+    }
+  },
   // dashboard data
   async getDashboardData(userId = null) {
     try {

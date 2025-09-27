@@ -286,25 +286,70 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const updateProfile = async (
-    userId = null,
+  const updatePatientProfile = async (profileData, patientData) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await authService.updatePatientProfile(
+        profileData,
+        patientData
+      );
+      if (result.success) {
+        await handleRefreshProfile();
+        return { success: true, data: result.data };
+      } else {
+        return {
+          success: false,
+          error: result.error || "Failed to update profile",
+        };
+      }
+    } catch (error) {
+      setError(error.message);
+      return { success: false, error: error.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateStaffProfile = async (
     profileData,
-    roleSpecificData = {},
-    clinicData = {},
-    servicesData = {},
-    doctorsData = {}
+    staffData,
+    clinicData,
+    servicesData,
+    doctorsData
   ) => {
     setLoading(true);
     setError(null);
     try {
-      const result = await authService.updateProfile(
-        userId,
+      const result = await authService.updateStaffProfile(
         profileData,
-        roleSpecificData,
+        staffData,
         clinicData,
         servicesData,
         doctorsData
       );
+      if (result.success) {
+        await handleRefreshProfile();
+        return { success: true, data: result.data };
+      } else {
+        return {
+          success: false,
+          error: result.error || "Failed to update profile",
+        };
+      }
+    } catch (error) {
+      setError(error.message);
+      return { success: false, error: error.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateAdminProfile = async (profileData) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await authService.updateAdminProfile(profileData);
       if (result.success) {
         await handleRefreshProfile();
         return { success: true, data: result.data };
@@ -376,7 +421,9 @@ export const AuthProvider = ({ children }) => {
       refreshAuthStatus,
       updatePassword,
       resetPassword,
-      updateProfile,
+      updatePatientProfile,
+      updateStaffProfile,
+      updateAdminProfile,
       handleRefreshProfile,
       loadDashboardData,
       fetchUserProfile,

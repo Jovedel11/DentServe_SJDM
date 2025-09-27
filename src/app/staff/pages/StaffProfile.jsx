@@ -8,6 +8,7 @@ import {
   FiPlus,
   FiTrash2,
   FiSave,
+  FiCamera,
 } from "react-icons/fi";
 
 import { useProfileManager } from "@/app/shared/hook/useProfileManager";
@@ -18,6 +19,8 @@ import { ProfileAvatar } from "@/app/shared/profile/profile-avatar";
 import { AlertMessage } from "@/core/components/ui/alert-message";
 import Loader from "@/core/components/Loader";
 import { FaBuilding } from "react-icons/fa";
+import { useImageUpload } from "@/core/hooks/useImageUpload";
+import { useAuth } from "@/auth/context/AuthProvider";
 
 const StaffProfile = () => {
   const {
@@ -42,13 +45,29 @@ const StaffProfile = () => {
     handleDoctorsUpdate,
     services,
     doctors,
+    clinicId,
   } = useProfileManager({
     enableClinicManagement: true,
     enableServiceManagement: true,
     enableDoctorManagement: true,
   });
 
+  const { session } = useAuth();
   const [activeSection, setActiveSection] = useState("profile");
+
+  // 🔥 **CLINIC IMAGE UPLOAD HOOK**
+  const clinicImageUpload = useImageUpload({
+    onUploadSuccess: async (result) => {
+      console.log("🏥 Clinic image uploaded:", result.imageUrl);
+      // Update the local state immediately
+      handleInputChange("clinic_data", "image_url", result.imageUrl);
+      // Refresh profile to get updated data
+      await handleRefresh();
+    },
+    onUploadError: (error) => {
+      console.error("🏥 Clinic image upload error:", error);
+    },
+  });
 
   const isDataLoading =
     loading ||
@@ -82,17 +101,32 @@ const StaffProfile = () => {
     { value: "Management", label: "Management" },
   ];
 
-  // Handle clinic save
-  const handleClinicSave = async () => {
-    const clinicData = editedData?.clinic_data || {};
-    const result = await handleClinicUpdate(clinicData);
-    return result;
+  // 🔥 **CLINIC IMAGE HANDLERS**
+  const handleClinicImageSelect = async (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      const result = await clinicImageUpload.selectFile(file);
+      if (result.success) {
+        await clinicImageUpload.uploadFile();
+      }
+    }
+  };
+
+  // 🔥 **DOCTOR IMAGE HANDLERS**
+  const handleDoctorImageSelect = async (event, doctorIndex) => {
+    const file = event.target.files[0];
+    if (file) {
+      // For now, just update the local state
+      // In a real implementation, you'd upload to a doctor-specific endpoint
+      console.log("Doctor image selected for index:", doctorIndex);
+      // You can implement doctor-specific image upload here
+    }
   };
 
   // Handle service operations
   const handleAddService = () => {
     const newService = {
-      id: "new", // Temporary ID for new services
+      id: `new_${Date.now()}`,
       name: "New Service",
       description: "Service description",
       category: "General",
@@ -113,16 +147,10 @@ const StaffProfile = () => {
     handleInputChange("services_data", "", updatedServices);
   };
 
-  const handleServiceSave = async () => {
-    const servicesData = editedData?.services_data || [];
-    const result = await handleServicesUpdate(servicesData);
-    return result;
-  };
-
   // Handle doctor operations
   const handleAddDoctor = () => {
     const newDoctor = {
-      id: "new", // Temporary ID for new doctors
+      id: `new_${Date.now()}`,
       license_number: "",
       specialization: "",
       first_name: "",
@@ -144,12 +172,6 @@ const StaffProfile = () => {
     const currentDoctors = editedData?.doctors_data || [];
     const updatedDoctors = currentDoctors.filter((_, i) => i !== index);
     handleInputChange("doctors_data", "", updatedDoctors);
-  };
-
-  const handleDoctorSave = async () => {
-    const doctorsData = editedData?.doctors_data || [];
-    const result = await handleDoctorsUpdate(doctorsData);
-    return result;
   };
 
   if (loading) {
@@ -433,15 +455,69 @@ const StaffProfile = () => {
                 placeholder="Enter clinic name"
               />
 
-              {/* ✅ FIXED: Corrected ProfileAvatar usage */}
-              <ProfileAvatar
-                imageUrl={currentData?.clinic_data?.image_url}
-                name={currentData?.clinic_data?.name || "Clinic"}
-                onImageUpdate={(newUrl) =>
-                  handleInputChange("clinic_data", "image_url", newUrl)
-                }
-                size="lg"
-              />
+              {/* 🔥 **FIXED: Simple Clinic Image Upload** */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-semibold text-muted-foreground">
+                  Clinic Image
+                </label>
+                <div className="relative">
+                  <div
+                    className="w-20 h-20 bg-muted rounded-lg overflow-hidden flex items-center justify-center cursor-pointer group relative border-2 border-dashed border-border hover:border-primary transition-colors"
+                    onClick={() =>
+                      isEditing &&
+                      document.getElementById("clinic-image-input")?.click()
+                    }
+                  >
+                    {clinicImageUpload.preview ||
+                    currentData?.clinic_data?.image_url ? (
+                      <img
+                        src={
+                          clinicImageUpload.preview ||
+                          currentData?.clinic_data?.image_url
+                        }
+                        alt="Clinic"
+                        className="w-full h-full object-cover transition-all duration-300 group-hover:scale-105"
+                      />
+                    ) : (
+                      <FaBuilding className="w-8 h-8 text-muted-foreground" />
+                    )}
+
+                    {isEditing && (
+                      <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        {clinicImageUpload.isProcessing ? (
+                          <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <FiCamera className="text-white text-xl" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {isEditing && (
+                    <input
+                      id="clinic-image-input"
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      onChange={handleClinicImageSelect}
+                      disabled={clinicImageUpload.isProcessing}
+                      className="hidden"
+                    />
+                  )}
+
+                  {/* Status Messages */}
+                  {clinicImageUpload.error && (
+                    <div className="absolute top-full left-0 right-0 mt-2 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-xs">
+                      {clinicImageUpload.error}
+                    </div>
+                  )}
+
+                  {clinicImageUpload.success && (
+                    <div className="absolute top-full left-0 right-0 mt-2 p-2 bg-green-50 border border-green-200 rounded text-green-700 text-xs">
+                      {clinicImageUpload.success}
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <ProfileField
                 label="Phone"
@@ -527,19 +603,6 @@ const StaffProfile = () => {
                 />
               </div>
             </div>
-
-            {isEditing && (
-              <div className="mt-6 flex justify-end">
-                <button
-                  onClick={handleClinicSave}
-                  disabled={saving}
-                  className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
-                >
-                  <FiSave className="w-4 h-4 mr-2 inline" />
-                  {saving ? "Saving..." : "Save Clinic Info"}
-                </button>
-              </div>
-            )}
           </ProfileCard>
         )}
 
@@ -713,19 +776,6 @@ const StaffProfile = () => {
                   <p>No services found. Click "Edit" to add services.</p>
                 </div>
               )}
-
-              {isEditing && (
-                <div className="flex justify-end">
-                  <button
-                    onClick={handleServiceSave}
-                    disabled={saving}
-                    className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    <FiSave className="w-4 h-4 mr-2 inline" />
-                    {saving ? "Saving..." : "Save Services"}
-                  </button>
-                </div>
-              )}
             </div>
           </ProfileCard>
         )}
@@ -764,43 +814,65 @@ const StaffProfile = () => {
                     className="p-4 border border-border rounded-lg"
                   >
                     <div className="flex justify-between items-start mb-4">
-                      <h4 className="font-semibold text-foreground">
-                        {isEditing ? (
-                          <div className="grid grid-cols-2 gap-2">
-                            <input
-                              type="text"
-                              value={doctor.first_name || ""}
-                              onChange={(e) =>
-                                handleArrayUpdate(
-                                  "doctors_data",
-                                  index,
-                                  "first_name",
-                                  e.target.value
-                                )
-                              }
-                              className="px-2 py-1 border border-border rounded"
-                              placeholder="First name"
-                            />
-                            <input
-                              type="text"
-                              value={doctor.last_name || ""}
-                              onChange={(e) =>
-                                handleArrayUpdate(
-                                  "doctors_data",
-                                  index,
-                                  "last_name",
-                                  e.target.value
-                                )
-                              }
-                              className="px-2 py-1 border border-border rounded"
-                              placeholder="Last name"
-                            />
+                      <div className="flex items-center gap-3">
+                        {/* 🔥 **SIMPLE DOCTOR IMAGE** */}
+                        <div className="relative">
+                          <div className="w-16 h-16 bg-muted rounded-full overflow-hidden flex items-center justify-center">
+                            {doctor.image_url ? (
+                              <img
+                                src={doctor.image_url}
+                                alt={`Dr. ${doctor.first_name} ${doctor.last_name}`}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <FiUser className="w-6 h-6 text-muted-foreground" />
+                            )}
                           </div>
-                        ) : (
-                          `Dr. ${doctor.first_name} ${doctor.last_name}` ||
-                          "Unnamed Doctor"
-                        )}
-                      </h4>
+                          {isEditing && (
+                            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+                              <FiCamera className="w-3 h-3" />
+                            </div>
+                          )}
+                        </div>
+
+                        <h4 className="font-semibold text-foreground">
+                          {isEditing ? (
+                            <div className="grid grid-cols-1 gap-2">
+                              <input
+                                type="text"
+                                value={doctor.first_name || ""}
+                                onChange={(e) =>
+                                  handleArrayUpdate(
+                                    "doctors_data",
+                                    index,
+                                    "first_name",
+                                    e.target.value
+                                  )
+                                }
+                                className="px-2 py-1 border border-border rounded"
+                                placeholder="First name"
+                              />
+                              <input
+                                type="text"
+                                value={doctor.last_name || ""}
+                                onChange={(e) =>
+                                  handleArrayUpdate(
+                                    "doctors_data",
+                                    index,
+                                    "last_name",
+                                    e.target.value
+                                  )
+                                }
+                                className="px-2 py-1 border border-border rounded"
+                                placeholder="Last name"
+                              />
+                            </div>
+                          ) : (
+                            `Dr. ${doctor.first_name} ${doctor.last_name}` ||
+                            "Unnamed Doctor"
+                          )}
+                        </h4>
+                      </div>
                       {isEditing && (
                         <button
                           onClick={() => handleRemoveDoctor(index)}
@@ -886,20 +958,6 @@ const StaffProfile = () => {
                           rows={3}
                         />
                         <input
-                          type="url"
-                          value={doctor.image_url || ""}
-                          onChange={(e) =>
-                            handleArrayUpdate(
-                              "doctors_data",
-                              index,
-                              "image_url",
-                              e.target.value
-                            )
-                          }
-                          className="w-full px-2 py-1 border border-border rounded"
-                          placeholder="Doctor image URL"
-                        />
-                        <input
                           type="text"
                           value={doctor.education || ""}
                           onChange={(e) =>
@@ -916,18 +974,6 @@ const StaffProfile = () => {
                       </div>
                     ) : (
                       <>
-                        {doctor.image_url && (
-                          <div className="mb-3">
-                            <img
-                              src={doctor.image_url}
-                              alt={`Dr. ${doctor.first_name} ${doctor.last_name}`}
-                              className="w-16 h-16 rounded-full object-cover"
-                              onError={(e) => {
-                                e.target.style.display = "none";
-                              }}
-                            />
-                          </div>
-                        )}
                         <p className="text-sm text-primary font-medium mb-1">
                           {doctor.specialization || "No specialization"}
                         </p>
@@ -958,25 +1004,12 @@ const StaffProfile = () => {
                 ))}
               </div>
 
-              {isEditing && (
-                <div className="flex justify-end">
-                  <button
-                    onClick={handleDoctorSave}
-                    disabled={saving}
-                    className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    <FiSave className="w-4 h-4 mr-2 inline" />
-                    {saving ? "Saving..." : "Save Doctors"}
-                  </button>
+              {!isEditing && (!doctors || doctors.length === 0) && (
+                <div className="col-span-2 text-center py-8 text-muted-foreground">
+                  <p>No doctors found. Click "Edit" to add doctors.</p>
                 </div>
               )}
             </div>
-
-            {!isEditing && (!doctors || doctors.length === 0) && (
-              <div className="col-span-2 text-center py-8 text-muted-foreground">
-                <p>No doctors found. Click "Edit" to add doctors.</p>
-              </div>
-            )}
           </ProfileCard>
         )}
       </div>
