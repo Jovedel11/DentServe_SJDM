@@ -1,29 +1,31 @@
 import React from "react";
 import ImageUpload from "./ImageUpload";
 
-const ProfileUpload = ({
+const DoctorImageUpload = ({
+  doctorId,
   currentImageUrl,
   onImageUpdate,
   className,
   variant = "avatar",
   size = "lg",
-  showFileInfo = true,
-  showGuidelines = true,
   ...props
 }) => {
   return (
     <ImageUpload
-      uploadType="profile"
+      uploadType="doctor"
+      entityId={doctorId}
       currentImageUrl={currentImageUrl}
       onImageUpdate={onImageUpdate}
       variant={variant}
       size={size}
-      showFileInfo={showFileInfo}
-      showGuidelines={showGuidelines}
       className={className}
+      compressionOptions={{
+        maxSizeMB: 1,
+        maxWidthOrHeight: 400,
+      }}
       {...props}
     />
   );
 };
 
-export default ProfileUpload;
+export default DoctorImageUpload;

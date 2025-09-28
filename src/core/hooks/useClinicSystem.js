@@ -20,7 +20,7 @@ export const useClinicSystem = () => {
     }
   });
 
-  // ✅ FIXED: Use proper find_nearest_clinics function
+  // Use proper find_nearest_clinics function
   const discoverClinics = useCallback(async (location = null, options = {}) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
@@ -46,7 +46,7 @@ export const useClinicSystem = () => {
     }
   }, []);
 
-  // ✅ FIXED: Get clinic details with proper data structure
+  // Get clinic details with proper data structure
   const getClinicDetails = useCallback(async (clinicId) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
@@ -150,7 +150,7 @@ export const useClinicSystem = () => {
     }
   }, []);
 
-  // ✅ FIXED: Search clinics with proper filtering
+  // Search clinics with proper filtering
   const searchClinics = useCallback(async (query, options = {}) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
@@ -186,7 +186,7 @@ export const useClinicSystem = () => {
     }
   }, []);
 
-  // ✅ FIXED: Update search filters with validation
+  // Update search filters with validation
   const updateFilters = useCallback((newFilters) => {
     setState(prev => ({
       ...prev,
@@ -199,7 +199,7 @@ export const useClinicSystem = () => {
     }));
   }, []);
 
-  // ✅ ADDED: Get current user's location
+  // Get current user's location
   const getCurrentLocation = useCallback(() => {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {

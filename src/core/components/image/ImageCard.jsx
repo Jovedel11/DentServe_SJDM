@@ -1,6 +1,6 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { FiEdit, FiTrash2, FiExternalLink } from "react-icons/fi";
+import { FiEdit, FiTrash2, FiExternalLink, FiImage } from "react-icons/fi";
 import ImageUpload from "./ImageUpload";
 
 const ImageCard = ({
@@ -14,6 +14,12 @@ const ImageCard = ({
   className = "",
   editable = false,
   showActions = true,
+
+  // Image upload configuration
+  uploadType = "general",
+  entityId = null,
+  uploadConfig = {},
+
   ...props
 }) => {
   return (
@@ -26,6 +32,8 @@ const ImageCard = ({
       <div className="relative">
         {editable ? (
           <ImageUpload
+            uploadType={uploadType}
+            entityId={entityId}
             currentImageUrl={imageUrl}
             onImageUpdate={onImageUpdate}
             variant="card"
@@ -35,6 +43,7 @@ const ImageCard = ({
             showFileInfo={false}
             showGuidelines={false}
             className="border-0"
+            {...uploadConfig}
           />
         ) : imageUrl ? (
           <div className="relative group">

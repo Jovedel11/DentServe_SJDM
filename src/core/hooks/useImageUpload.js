@@ -5,16 +5,29 @@ import { useAuth } from '@/auth/context/AuthProvider';
 
 export const useImageUpload = (options = {}) => {
   const {
+    // Upload configuration
+    uploadType = 'profile', // 'profile', 'clinic', 'doctor', 'general'
+    entityId = null, // clinicId, doctorId, etc.
+    fieldName = 'image', // Form field name
+    
+    // Callbacks
     onUploadSuccess,
     onUploadError,
     onUploadStart,
     onUploadProgress,
+    
+    // File processing options
     autoCompress = true,
     maxSizeMB = 1,
     maxWidthOrHeight = 800,
     quality = 0.8,
     allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"],
     maxFileSize = 5 * 1024 * 1024, // 5MB
+    
+    // Cloudinary options
+    folder = null, // Override default folder
+    transformations = null, // Override default transformations
+    publicIdPrefix = null, // Override default public_id prefix
   } = options;
 
   const { session } = useAuth();
@@ -32,6 +45,72 @@ export const useImageUpload = (options = {}) => {
   
   const abortControllerRef = useRef(null);
   const access_token = session?.access_token;
+
+  // Get default configurations based on upload type
+  const getUploadConfig = useCallback(() => {
+    const configs = {
+      profile: {
+        endpoint: 'profile-image',
+        folder: 'profiles',
+        fieldName: 'profileImage',
+        transformations: [
+          { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+          { quality: 'auto', fetch_format: 'auto' }
+        ],
+        publicIdPrefix: 'user',
+        maxSizeMB: 1,
+        maxWidthOrHeight: 400,
+      },
+      clinic: {
+        endpoint: 'clinic-image',
+        folder: 'clinics',
+        fieldName: 'clinicImage',
+        transformations: [
+          { width: 800, height: 600, crop: 'fill' },
+          { quality: 'auto', fetch_format: 'auto' }
+        ],
+        publicIdPrefix: 'clinic',
+        maxSizeMB: 2,
+        maxWidthOrHeight: 1200,
+      },
+      doctor: {
+        endpoint: 'doctor-image',
+        folder: 'doctors',
+        fieldName: 'doctorImage',
+        transformations: [
+          { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+          { quality: 'auto', fetch_format: 'auto' }
+        ],
+        publicIdPrefix: 'doctor',
+        maxSizeMB: 1,
+        maxWidthOrHeight: 400,
+      },
+      general: {
+        endpoint: 'general-image',
+        folder: 'general',
+        fieldName: 'image',
+        transformations: [
+          { width: 1200, height: 800, crop: 'limit' },
+          { quality: 'auto', fetch_format: 'auto' }
+        ],
+        publicIdPrefix: 'img',
+        maxSizeMB: 3,
+        maxWidthOrHeight: 1500,
+      }
+    };
+
+    const defaultConfig = configs[uploadType] || configs.general;
+    
+    return {
+      endpoint: defaultConfig.endpoint,
+      folder: folder || defaultConfig.folder,
+      fieldName: fieldName !== 'image' ? fieldName : defaultConfig.fieldName,
+      transformations: transformations || defaultConfig.transformations,
+      publicIdPrefix: publicIdPrefix || defaultConfig.publicIdPrefix,
+      maxSizeMB: maxSizeMB || defaultConfig.maxSizeMB,
+      maxWidthOrHeight: maxWidthOrHeight || defaultConfig.maxWidthOrHeight,
+    };
+  }, [uploadType, folder, fieldName, transformations, publicIdPrefix, maxSizeMB, maxWidthOrHeight]);
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -99,12 +178,13 @@ export const useImageUpload = (options = {}) => {
       setPreview(previewUrl);
 
       if (autoCompress) {
+        const config = getUploadConfig();
         // Start compression
         setUploadState(prev => ({ ...prev, isCompressing: true }));
         
         const compressed = await compressImage(file, {
-          maxSizeMB,
-          maxWidthOrHeight,
+          maxSizeMB: config.maxSizeMB,
+          maxWidthOrHeight: config.maxWidthOrHeight,
           quality,
         });
         
@@ -120,10 +200,10 @@ export const useImageUpload = (options = {}) => {
       cleanup();
       return { success: false, error: errorMessage };
     }
-  }, [allowedTypes, maxFileSize, autoCompress, maxSizeMB, maxWidthOrHeight, quality, cleanup]);
+  }, [allowedTypes, maxFileSize, autoCompress, quality, cleanup, getUploadConfig]);
 
   // Handle upload
-  const uploadFile = useCallback(async (customEndpoint = null) => {
+  const uploadFile = useCallback(async (customOptions = {}) => {
     if (!compressedFile && !originalFile) {
       const error = 'Please select a file first';
       setError(error);
@@ -136,7 +216,17 @@ export const useImageUpload = (options = {}) => {
       return { success: false, error };
     }
 
+    // Validate required entityId for non-profile uploads
+    if (uploadType !== 'profile' && uploadType !== 'general' && !entityId) {
+      const error = `${uploadType} ID is required for ${uploadType} uploads`;
+      setError(error);
+      return { success: false, error };
+    }
+
     const fileToUpload = compressedFile || originalFile;
+    const config = getUploadConfig();
+    const uploadOptions = { ...config, ...customOptions };
+    
     abortControllerRef.current = new AbortController();
     
     const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -158,11 +248,26 @@ export const useImageUpload = (options = {}) => {
 
     try {
       const formData = new FormData();
-      formData.append('profileImage', fileToUpload);
+      formData.append(uploadOptions.fieldName, fileToUpload);
+      
+      // Add entity ID for non-profile uploads
+      if (entityId) {
+        const idFieldName = uploadType === 'clinic' ? 'clinicId' : 
+                           uploadType === 'doctor' ? 'doctorId' : 
+                           `${uploadType}Id`;
+        formData.append(idFieldName, entityId);
+      }
 
-      const result = await imageService.uploadImage(
+      // Add custom upload options to form data if needed
+      if (customOptions.folder) formData.append('folder', customOptions.folder);
+      if (customOptions.transformations) {
+        formData.append('transformations', JSON.stringify(customOptions.transformations));
+      }
+
+      const result = await imageService.uploadGenericImage(
         access_token,
         formData,
+        uploadOptions.endpoint,
         null,
         abortControllerRef.current.signal
       );
@@ -172,7 +277,7 @@ export const useImageUpload = (options = {}) => {
       
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      const successMessage = 'Image uploaded successfully!';
+      const successMessage = `${uploadType.charAt(0).toUpperCase() + uploadType.slice(1)} image uploaded successfully!`;
       setSuccess(successMessage);
 
       if (onUploadSuccess) {
@@ -210,7 +315,7 @@ export const useImageUpload = (options = {}) => {
 
       return { success: false, error: errorMessage };
     }
-  }, [compressedFile, originalFile, access_token, simulateProgress, onUploadStart, onUploadSuccess, onUploadError, cleanup]);
+  }, [compressedFile, originalFile, access_token, uploadType, entityId, simulateProgress, onUploadStart, onUploadSuccess, onUploadError, cleanup, getUploadConfig]);
 
   // Cancel upload
   const cancelUpload = useCallback(async () => {
@@ -244,6 +349,7 @@ export const useImageUpload = (options = {}) => {
     // Computed
     isProcessing: uploadState.isUploading || uploadState.isCompressing,
     canUpload: (compressedFile || originalFile) && !uploadState.isUploading && access_token,
+    uploadConfig: getUploadConfig(),
     
     // Actions
     selectFile,
@@ -252,4 +358,17 @@ export const useImageUpload = (options = {}) => {
     reset,
     cleanup,
   };
+};
+
+// Legacy compatibility hooks
+export const useProfileImageUpload = (options = {}) => {
+  return useImageUpload({ ...options, uploadType: 'profile' });
+};
+
+export const useClinicImageUpload = (clinicId, options = {}) => {
+  return useImageUpload({ ...options, uploadType: 'clinic', entityId: clinicId });
+};
+
+export const useDoctorImageUpload = (doctorId, options = {}) => {
+  return useImageUpload({ ...options, uploadType: 'doctor', entityId: doctorId });
 };

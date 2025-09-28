@@ -8,26 +8,37 @@ import {
   FiLoader,
   FiImage,
   FiCamera,
-  FiRefreshCw,
 } from "react-icons/fi";
 import { useImageUpload } from "@/core/hooks/useImageUpload";
 import { FaCompress } from "react-icons/fa";
 
 const ImageUpload = ({
+  // Upload configuration
+  uploadType = "general", // 'profile', 'clinic', 'doctor', 'general'
+  entityId = null, // For clinic/doctor uploads
+
+  // Current state
   currentImageUrl,
   onImageUpdate,
+
+  // Styling
   className = "",
   variant = "default", // 'default', 'avatar', 'card', 'banner'
-  size = "md", // 'sm', 'md', 'lg', 'xl'
+  size = "md", // 'sm', 'md', 'lg', 'xl', 'full'
   aspectRatio = "square", // 'square', 'wide', 'tall', 'auto'
+
+  // Display options
   showPreview = true,
   showProgress = true,
   showFileInfo = true,
   showGuidelines = true,
+
+  // Upload options
   allowedTypes,
   maxFileSize,
   compressionOptions,
-  uploadEndpoint,
+  cloudinaryOptions,
+
   ...props
 }) => {
   const fileInputRef = useRef(null);
@@ -41,11 +52,14 @@ const ImageUpload = ({
     success,
     isProcessing,
     canUpload,
+    uploadConfig,
     selectFile,
     uploadFile,
     cancelUpload,
     reset,
   } = useImageUpload({
+    uploadType,
+    entityId,
     onUploadSuccess: (result) => {
       if (onImageUpdate) {
         onImageUpdate(result.imageUrl);
@@ -54,6 +68,7 @@ const ImageUpload = ({
     allowedTypes,
     maxFileSize,
     ...compressionOptions,
+    ...cloudinaryOptions,
   });
 
   // Handle file selection
@@ -64,7 +79,7 @@ const ImageUpload = ({
 
   // Handle upload
   const handleUpload = async () => {
-    await uploadFile(uploadEndpoint);
+    await uploadFile();
   };
 
   // Size configurations
@@ -73,6 +88,7 @@ const ImageUpload = ({
     md: "w-24 h-24",
     lg: "w-32 h-32",
     xl: "w-48 h-48",
+    full: "w-full",
   };
 
   // Aspect ratio configurations
@@ -97,6 +113,14 @@ const ImageUpload = ({
     }
   };
 
+  // Get size classes based on variant and size
+  const getSizeClasses = () => {
+    if (variant === "banner" || size === "full") {
+      return "w-full h-48";
+    }
+    return sizeClasses[size];
+  };
+
   const currentImage = preview || currentImageUrl;
 
   return (
@@ -107,12 +131,12 @@ const ImageUpload = ({
           <div
             className={`relative overflow-hidden ${getVariantClasses()} ${
               aspectRatio === "auto" ? "" : aspectRatioClasses[aspectRatio]
-            } ${variant === "banner" ? "" : sizeClasses[size]}`}
+            } ${getSizeClasses()}`}
           >
             {currentImage ? (
               <img
                 src={currentImage}
-                alt="Upload preview"
+                alt={`${uploadType} preview`}
                 className="w-full h-full object-cover transition-all duration-300 group-hover:scale-105"
               />
             ) : (
@@ -231,8 +255,8 @@ const ImageUpload = ({
             {isProcessing
               ? "Processing..."
               : currentImage
-              ? "Change Image"
-              : "Choose Image"}
+              ? `Change ${uploadType} Image`
+              : `Choose ${uploadType} Image`}
           </span>
         </motion.button>
 
@@ -341,8 +365,12 @@ const ImageUpload = ({
         <div className="mt-4 text-xs text-gray-500 space-y-1">
           <p>
             • Maximum file size:{" "}
-            {Math.round((maxFileSize || 5 * 1024 * 1024) / 1024 / 1024)}MB
-            (auto-compressed)
+            {Math.round(
+              (uploadConfig.maxSizeMB || maxFileSize || 5 * 1024 * 1024) /
+                1024 /
+                1024
+            )}
+            MB (auto-compressed)
           </p>
           <p>
             • Supported formats:{" "}
@@ -352,7 +380,7 @@ const ImageUpload = ({
               )
               .join(", ")}
           </p>
-          <p>• Images are automatically optimized</p>
+          <p>• Images are automatically optimized for {uploadType} use</p>
         </div>
       )}
     </div>
