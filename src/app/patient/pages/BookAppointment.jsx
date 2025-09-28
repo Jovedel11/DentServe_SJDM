@@ -5,6 +5,8 @@ import {
   ChevronRight,
   AlertCircle,
   CheckCircle2,
+  Info,
+  AlertTriangle,
 } from "lucide-react";
 
 // UI Components
@@ -54,6 +56,12 @@ const BookAppointment = () => {
     toastMessage,
     bookingSuccess,
 
+    // Enhanced validation state
+    appointmentLimitInfo,
+    crossClinicWarnings,
+    bookingWarnings,
+    validationLoading,
+
     // Auth
     isPatient,
     profile,
@@ -63,6 +71,7 @@ const BookAppointment = () => {
     handleClinicSelect,
     handleServiceToggle,
     handleDoctorSelect,
+    handleDateSelect,
     handleSubmit,
     nextStep,
     previousStep,
@@ -73,7 +82,7 @@ const BookAppointment = () => {
     checkingAvailability,
   } = useBookingFlow();
 
-  // Validation message
+  // Enhanced validation message
   const getStepValidationMessage = () => {
     switch (bookingStep) {
       case "clinic":
@@ -131,6 +140,12 @@ const BookAppointment = () => {
                 Your symptoms have been shared with the staff.
               </span>
             )}
+            {crossClinicWarnings.length > 0 && (
+              <span className="block mt-2 text-sm text-info">
+                Remember to inform your healthcare providers about your other
+                appointments.
+              </span>
+            )}
           </p>
           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <div className="animate-spin rounded-full h-4 w-4 border-2 border-muted border-t-primary" />
@@ -181,23 +196,55 @@ const BookAppointment = () => {
           steps={BOOKING_STEPS}
         />
 
-        {/* Error Display */}
-        {error && (
-          <Alert
-            type="error"
-            message={error}
-            icon={<AlertCircle className="w-5 h-5" />}
-          />
-        )}
+        {/* Enhanced Alerts Section */}
+        <div className="space-y-4 mb-8">
+          {/* Error Display */}
+          {error && (
+            <Alert
+              type="error"
+              message={error}
+              icon={<AlertCircle className="w-5 h-5" />}
+            />
+          )}
 
-        {/* Validation Message */}
-        {stepValidationMessage && (
-          <Alert
-            type="warning"
-            message={stepValidationMessage}
-            icon={<AlertCircle className="w-5 h-5" />}
-          />
-        )}
+          {/* Validation Message */}
+          {stepValidationMessage && (
+            <Alert
+              type="warning"
+              message={stepValidationMessage}
+              icon={<AlertCircle className="w-5 h-5" />}
+            />
+          )}
+
+          {/* Booking Warnings */}
+          {bookingWarnings.map((warning, index) => (
+            <Alert
+              key={index}
+              type={warning.type}
+              message={warning.message}
+              icon={
+                warning.type === "error" ? (
+                  <AlertCircle className="w-5 h-5" />
+                ) : warning.type === "warning" ? (
+                  <AlertTriangle className="w-5 h-5" />
+                ) : (
+                  <Info className="w-5 h-5" />
+                )
+              }
+            />
+          ))}
+
+          {/* Validation Loading */}
+          {validationLoading && (
+            <Alert
+              type="info"
+              message="Checking appointment availability..."
+              icon={
+                <div className="animate-spin rounded-full h-5 w-5 border-2 border-info border-t-transparent" />
+              }
+            />
+          )}
+        </div>
 
         {/* Step Content */}
         <StepCard>
@@ -232,6 +279,7 @@ const BookAppointment = () => {
               availableTimes={availableTimes}
               checkingAvailability={checkingAvailability}
               onUpdateBookingData={updateBookingData}
+              onDateSelect={handleDateSelect}
             />
           )}
 
@@ -240,11 +288,13 @@ const BookAppointment = () => {
               bookingData={bookingData}
               services={services}
               profile={profile}
+              appointmentLimitInfo={appointmentLimitInfo}
+              crossClinicWarnings={crossClinicWarnings}
             />
           )}
         </StepCard>
 
-        {/* Navigation */}
+        {/* Enhanced Navigation */}
         <div className="flex justify-between">
           <button
             onClick={previousStep}
@@ -258,7 +308,9 @@ const BookAppointment = () => {
           {bookingStep === "confirm" ? (
             <button
               onClick={handleSubmit}
-              disabled={!canProceed || loading}
+              disabled={
+                !canProceed || loading || !appointmentLimitInfo?.allowed
+              }
               className="flex items-center gap-2 px-8 py-3 bg-success text-white rounded-lg hover:bg-success/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold shadow-md"
             >
               {loading ? (

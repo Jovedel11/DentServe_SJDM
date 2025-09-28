@@ -7,7 +7,20 @@ const DateTimeSelectionStep = ({
   availableTimes,
   checkingAvailability,
   onUpdateBookingData,
+  onDateSelect, // NEW: Enhanced date selection
 }) => {
+  const handleDateChange = (e) => {
+    const newDate = e.target.value;
+    if (onDateSelect) {
+      onDateSelect(newDate); // Use enhanced handler if available
+    } else {
+      onUpdateBookingData({
+        date: newDate,
+        time: null,
+      });
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-8">
@@ -26,12 +39,7 @@ const DateTimeSelectionStep = ({
           <input
             type="date"
             value={bookingData.date || ""}
-            onChange={(e) =>
-              onUpdateBookingData({
-                date: e.target.value,
-                time: null,
-              })
-            }
+            onChange={handleDateChange}
             min={new Date().toISOString().split("T")[0]}
             className="w-full max-w-xs px-4 py-3 border border-border rounded-lg bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-colors"
           />

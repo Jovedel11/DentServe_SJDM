@@ -1,8 +1,8 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
-import { useClinic } from './useClinic';
-import { useDoctors } from './useDoctor';
-import { useServices } from './useServices';
+import { useStaffClinic } from './useStaffClinic';
+import { useStaffServices } from './useStaffService';
+import { useStaffDoctors } from './useStaffDoctor';
 
 export const useProfileManager = (options = {}) => {
   const { 
@@ -24,13 +24,36 @@ export const useProfileManager = (options = {}) => {
     updateAdminProfile
   } = useAuth();
 
-  const clinicId = isStaff ? profile?.role_specific_data?.clinic_id : null;
+  // Staff-specific data loading
   const staffProfileId = isStaff ? profile?.role_specific_data?.staff_profile_id : null;
+  const clinicId = isStaff ? profile?.role_specific_data?.clinic_id : null;
   
-  // External hooks (conditionally run if staff)
-  const { clinic, loading: clinicLoading } = useClinic(staffProfileId);
-  const { services, loading: servicesLoading } = useServices(clinicId);
-  const { doctors, loading: doctorsLoading } = useDoctors(clinicId);
+  const { 
+    clinic, 
+    loading: clinicLoading, 
+    error: clinicError,
+    refetch: refetchClinic 
+  } = useStaffClinic(staffProfileId, { enabled: enableClinicManagement });
+  
+  const { 
+    services, 
+    loading: servicesLoading, 
+    error: servicesError,
+    refetch: refetchServices,
+    addService,
+    updateService,
+    deleteService 
+  } = useStaffServices(clinicId, { enabled: enableServiceManagement });
+  
+  const { 
+    doctors, 
+    loading: doctorsLoading, 
+    error: doctorsError,
+    refetch: refetchDoctors,
+    addDoctor,
+    updateDoctor,
+    deleteDoctor 
+  } = useStaffDoctors(clinicId, { enabled: enableDoctorManagement });
 
   // Local state
   const [isEditing, setIsEditing] = useState(false);
@@ -40,6 +63,7 @@ export const useProfileManager = (options = {}) => {
   const [success, setSuccess] = useState('');
   const [editedData, setEditedData] = useState(null);
 
+  // Consolidated profile data
   const profileData = useMemo(() => {
     if (!profile) return null;
 
@@ -49,7 +73,6 @@ export const useProfileManager = (options = {}) => {
       phone: profile.phone || '',
       email_verified: profile.email_verified || false,
       phone_verified: profile.phone_verified || false,
-
       profile: {
         first_name: profile.profile?.first_name || '',
         last_name: profile.profile?.last_name || '',
@@ -58,11 +81,11 @@ export const useProfileManager = (options = {}) => {
         gender: profile.profile?.gender || '',
         profile_image_url: profile.profile?.profile_image_url || '',
       },
-
       role_specific_data: profile.role_specific_data || {},
       statistics: profile.statistics || {},
     };
 
+    // Add staff-specific data
     if (isStaff) {
       baseData.clinic_data = clinic || {};
       baseData.services_data = services || [];
@@ -73,12 +96,18 @@ export const useProfileManager = (options = {}) => {
         services: servicesLoading,
         doctors: doctorsLoading
       };
+      
+      baseData._errors = {
+        clinic: clinicError,
+        services: servicesError,
+        doctors: doctorsError
+      };
     }
 
     return baseData;
-  }, [profile, isStaff, clinic, services, doctors, clinicLoading, servicesLoading, doctorsLoading]);
+  }, [profile, isStaff, clinic, services, doctors, clinicLoading, servicesLoading, doctorsLoading, clinicError, servicesError, doctorsError]);
 
-  // Calculate profile completion
+  // Profile completion calculation
   const profileCompletion = useMemo(() => {
     if (!profileData) return 0;
 
@@ -116,14 +145,13 @@ export const useProfileManager = (options = {}) => {
     return Math.round((completed / allFields.length) * 100);
   }, [profileData, isPatient, isStaff, isAdmin]);
 
-  // Initialize edited data when profile changes
+  // Initialize edited data
   const initializeEditData = useCallback(() => {
     if (profileData) {
       setEditedData(JSON.parse(JSON.stringify(profileData)));
     }
   }, [profileData]);
 
-  // Auto-initialize when profile loads
   useEffect(() => {
     initializeEditData();
   }, [initializeEditData]);
@@ -133,16 +161,25 @@ export const useProfileManager = (options = {}) => {
     try {
       setRefreshing(true);
       setError(null);
+      
       await handleRefreshProfile();
+      
+      if (isStaff) {
+        await Promise.all([
+          enableClinicManagement && refetchClinic(),
+          enableServiceManagement && refetchServices(),
+          enableDoctorManagement && refetchDoctors()
+        ].filter(Boolean));
+      }
     } catch (error) {
       console.error('Error refreshing profile:', error);
       setError('Failed to refresh profile data');
     } finally {
       setRefreshing(false);
     }
-  }, [handleRefreshProfile]);
+  }, [handleRefreshProfile, isStaff, enableClinicManagement, enableServiceManagement, enableDoctorManagement, refetchClinic, refetchServices, refetchDoctors]);
 
-  // Support nested object updates for clinic/services/doctors
+  // Generic input change handler
   const handleInputChange = useCallback((section, field, value) => {
     setEditedData(prev => {
       if (!prev) return prev;
@@ -165,6 +202,7 @@ export const useProfileManager = (options = {}) => {
     });
   }, []);
 
+  // Array update handler
   const handleArrayUpdate = useCallback((arrayName, index, field, value) => {
     setEditedData(prev => {
       if (!prev) return prev;
@@ -185,7 +223,7 @@ export const useProfileManager = (options = {}) => {
     });
   }, []);
 
-  // Process arrays and objects for backend compatibility
+  // Data processing for backend
   const processDataForBackend = useCallback((data) => {
     if (!data) return data;
     
@@ -212,18 +250,12 @@ export const useProfileManager = (options = {}) => {
           roleData[field] = roleData[field] === 'true';
         }
       });
-
-      // Validate WKT format for geographic data
-      if (roleData.preferred_location && !roleData.preferred_location.startsWith('POINT')) {
-        console.warn('Preferred location should be in WKT POINT format');
-        delete roleData.preferred_location;
-      }
     }
 
     return processed;
   }, []);
 
-  // 🔥 **FIXED: Role-specific save functions using the separated backend functions**
+  // 🔥 **IMPROVED: Main save function with better error handling**
   const handleSave = useCallback(async (customData = null) => {
     const rawData = customData || editedData;
     
@@ -238,7 +270,7 @@ export const useProfileManager = (options = {}) => {
       setSaving(true);
       setError(null);
 
-      // Build profile data correctly
+      // Build profile data
       const profileUpdateData = {
         firstName: dataToSave.profile?.first_name?.trim() || '',
         lastName: dataToSave.profile?.last_name?.trim() || '',
@@ -250,7 +282,6 @@ export const useProfileManager = (options = {}) => {
 
       let result;
 
-      // 🎯 **Call the appropriate role-specific function**
       if (isPatient) {
         const patientData = {
           emergencyContactName: dataToSave.role_specific_data?.emergency_contact_name || null,
@@ -275,30 +306,23 @@ export const useProfileManager = (options = {}) => {
           address: dataToSave.clinic_data?.address || null,
           city: dataToSave.clinic_data?.city || null,
           province: dataToSave.clinic_data?.province || null,
+          zipCode: dataToSave.clinic_data?.zip_code || null,
           phone: dataToSave.clinic_data?.phone || null,
           email: dataToSave.clinic_data?.email || null,
           websiteUrl: dataToSave.clinic_data?.website_url || null,
-          imageUrl: dataToSave.clinic_data?.image_url || null
+          imageUrl: dataToSave.clinic_data?.image_url || null,
+          appointmentLimitPerPatient: dataToSave.clinic_data?.appointment_limit_per_patient || null,
+          cancellationPolicyHours: dataToSave.clinic_data?.cancellation_policy_hours || null
         } : {};
 
         const servicesData = enableServiceManagement ? dataToSave.services_data || [] : [];
         const doctorsData = enableDoctorManagement ? dataToSave.doctors_data || [] : [];
-
-        console.log('🔧 Staff Update Data:', {
-          profileUpdateData,
-          staffData,
-          clinicData,
-          servicesData: servicesData.length,
-          doctorsData: doctorsData.length
-        });
 
         result = await updateStaffProfile(profileUpdateData, staffData, clinicData, servicesData, doctorsData);
 
       } else if (isAdmin) {
         result = await updateAdminProfile(profileUpdateData);
       }
-
-      console.log('📤 Update Result:', result);
 
       if (result?.success) {
         setSuccess('Profile updated successfully!');
@@ -311,8 +335,15 @@ export const useProfileManager = (options = {}) => {
       }
     } catch (error) {
       console.error('Error updating profile:', error);
-      setError(error.message || 'Failed to update profile');
-      return { success: false, error: error.message };
+      let errorMessage = error.message || 'Failed to update profile';
+      
+      // Handle specific permission errors
+      if (errorMessage.includes('Insufficient permissions')) {
+        errorMessage = 'You do not have permission to perform this action. Please contact your administrator.';
+      }
+      
+      setError(errorMessage);
+      return { success: false, error: errorMessage };
     } finally {
       setSaving(false);
     }
@@ -366,118 +397,6 @@ export const useProfileManager = (options = {}) => {
     }
   }, [isPatient, isStaff, isAdmin, updatePatientProfile, updateStaffProfile, updateAdminProfile, handleRefreshProfile]);
 
-  // 🔥 **SIMPLIFIED: Staff-specific management functions**
-  const handleClinicUpdate = useCallback(async (clinicData) => {
-    if (!isStaff || !enableClinicManagement) {
-      setError('Clinic management not enabled for this user');
-      return { success: false };
-    }
-
-    try {
-      setSaving(true);
-      setError(null);
-
-      console.log('🏥 Updating clinic with data:', clinicData);
-
-      const result = await updateStaffProfile(
-        {}, // No profile data
-        {}, // No staff data
-        clinicData, // Clinic data
-        [], // No services
-        [] // No doctors
-      );
-
-      console.log('🏥 Clinic update result:', result);
-
-      if (result?.success) {
-        setSuccess('Clinic information updated successfully!');
-        setTimeout(() => setSuccess(''), 4000);
-        await handleRefreshProfile();
-        return { success: true, updates: result.data?.updates };
-      } else {
-        throw new Error(result?.error || 'Failed to update clinic');
-      }
-    } catch (error) {
-      console.error('Error updating clinic:', error);
-      setError(error.message || 'Failed to update clinic');
-      return { success: false, error: error.message };
-    } finally {
-      setSaving(false);
-    }
-  }, [isStaff, enableClinicManagement, updateStaffProfile, handleRefreshProfile]);
-
-  // Staff-specific services management
-  const handleServicesUpdate = useCallback(async (servicesData) => {
-    if (!isStaff || !enableServiceManagement) {
-      setError('Service management not enabled for this user');
-      return { success: false };
-    }
-
-    try {
-      setSaving(true);
-      setError(null);
-
-      const result = await updateStaffProfile(
-        {},
-        {},
-        {},
-        servicesData,
-        []
-      );
-
-      if (result?.success) {
-        setSuccess('Services updated successfully!');
-        setTimeout(() => setSuccess(''), 4000);
-        await handleRefreshProfile();
-        return { success: true, updates: result.data?.updates };
-      } else {
-        throw new Error(result?.error || 'Failed to update services');
-      }
-    } catch (error) {
-      console.error('Error updating services:', error);
-      setError(error.message || 'Failed to update services');
-      return { success: false, error: error.message };
-    } finally {
-      setSaving(false);
-    }
-  }, [isStaff, enableServiceManagement, updateStaffProfile, handleRefreshProfile]);
-
-  // Staff-specific doctors management
-  const handleDoctorsUpdate = useCallback(async (doctorsData) => {
-    if (!isStaff || !enableDoctorManagement) {
-      setError('Doctor management not enabled for this user');
-      return { success: false };
-    }
-
-    try {
-      setSaving(true);
-      setError(null);
-
-      const result = await updateStaffProfile(
-        {},
-        {},
-        {},
-        [],
-        doctorsData
-      );
-
-      if (result?.success) {
-        setSuccess('Doctors updated successfully!');
-        setTimeout(() => setSuccess(''), 4000);
-        await handleRefreshProfile();
-        return { success: true, updates: result.data?.updates };
-      } else {
-        throw new Error(result?.error || 'Failed to update doctors');
-      }
-    } catch (error) {
-      console.error('Error updating doctors:', error);
-      setError(error.message || 'Failed to update doctors');
-      return { success: false, error: error.message };
-    } finally {
-      setSaving(false);
-    }
-  }, [isStaff, enableDoctorManagement, updateStaffProfile, handleRefreshProfile]);
-
   return {
     // Data
     profileData,
@@ -489,7 +408,7 @@ export const useProfileManager = (options = {}) => {
     isEditing,
     saving,
     refreshing,
-    loading: authLoading,
+    loading: authLoading || (isStaff && (clinicLoading || servicesLoading || doctorsLoading)),
     error: error || authError,
     success,
     
@@ -502,10 +421,19 @@ export const useProfileManager = (options = {}) => {
     handleImageUpdate,
     initializeEditData,
     
-    // Staff-specific management functions
-    handleClinicUpdate,
-    handleServicesUpdate,
-    handleDoctorsUpdate,
+    // Staff-specific management
+    clinic,
+    services,
+    doctors,
+    addService,
+    updateService,
+    deleteService,
+    addDoctor,
+    updateDoctor,
+    deleteDoctor,
+    refetchClinic,
+    refetchServices,
+    refetchDoctors,
     
     // Setters for custom control
     setError,
@@ -522,10 +450,6 @@ export const useProfileManager = (options = {}) => {
     enableServiceManagement,
     enableDoctorManagement,
 
-    clinic,
-    services,
-    doctors,
-    clinicLoading,
     clinicId
   };
 };

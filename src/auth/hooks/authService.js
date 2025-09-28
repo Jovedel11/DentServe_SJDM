@@ -17,7 +17,6 @@ export const authService = {
     try {
       validatePassword(userData.password);
 
-
       let normalizedPhone = null;
       if (userData.phone) {
         normalizedPhone = phoneUtils.normalizePhilippinePhone(userData.phone);
@@ -53,7 +52,6 @@ export const authService = {
             allergies: userData.allergies || [],
             recaptcha_token: userData.recaptchaToken
           },
-          // single domain redirect
           emailRedirectTo: `${window.location.origin}/auth-callback?type=patient`
         }
       })
@@ -72,14 +70,12 @@ export const authService = {
     }
   },
 
-    // for staff invitation
+  // for staff invitation
   async staffInvitation(inviteData) {
-        try {
-      // only admins can invite staff - your RLS policies enforce this
+    try {
       if (!inviteData.email || !inviteData.first_name || !inviteData.last_name || !inviteData.clinic_id) {
         throw new Error('Please fill in all required fields')
       }
-      // Generate temporary password
       const tempPassword = generateTempPassword()
 
       const { data, error: signupError } = await supabase.auth.signUp({
@@ -95,7 +91,7 @@ export const authService = {
             department: inviteData.department,
             employee_id: inviteData.employee_id,
             hire_date: inviteData.hire_date || new Date().toISOString().split('T')[0],
-            phone: inviteData.phone, // required for staff
+            phone: inviteData.phone,
             temp_password: tempPassword,
             invited_by: 'admin'
           },
@@ -104,9 +100,6 @@ export const authService = {
       })
 
       if (signupError) throw new Error(signupError?.message || 'Staff signup failed')
-
-      // Your trigger creates staff profile with is_active = false
-      // They become active after phone verification
 
       return {
         success: true,
@@ -136,7 +129,7 @@ export const authService = {
             last_name: inviteData.last_name,
             access_level: inviteData.access_level || 1,
             temp_password: tempPassword,
-            phone: inviteData.phone, // required for admin
+            phone: inviteData.phone,
             invited_by: 'super_admin'
           },
           emailRedirectTo: `${window.location.origin}/auth-callback?type=admin&temp_password=${encodeURIComponent(tempPassword)}`
@@ -223,7 +216,6 @@ export const authService = {
   // get user profile
   async getCompleteProfile(userId = null){
     try {
-
       const { data, error } = await supabase.rpc('get_user_complete_profile', { p_user_id: userId });
 
       if (error) throw error;
@@ -235,7 +227,7 @@ export const authService = {
     }
   },
 
-  // update user profiles
+  // 🔥 FIXED: Patient profile update
   async updatePatientProfile(profileData, patientData) {
     try {
       const { data, error } = await supabase.rpc('update_patient_profile', {
@@ -262,7 +254,6 @@ export const authService = {
         return { success: false, error: error.message || 'Failed to update profile' };
       }
       
-      // Check if the function returned an error
       if (data && !data.success) {
         return { success: false, error: data.error || 'Failed to update profile' };
       }
@@ -274,8 +265,44 @@ export const authService = {
     }
   },
 
+  // 🔥 FIXED: Staff profile update with proper parameter structure
   async updateStaffProfile(profileData, staffData, clinicData, servicesData, doctorsData) {
     try {
+      // Format services data for CRUD operations
+      const formattedServicesData = Array.isArray(servicesData) ? servicesData.map(service => ({
+        id: service.id || null,
+        name: service.name,
+        description: service.description,
+        category: service.category,
+        duration_minutes: service.duration_minutes,
+        min_price: service.min_price,
+        max_price: service.max_price,
+        priority: service.priority,
+        is_active: service.is_active,
+        _action: service._action || (service.id ? 'update' : 'create')
+      })) : [];
+
+      // Format doctors data for CRUD operations
+      const formattedDoctorsData = Array.isArray(doctorsData) ? doctorsData.map(doctor => ({
+        id: doctor.id || null,
+        user_id: doctor.user_id || null,
+        license_number: doctor.license_number,
+        specialization: doctor.specialization,
+        first_name: doctor.first_name,
+        last_name: doctor.last_name,
+        education: doctor.education,
+        experience_years: doctor.experience_years,
+        bio: doctor.bio,
+        consultation_fee: doctor.consultation_fee,
+        image_url: doctor.image_url,
+        languages_spoken: doctor.languages_spoken,
+        certifications: doctor.certifications,
+        awards: doctor.awards,
+        is_available: doctor.is_available,
+        schedule: doctor.schedule,
+        _action: doctor._action || (doctor.id ? 'update' : 'create')
+      })) : [];
+
       const { data, error } = await supabase.rpc('update_staff_profile', {
         p_profile_data: {
           first_name: profileData.firstName,
@@ -295,13 +322,16 @@ export const authService = {
           address: clinicData.address,
           city: clinicData.city,
           province: clinicData.province,
+          zip_code: clinicData.zipCode,
           phone: clinicData.phone,
           email: clinicData.email,
           website_url: clinicData.websiteUrl,
-          image_url: clinicData.imageUrl
+          image_url: clinicData.imageUrl,
+          appointment_limit_per_patient: clinicData.appointmentLimitPerPatient,
+          cancellation_policy_hours: clinicData.cancellationPolicyHours
         },
-        p_services_data: servicesData,
-        p_doctors_data: doctorsData
+        p_services_data: formattedServicesData,
+        p_doctors_data: formattedDoctorsData
       });
       
       if (error) {
@@ -348,6 +378,7 @@ export const authService = {
       return { success: false, error: error.message || 'Failed to update profile' };
     }
   },
+
   // dashboard data
   async getDashboardData(userId = null) {
     try {
@@ -362,12 +393,12 @@ export const authService = {
     }
   },
 
-  // user list
+  // 🔥 FIXED: User list function
   async getUserList(filter = {}) {
     const { userType = null, clinicId = null, searchTerm = null, limit = 50, offset = 0 } = filter
 
     try {
-      const { data, error } = await supabase.rpc('get_user_list', {
+      const { data, error } = await supabase.rpc('get_users_list', {
         p_user_type: userType,
         p_clinic_id: clinicId,
         p_search_term: searchTerm,
@@ -378,10 +409,9 @@ export const authService = {
       if (error) throw error
       if (data?.error) throw new Error(data.error)
 
-      ret
+      return { success: true, data }
     } catch (error) {
-      
+      return { success: false, error: error.message || 'Failed to fetch user list' }
     }
-
   }
 }
