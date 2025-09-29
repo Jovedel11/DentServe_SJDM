@@ -48,12 +48,9 @@ const navigationData = {
     },
     {
       title: "Clinics Near Me",
-      url: "/patient/clinics",
+      url: "/patient/clinics/map",
       icon: MapPinned,
-      items: [
-        { title: "Map View", url: "/patient/clinics/map" },
-        { title: "All Clinics", url: "/patient/clinics/list" },
-      ],
+      isActive: true,
     },
     {
       title: "Dentists",

@@ -1,30 +1,39 @@
-import { useCallback, useEffect, useState } from "react";
-import { useAuth } from "@/auth/context/AuthProvider";
-import { supabase } from "@/lib/supabaseClient";
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useAuth } from '@/auth/context/AuthProvider';
+import { supabase } from '@/lib/supabaseClient';
 
 export const useLocationService = () => {
-  const { user, profile, isPatient } = useAuth();
+  const { user, profile } = useAuth();
   const [userLocation, setUserLocation] = useState(null);
-  const [locationPermission, setLocationPermission] = useState(null);
-  const [locationError, setLocationError] = useState(null);
+  const [locationPermission, setLocationPermission] = useState('prompt');
   const [loading, setLoading] = useState(false);
+  const [locationError, setLocationError] = useState(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+  
+  // Prevent concurrent operations
+  const operationRef = useRef(false);
+  
+  // User type check
+  const isPatient = profile?.user_type === 'patient';
+  const isStaff = profile?.user_type === 'staff';
+  const isAdmin = profile?.user_type === 'admin';
 
-  // Get current location with better error handling
-  const getCurrentLocation = useCallback(async (options = {}) => {
-    const defaultOptions = {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 300000, // 5 minutes
-      ...options
-    };
-
+  // Browser geolocation with proper error handling
+  const getCurrentLocation = useCallback(() => {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
-        const error = new Error("Geolocation is not supported by this browser.");
-        setLocationError(error.message);
-        reject(error);
+        setLocationPermission('unavailable');
+        reject(new Error('Geolocation is not supported by this browser'));
         return;
       }
+
+      setLocationPermission('requesting');
+      
+      const options = {
+        enableHighAccuracy: true,
+        timeout: 10000, // 10 seconds
+        maximumAge: 300000 // 5 minutes
+      };
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -33,150 +42,159 @@ export const useLocationService = () => {
             longitude: position.coords.longitude,
             accuracy: position.coords.accuracy,
             timestamp: Date.now(),
-            source: 'gps'
+            source: 'browser_gps'
           };
           
           setUserLocation(location);
+          setLocationPermission('granted');
           setLocationError(null);
           resolve(location);
         },
         (error) => {
-          let errorMessage = 'Unable to retrieve location';
-          let permissionState = 'error';
+          console.error('Geolocation error:', error);
+          let errorMessage = 'Failed to get location';
           
           switch (error.code) {
             case error.PERMISSION_DENIED:
               errorMessage = 'Location access denied by user';
-              permissionState = 'denied';
+              setLocationPermission('denied');
               break;
             case error.POSITION_UNAVAILABLE:
-              errorMessage = 'Location information is unavailable';
-              permissionState = 'unavailable';
+              errorMessage = 'Location information unavailable';
+              setLocationPermission('unavailable');
               break;
             case error.TIMEOUT:
               errorMessage = 'Location request timed out';
-              permissionState = 'timeout';
+              setLocationPermission('timeout');
               break;
             default:
-              errorMessage = 'An unknown location error occurred';
+              errorMessage = 'Unknown location error';
+              setLocationPermission('error');
+              break;
           }
           
           setLocationError(errorMessage);
-          setLocationPermission(permissionState);
           reject(new Error(errorMessage));
         },
-        defaultOptions
+        options
       );
     });
   }, []);
 
-  // 🔥 FIXED: Update user location using proper RPC function
+  // Update user location in database
   const updateUserLocation = useCallback(async (latitude, longitude) => {
-    if (!isPatient) {
-      return { success: false, error: 'Only patients can update location preferences' };
+    if (!user || !isPatient) {
+      return { success: false, error: 'Only patients can update location' };
     }
 
-    if (!user || !profile) {
-      return { success: false, error: 'User profile not found' };
+    // Input validation
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+      return { success: false, error: 'Invalid coordinates provided' };
+    }
+
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return { success: false, error: 'Coordinates out of valid range' };
     }
 
     try {
-      setLoading(true);
-      setLocationError(null);
-
-      // Validate coordinates
-      if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-        throw new Error('Invalid coordinates provided');
-      }
-
-      if (latitude < -90 || latitude > 90) {
-        throw new Error('Invalid latitude value');
-      }
-
-      if (longitude < -180 || longitude > 180) {
-        throw new Error('Invalid longitude value');
-      }
-
-      // 🔥 FIXED: Use proper RPC function that returns JSONB
       const { data, error } = await supabase.rpc('update_user_location', {
-        latitude,
-        longitude
+        latitude: latitude,
+        longitude: longitude
       });
 
-      if (error) throw new Error(error.message || 'Location update failed');
+      if (error) {
+        console.error('Supabase RPC error:', error);
+        throw new Error(error.message || 'Failed to update location');
+      }
       
-      // 🔥 FIXED: Handle proper JSONB response format
-      if (!data?.success) {
-        throw new Error(data?.error || 'Failed to update location');
+      // Handle JSONB response
+      if (data?.success) {
+        const locationData = data.data?.location;
+        if (locationData) {
+          const updatedLocation = {
+            latitude: locationData.latitude,
+            longitude: locationData.longitude,
+            timestamp: Date.now(),
+            source: 'database_updated',
+            updated_at: data.data?.updated_at
+          };
+          
+          setUserLocation(updatedLocation);
+        }
+        
+        return { success: true, data: data.data };
+      } else {
+        return { success: false, error: data?.error || 'Failed to update location' };
       }
 
-      // Update local state with successful response
-      setUserLocation(prev => ({
-        ...prev,
-        latitude,
-        longitude,
-        timestamp: Date.now(),
-        source: 'manual'
-      }));
-
-      return { 
-        success: true, 
-        message: data.message || 'Location updated successfully',
-        data: data.data 
-      };
-
     } catch (error) {
-      const errorMsg = error.message || 'Location update failed';
-      setLocationError(errorMsg);
-      console.error('Location update error:', error);
-      return { success: false, error: errorMsg };
-    } finally {
-      setLoading(false);
+      console.error('Error updating user location:', error);
+      return { success: false, error: error.message };
     }
-  }, [isPatient, user, profile]);
+  }, [user, isPatient]);
 
-  // 🔥 FIXED: Get user location using proper RPC function
+  // Get user location from database
   const getUserLocationFromDatabase = useCallback(async () => {
+    if (!user) {
+      return { success: false, error: 'User not authenticated' };
+    }
+
     try {
       const { data, error } = await supabase.rpc('get_user_location');
 
-      if (error) throw new Error(error.message || 'Failed to get user location');
-      
-      if (!data?.success) {
-        return { success: false, error: data?.error || 'Failed to get location' };
+      if (error) {
+        console.error('Database location fetch error:', error);
+        throw new Error(error.message || 'Failed to get user location');
       }
-
-      const locationData = data.data;
       
-      if (locationData?.has_location) {
-        const location = {
-          latitude: locationData.latitude,
-          longitude: locationData.longitude,
-          timestamp: Date.now(),
-          source: locationData.location_type || 'database',
-          accuracy_note: locationData.accuracy_note
-        };
+      // Handle JSONB response structure
+      if (data?.success) {
+        const locationData = data.data;
         
-        setUserLocation(location);
-        return { success: true, location, data: locationData };
+        if (locationData?.has_location) {
+          const location = {
+            latitude: locationData.latitude,
+            longitude: locationData.longitude,
+            timestamp: Date.now(),
+            source: locationData.location_type || 'database',
+            accuracy_note: locationData.accuracy_note
+          };
+          
+          // Validate coordinates before setting
+          if (typeof location.latitude === 'number' && 
+              typeof location.longitude === 'number' &&
+              !isNaN(location.latitude) && 
+              !isNaN(location.longitude)) {
+            setUserLocation(location);
+            return { success: true, location, data: locationData };
+          } else {
+            console.warn('Invalid coordinates from database:', location);
+            return { success: false, error: 'Invalid coordinates from database' };
+          }
+        } else {
+          return { 
+            success: true, 
+            location: null, 
+            message: locationData?.message || 'No location set',
+            suggestion: locationData?.suggestion 
+          };
+        }
       } else {
-        return { 
-          success: true, 
-          location: null, 
-          message: locationData.message,
-          suggestion: locationData.suggestion 
-        };
+        return { success: false, error: data?.error || 'Failed to get location' };
       }
 
     } catch (error) {
       console.error('Error getting user location from database:', error);
       return { success: false, error: error.message };
     }
-  }, []);
+  }, [user]);
 
   // Request location access with comprehensive handling
   const requestLocationAccess = useCallback(async (saveToProfile = true) => {
+    if (operationRef.current) return { success: false, error: 'Operation in progress' };
+    
     try {
+      operationRef.current = true;
       setLoading(true);
       setLocationError(null);
 
@@ -188,38 +206,30 @@ export const useLocationService = () => {
         
         if (!updateResult.success) {
           console.warn('Failed to save location to profile:', updateResult.error);
-          // Don't fail the entire request, just warn
+          // Still return success since we got the location
         }
       }
 
-      setLocationPermission('granted');
-      return { 
-        success: true, 
-        location, 
-        saved: isPatient && saveToProfile 
-      };
+      return { success: true, location };
 
     } catch (error) {
-      const errorMsg = error.message || 'Location access failed';
-      setLocationError(errorMsg);
-      
-      if (error.message.includes('denied')) {
-        setLocationPermission('denied');
-      }
-      
-      return { success: false, error: errorMsg };
+      console.error('Error requesting location access:', error);
+      setLocationError(error.message);
+      return { success: false, error: error.message };
     } finally {
       setLoading(false);
+      operationRef.current = false;
     }
-  }, [getCurrentLocation, updateUserLocation, isPatient]);
+  }, [isPatient, getCurrentLocation, updateUserLocation]);
 
-  // 🔥 FIXED: Load saved location using proper database function
+  // Load saved location from database
   const loadSavedLocation = useCallback(async () => {
-    if (!isPatient) {
-      return { success: false, error: 'Only patients have saved locations' };
+    if (!user || operationRef.current) {
+      return { success: false, error: 'Cannot load location' };
     }
 
     try {
+      operationRef.current = true;
       const result = await getUserLocationFromDatabase();
       
       if (result.success && result.location) {
@@ -234,101 +244,106 @@ export const useLocationService = () => {
     } catch (error) {
       console.error('Error loading saved location:', error);
       return { success: false, error: 'Failed to load saved location' };
+    } finally {
+      operationRef.current = false;
     }
-  }, [isPatient, getUserLocationFromDatabase]);
+  }, [user, getUserLocationFromDatabase]);
 
-  // Check if location is available and fresh
+  // Check if location is available and valid
   const isLocationAvailable = useCallback(() => {
-    if (!userLocation || !userLocation.timestamp) return false;
+    if (!userLocation) return false;
     
-    const fiveMinutes = 5 * 60 * 1000; // 5 minutes in milliseconds
-    const isRecent = (Date.now() - userLocation.timestamp) < fiveMinutes;
+    // Validate coordinates
+    const { latitude, longitude } = userLocation;
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') return false;
+    if (isNaN(latitude) || isNaN(longitude)) return false;
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return false;
     
-    return isRecent && userLocation.latitude != null && userLocation.longitude != null;
+    // Check if location is recent (within 30 minutes for GPS, always valid for database)
+    if (userLocation.source === 'browser_gps' && userLocation.timestamp) {
+      const thirtyMinutes = 30 * 60 * 1000;
+      const isRecent = (Date.now() - userLocation.timestamp) < thirtyMinutes;
+      return isRecent;
+    }
+    
+    return true; // Database locations are always considered valid
   }, [userLocation]);
 
-  // Get distance between two points (Haversine formula)
-  const calculateDistance = useCallback((lat1, lon1, lat2, lon2) => {
-    const R = 6371; // Radius of the Earth in kilometers
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    const distance = R * c;
+  // Get formatted location for Google Maps
+  const getFormattedLocation = useCallback(() => {
+    if (!isLocationAvailable()) return null;
     
-    return distance; // Distance in kilometers
-  }, []);
-
-  // Initialize location service and check permissions
-  useEffect(() => {
-    const initializeLocationService = async () => {
-      // Check permission state if supported
-      if (navigator.permissions) {
-        try {
-          const permission = await navigator.permissions.query({ name: 'geolocation' });
-          setLocationPermission(permission.state);
-
-          // Listen for permission changes
-          permission.addEventListener('change', () => {
-            setLocationPermission(permission.state);
-          });
-        } catch (error) {
-          console.warn('Error checking geolocation permission:', error);
-        }
-      }
-
-      // Try to load saved location for patients
-      if (isPatient) {
-        await loadSavedLocation();
-      }
+    return {
+      lat: userLocation.latitude,
+      lng: userLocation.longitude
     };
+  }, [userLocation, isLocationAvailable]);
 
-    initializeLocationService();
-  }, [isPatient, loadSavedLocation]);
+  // Initialize location service
+  const initializeLocationService = useCallback(async () => {
+    if (isInitialized || operationRef.current) return;
+    
+    try {
+      operationRef.current = true;
+      setLoading(true);
+
+      // Try to load saved location first
+      const savedResult = await loadSavedLocation();
+      
+      if (savedResult.success) {
+        console.log('Loaded saved location:', savedResult.location);
+      } else {
+        console.log('No saved location available:', savedResult.error);
+      }
+
+    } catch (error) {
+      console.error('Error initializing location service:', error);
+      setLocationError('Failed to initialize location service');
+    } finally {
+      setLoading(false);
+      setIsInitialized(true);
+      operationRef.current = false;
+    }
+  }, [isInitialized, loadSavedLocation]);
+
+  // Initialize on mount
+  useEffect(() => {
+    if (user && !isInitialized) {
+      initializeLocationService();
+    }
+  }, [user, isInitialized, initializeLocationService]);
+
+  // Clear location data on user change
+  useEffect(() => {
+    if (!user) {
+      setUserLocation(null);
+      setLocationPermission('prompt');
+      setLocationError(null);
+      setIsInitialized(false);
+    }
+  }, [user]);
 
   return {
     // State
     userLocation,
     locationPermission,
-    locationError,
     loading,
+    locationError,
+    isInitialized,
 
     // Actions
-    getCurrentLocation,         // Returns: Promise<location>
-    requestLocationAccess,      // Returns: { success, location, saved, error }
-    updateUserLocation,         // Returns: { success, message, error }
-    loadSavedLocation,         // Returns: { success, location, error }
-    getUserLocationFromDatabase, // Returns: { success, location, data, error }
+    getCurrentLocation,
+    requestLocationAccess,
+    updateUserLocation,
+    loadSavedLocation,
 
     // Utilities
-    isLocationAvailable,       // Returns: boolean
-    calculateDistance,         // Returns: distance in km
+    isLocationAvailable,
+    getFormattedLocation,
     
-    // Computed
-    hasLocation: !!userLocation,
-    isLocationFresh: isLocationAvailable(),
-    canRequestLocation: navigator.geolocation && locationPermission !== 'denied',
-    locationAccuracy: userLocation?.accuracy,
-    lastUpdated: userLocation?.timestamp,
-    locationSource: userLocation?.source,
-    
-    // Format helpers
-    formatCoordinates: () => {
-      if (!userLocation) return 'No location';
-      return `${userLocation.latitude.toFixed(6)}, ${userLocation.longitude.toFixed(6)}`;
-    },
-    
-    formatLastUpdated: () => {
-      if (!userLocation?.timestamp) return 'Never';
-      const diff = Date.now() - userLocation.timestamp;
-      const minutes = Math.floor(diff / 60000);
-      if (minutes < 1) return 'Just now';
-      if (minutes < 60) return `${minutes}m ago`;
-      const hours = Math.floor(minutes / 60);
-      return `${hours}h ago`;
-    }
+    // User type flags
+    isPatient,
+    isStaff,
+    isAdmin
   };
 };

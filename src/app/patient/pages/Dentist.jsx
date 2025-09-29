@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "@/core/contexts/ThemeProvider";
+import { useAuth } from "@/auth/context/AuthProvider";
+import { useDoctorSystem } from "@/hooks/location/useDoctorSystem";
+import { useLocationService } from "@/hooks/location/useLocationService";
 import {
   Search,
   MapPin,
@@ -18,8 +21,6 @@ import {
   ChevronDown,
   Filter,
   ArrowUpDown,
-  Bookmark,
-  BookmarkCheck,
   GraduationCap,
   Badge,
   CheckCircle2,
@@ -27,18 +28,28 @@ import {
   Mail,
   User,
   Trophy,
-  UserCheck,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
-import { mockDentists } from "@/data/mock-dentist";
-import { availableSpecializations } from "@/data/mock-specialization";
-import { availableLocations } from "@/data/mock-location";
 
 const Dentist = () => {
+  const { userLocation, isLocationAvailable, getCurrentLocation } =
+    useLocationService();
+  const {
+    findNearestDoctors,
+    searchDoctors,
+    getDoctorDetail,
+    advancedDoctorSearch,
+    getAvailableSpecializations,
+    loading,
+    error,
+    clearError,
+  } = useDoctorSystem();
+
   // State management
-  const [dentists, setDentists] = useState([]);
-  const [filteredDentists, setFilteredDentists] = useState([]);
+  const [doctors, setDoctors] = useState([]);
+  const [filteredDoctors, setFilteredDoctors] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
   const [selectedDentist, setSelectedDentist] = useState(null);
   const [showDentistModal, setShowDentistModal] = useState(false);
   const [sortBy, setSortBy] = useState("recommended");
@@ -46,7 +57,14 @@ const Dentist = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [savedDentists, setSavedDentists] = useState(new Set());
   const [preferredLocation, setPreferredLocation] = useState("");
-  const [userInteractions, setUserInteractions] = useState(new Set(["1", "4"])); // Mock visited dentists
+  const [availableSpecializations, setAvailableSpecializations] = useState([]);
+  const [availableLocations, setAvailableLocations] = useState([
+    "Any Location",
+    "San Jose Del Monte",
+    "Bulacan",
+    "Metro Manila",
+  ]);
+
   const [filters, setFilters] = useState({
     specializations: [],
     experience: 0,
@@ -60,7 +78,7 @@ const Dentist = () => {
 
   // Smart recommendations algorithm
   const getRecommendedDentists = useMemo(() => {
-    return dentists
+    return doctors
       .map((dentist) => {
         let score = 0;
 
@@ -83,147 +101,217 @@ const Dentist = () => {
         if (dentist.awards?.length > 0) score += 2;
         if (Object.keys(dentist.certifications || {}).length > 2) score += 2;
         if (dentist.clinic_locations?.length > 1) score += 2;
-        if (userInteractions.has(dentist.id)) score += 1;
 
         return { ...dentist, recommendationScore: score };
       })
       .sort((a, b) => b.recommendationScore - a.recommendationScore);
-  }, [dentists, userInteractions]);
+  }, [doctors]);
 
-  // Load dentists data
+  // Load available specializations
   useEffect(() => {
-    const loadDentists = async () => {
-      setIsLoading(true);
-      // Simulate API call - Replace with actual Supabase call
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      setDentists(mockDentists);
-      setFilteredDentists(mockDentists);
-      setIsLoading(false);
+    const loadSpecializations = async () => {
+      try {
+        const specializations = await getAvailableSpecializations();
+        setAvailableSpecializations(specializations);
+      } catch (error) {
+        console.error("Error loading specializations:", error);
+      }
     };
-    loadDentists();
-  }, []);
+    loadSpecializations();
+  }, [getAvailableSpecializations]);
 
-  // Filter and sort logic
+  // Load doctors data
   useEffect(() => {
-    let filtered = [...dentists];
+    const loadDoctors = async () => {
+      try {
+        const searchLocation = isLocationAvailable()
+          ? {
+              latitude: userLocation.latitude,
+              longitude: userLocation.longitude,
+            }
+          : null;
 
-    // Search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (dentist) =>
-          dentist.name.toLowerCase().includes(query) ||
-          dentist.specialization.toLowerCase().includes(query) ||
-          dentist.bio?.toLowerCase().includes(query) ||
+        const options = {
+          maxDistance: 50,
+          limit: 50,
+          sortBy: "rating",
+        };
+
+        console.log("🚀 Loading doctors with:", { searchLocation, options });
+
+        const result = await findNearestDoctors(searchLocation, options);
+
+        if (result.success && result.doctors) {
+          console.log("✅ Doctors loaded:", result.doctors.length);
+          setDoctors(result.doctors);
+          setFilteredDoctors(result.doctors);
+        } else {
+          console.log("❌ No doctors found:", result.error);
+          setDoctors([]);
+          setFilteredDoctors([]);
+        }
+      } catch (error) {
+        console.error("💥 Error loading doctors:", error);
+        setDoctors([]);
+        setFilteredDoctors([]);
+      }
+    };
+
+    loadDoctors();
+  }, [findNearestDoctors, userLocation, isLocationAvailable]);
+
+  // Search and filter logic
+  useEffect(() => {
+    const performSearch = async () => {
+      if (searchQuery.trim()) {
+        try {
+          const result = await searchDoctors(searchQuery, {
+            specializations: filters.specializations,
+            minRating: filters.rating,
+            minExperience: filters.experience,
+            isAvailable: filters.availability || null,
+          });
+
+          if (result.success) {
+            let searchResults = result.doctors || [];
+
+            // Apply additional client-side filters
+            searchResults = applyClientSideFilters(searchResults);
+
+            setFilteredDoctists(searchResults);
+          }
+        } catch (error) {
+          console.error("Error searching doctors:", error);
+        }
+      } else {
+        // Apply filters to existing doctors
+        const filtered = applyClientSideFilters(doctors);
+        setFilteredDoctors(filtered);
+      }
+    };
+
+    const debounceTimer = setTimeout(performSearch, 300);
+    return () => clearTimeout(debounceTimer);
+  }, [searchQuery, doctors, filters, searchDoctors]);
+
+  // Apply client-side filters
+  const applyClientSideFilters = useCallback(
+    (doctorsList) => {
+      let filtered = [...doctorsList];
+
+      // Preferred location filter
+      if (preferredLocation && preferredLocation !== "Any Location") {
+        filtered = filtered.filter((dentist) =>
           dentist.clinic_locations?.some(
             (clinic) =>
-              clinic.clinic_name.toLowerCase().includes(query) ||
-              clinic.address.toLowerCase().includes(query)
+              clinic.address
+                .toLowerCase()
+                .includes(preferredLocation.toLowerCase()) ||
+              clinic.city
+                .toLowerCase()
+                .includes(preferredLocation.toLowerCase())
           )
-      );
-    }
-
-    // Preferred location filter
-    if (preferredLocation && preferredLocation !== "Any Location") {
-      filtered = filtered.filter((dentist) =>
-        dentist.clinic_locations?.some((clinic) =>
-          clinic.address.toLowerCase().includes(preferredLocation.toLowerCase())
-        )
-      );
-    }
-
-    // Apply advanced filters
-    if (filters.specializations.length > 0) {
-      filtered = filtered.filter((dentist) =>
-        filters.specializations.some((spec) =>
-          dentist.specialization.toLowerCase().includes(spec.toLowerCase())
-        )
-      );
-    }
-
-    if (filters.experience > 0) {
-      filtered = filtered.filter(
-        (dentist) => dentist.experience_years >= filters.experience
-      );
-    }
-
-    if (filters.rating > 0) {
-      filtered = filtered.filter((dentist) => dentist.rating >= filters.rating);
-    }
-
-    if (filters.consultationFee !== "all") {
-      const feeFilters = {
-        budget: (dentist) => dentist.consultation_fee <= 2500,
-        moderate: (dentist) =>
-          dentist.consultation_fee > 2500 && dentist.consultation_fee <= 3500,
-        premium: (dentist) => dentist.consultation_fee > 3500,
-      };
-      filtered = filtered.filter(
-        feeFilters[filters.consultationFee] || (() => true)
-      );
-    }
-
-    if (filters.availability) {
-      filtered = filtered.filter((dentist) => dentist.is_available);
-    }
-
-    if (filters.hasReviewed) {
-      filtered = filtered.filter((dentist) => userInteractions.has(dentist.id));
-    }
-
-    if (filters.certifications) {
-      filtered = filtered.filter(
-        (dentist) =>
-          dentist.certifications &&
-          Object.keys(dentist.certifications).length > 0
-      );
-    }
-
-    if (filters.awards) {
-      filtered = filtered.filter(
-        (dentist) => dentist.awards && dentist.awards.length > 0
-      );
-    }
-
-    // Sort results
-    switch (sortBy) {
-      case "experience":
-        filtered.sort((a, b) => b.experience_years - a.experience_years);
-        break;
-      case "rating":
-        filtered.sort((a, b) => b.rating - a.rating);
-        break;
-      case "fee-low":
-        filtered.sort((a, b) => a.consultation_fee - b.consultation_fee);
-        break;
-      case "fee-high":
-        filtered.sort((a, b) => b.consultation_fee - a.consultation_fee);
-        break;
-      case "alphabetical":
-        filtered.sort((a, b) => a.name.localeCompare(b.name));
-        break;
-      case "reviews":
-        filtered.sort((a, b) => b.total_reviews - a.total_reviews);
-        break;
-      case "recommended":
-      default:
-        const recommended = getRecommendedDentists.filter((dentist) =>
-          filtered.some((f) => f.id === dentist.id)
         );
-        filtered = recommended;
-        break;
-    }
+      }
 
-    setFilteredDentists(filtered);
-  }, [
-    searchQuery,
-    preferredLocation,
-    filters,
-    sortBy,
-    dentists,
-    getRecommendedDentists,
-    userInteractions,
-  ]);
+      // Specialization filter
+      if (filters.specializations.length > 0) {
+        filtered = filtered.filter((dentist) =>
+          filters.specializations.some((spec) =>
+            dentist.specialization.toLowerCase().includes(spec.toLowerCase())
+          )
+        );
+      }
+
+      // Experience filter
+      if (filters.experience > 0) {
+        filtered = filtered.filter(
+          (dentist) => dentist.experience_years >= filters.experience
+        );
+      }
+
+      // Rating filter
+      if (filters.rating > 0) {
+        filtered = filtered.filter(
+          (dentist) => dentist.rating >= filters.rating
+        );
+      }
+
+      // Consultation fee filter
+      if (filters.consultationFee !== "all") {
+        const feeFilters = {
+          budget: (dentist) =>
+            dentist.consultation_fee && dentist.consultation_fee <= 2500,
+          moderate: (dentist) =>
+            dentist.consultation_fee &&
+            dentist.consultation_fee > 2500 &&
+            dentist.consultation_fee <= 3500,
+          premium: (dentist) =>
+            dentist.consultation_fee && dentist.consultation_fee > 3500,
+        };
+        if (feeFilters[filters.consultationFee]) {
+          filtered = filtered.filter(feeFilters[filters.consultationFee]);
+        }
+      }
+
+      // Availability filter
+      if (filters.availability) {
+        filtered = filtered.filter((dentist) => dentist.is_available);
+      }
+
+      // Certifications filter
+      if (filters.certifications) {
+        filtered = filtered.filter(
+          (dentist) =>
+            dentist.certifications &&
+            Object.keys(dentist.certifications).length > 0
+        );
+      }
+
+      // Awards filter
+      if (filters.awards) {
+        filtered = filtered.filter(
+          (dentist) => dentist.awards && dentist.awards.length > 0
+        );
+      }
+
+      // Apply sorting
+      switch (sortBy) {
+        case "experience":
+          filtered.sort((a, b) => b.experience_years - a.experience_years);
+          break;
+        case "rating":
+          filtered.sort((a, b) => b.rating - a.rating);
+          break;
+        case "fee-low":
+          filtered.sort(
+            (a, b) => (a.consultation_fee || 0) - (b.consultation_fee || 0)
+          );
+          break;
+        case "fee-high":
+          filtered.sort(
+            (a, b) => (b.consultation_fee || 0) - (a.consultation_fee || 0)
+          );
+          break;
+        case "alphabetical":
+          filtered.sort((a, b) => a.name.localeCompare(b.name));
+          break;
+        case "reviews":
+          filtered.sort((a, b) => b.total_reviews - a.total_reviews);
+          break;
+        case "recommended":
+        default:
+          const recommended = getRecommendedDentists.filter((dentist) =>
+            filtered.some((f) => f.id === dentist.id)
+          );
+          filtered = recommended;
+          break;
+      }
+
+      return filtered;
+    },
+    [preferredLocation, filters, sortBy, getRecommendedDentists]
+  );
 
   // Utility functions
   const toggleSavedDentist = (dentistId) => {
@@ -240,9 +328,24 @@ const Dentist = () => {
     window.location.href = `/patient/book-appointment?dentist=${dentist.id}`;
   };
 
-  const openDentistModal = (dentist) => {
-    setSelectedDentist(dentist);
+  const openDentistModal = async (dentist) => {
     setShowDentistModal(true);
+    setSelectedDentist(dentist);
+
+    // Load detailed information
+    try {
+      const detailedDentist = await getDoctorDetail(dentist.id);
+      if (detailedDentist) {
+        setSelectedDentist({
+          ...dentist,
+          ...detailedDentist,
+          clinic_locations:
+            detailedDentist.clinic_locations || dentist.clinic_locations,
+        });
+      }
+    } catch (error) {
+      console.error("Error loading dentist details:", error);
+    }
   };
 
   const renderStars = (rating) => {
@@ -287,6 +390,24 @@ const Dentist = () => {
           </p>
         </motion.div>
 
+        {/* Error Message */}
+        {error && (
+          <motion.div
+            className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-xl flex items-center gap-3"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0" />
+            <p className="text-destructive flex-1">{error}</p>
+            <button
+              onClick={clearError}
+              className="px-3 py-1 bg-destructive text-destructive-foreground rounded-lg text-sm hover:bg-destructive/90"
+            >
+              Dismiss
+            </button>
+          </motion.div>
+        )}
+
         {/* Search and Controls */}
         <motion.div
           className="mb-8 space-y-6"
@@ -305,6 +426,9 @@ const Dentist = () => {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-12 pr-4 py-4 border-2 border-border bg-background text-foreground rounded-xl focus:border-primary focus:outline-none transition-colors text-lg"
               />
+              {loading && (
+                <Loader2 className="absolute right-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground animate-spin" />
+              )}
             </div>
             <div className="relative min-w-[200px]">
               <MapPin className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
@@ -406,19 +530,13 @@ const Dentist = () => {
             {/* Results Count */}
             <div className="flex items-center gap-6 text-sm">
               <span className="text-muted-foreground">
-                {filteredDentists.length} dentist
-                {filteredDentists.length !== 1 ? "s" : ""} found
+                {filteredDoctors.length} doctor
+                {filteredDoctors.length !== 1 ? "s" : ""} found
               </span>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 bg-success rounded-full"></div>
                   <span className="text-muted-foreground">Available</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <UserCheck className="w-4 h-4 text-info" />
-                  <span className="text-muted-foreground">
-                    Previously Visited
-                  </span>
                 </div>
               </div>
             </div>
@@ -558,11 +676,6 @@ const Dentist = () => {
                           icon: Clock,
                         },
                         {
-                          key: "hasReviewed",
-                          label: "Previously Visited",
-                          icon: UserCheck,
-                        },
-                        {
                           key: "certifications",
                           label: "Has Certifications",
                           icon: Badge,
@@ -638,18 +751,18 @@ const Dentist = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
         >
-          {isLoading ? (
+          {loading ? (
             <div className="flex flex-col items-center justify-center py-20">
-              <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mb-6"></div>
+              <Loader2 className="h-16 w-16 animate-spin text-primary mb-6" />
               <p className="text-muted-foreground text-lg">
                 Loading dentists...
               </p>
             </div>
-          ) : filteredDentists.length === 0 ? (
+          ) : filteredDoctors.length === 0 ? (
             <div className="text-center py-20">
               <Stethoscope className="w-20 h-20 text-muted-foreground mx-auto mb-6 opacity-50" />
               <h3 className="text-2xl font-semibold text-foreground mb-3">
-                No Dentists Found
+                No Doctors Found
               </h3>
               <p className="text-muted-foreground mb-6 max-w-md mx-auto">
                 Try adjusting your search criteria or filters to find dentists
@@ -683,16 +796,16 @@ const Dentist = () => {
                   : "space-y-6"
               }
             >
-              {filteredDentists.map((dentist, index) => (
+              {filteredDoctors.map((doctor, index) => (
                 <motion.div
-                  key={dentist.id}
+                  key={doctor.id}
                   className={`bg-card border-2 border-border rounded-2xl overflow-hidden shadow-lg hover:shadow-xl hover:border-primary/20 transition-all duration-300 cursor-pointer group ${
                     viewMode === "list" ? "flex" : ""
                   }`}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  onClick={() => openDentistModal(dentist)}
+                  onClick={() => openDoctorModal(doctor)}
                 >
                   {/* Doctor Image */}
                   <div
@@ -701,17 +814,20 @@ const Dentist = () => {
                     }`}
                   >
                     <img
-                      src={dentist.profile_image_url}
-                      alt={dentist.name}
+                      src={doctor.image_url || "/assets/images/dental.png"}
+                      alt={doctor.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onError={(e) => {
+                        e.target.src = "/assets/images/dental.png";
+                      }}
                     />
                     <div className="absolute top-3 left-3 flex items-center gap-2 flex-wrap">
                       <span
                         className={`px-2 py-1 text-white text-xs font-medium rounded-full backdrop-blur-sm ${
-                          dentist.is_available ? "bg-success/90" : "bg-muted/90"
+                          doctor.is_available ? "bg-success/90" : "bg-muted/90"
                         }`}
                       >
-                        {dentist.is_available ? "Available" : "Busy"}
+                        {doctor.is_available ? "Available" : "Busy"}
                       </span>
                       {sortBy === "recommended" && index < 5 && (
                         <span className="px-2 py-1 bg-primary/90 text-white text-xs font-medium rounded-full backdrop-blur-sm flex items-center gap-1">
@@ -719,34 +835,17 @@ const Dentist = () => {
                           Top Pick
                         </span>
                       )}
-                      {userInteractions.has(dentist.id) && (
-                        <span className="px-2 py-1 bg-info/90 text-white text-xs font-medium rounded-full backdrop-blur-sm flex items-center gap-1">
-                          <UserCheck className="w-3 h-3" />
-                          Visited
+                    </div>
+                    <div className="absolute top-3 right-3 flex gap-2">
+                      {doctor.consultation_fee && (
+                        <span className="px-2 py-1 bg-black/70 text-white text-xs font-medium rounded-full backdrop-blur-sm">
+                          ₱{doctor.consultation_fee?.toLocaleString()}
                         </span>
                       )}
                     </div>
-                    <div className="absolute top-3 right-3 flex gap-2">
-                      <span className="px-2 py-1 bg-black/70 text-white text-xs font-medium rounded-full backdrop-blur-sm">
-                        ₱{dentist.consultation_fee?.toLocaleString()}
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleSavedDentist(dentist.id);
-                        }}
-                        className="p-1.5 bg-black/70 hover:bg-black/80 text-white rounded-full backdrop-blur-sm transition-colors"
-                      >
-                        {savedDentists.has(dentist.id) ? (
-                          <BookmarkCheck className="w-4 h-4 text-yellow-400" />
-                        ) : (
-                          <Bookmark className="w-4 h-4" />
-                        )}
-                      </button>
-                    </div>
                     <div className="absolute bottom-3 left-3">
                       <span className="px-3 py-1 bg-black/70 text-white text-xs font-medium rounded-full backdrop-blur-sm">
-                        {getExperienceLevel(dentist.experience_years).label}
+                        {getExperienceLevel(doctor.experience_years).label}
                       </span>
                     </div>
                   </div>
@@ -755,25 +854,25 @@ const Dentist = () => {
                   <div className="p-6 space-y-4 flex-1">
                     <div>
                       <h3 className="font-bold text-foreground text-xl mb-2 group-hover:text-primary transition-colors">
-                        {dentist.name}
+                        {doctor.name}
                       </h3>
                       <div className="flex items-center gap-3 mb-2">
                         <div className="flex items-center gap-1">
-                          {renderStars(dentist.rating)}
+                          {renderStars(doctor.rating)}
                         </div>
                         <span className="text-sm font-medium text-foreground">
-                          {dentist.rating}
+                          {doctor.rating.toFixed(1)}
                         </span>
                         <span className="text-sm text-muted-foreground">
-                          ({dentist.total_reviews} reviews)
+                          ({doctor.total_reviews} reviews)
                         </span>
                         <span className="text-sm text-success font-medium">
-                          {dentist.patient_satisfaction}% satisfaction
+                          {doctor.patient_satisfaction}% satisfaction
                         </span>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-primary font-medium mb-3">
                         <Stethoscope className="w-4 h-4" />
-                        <span>{dentist.specialization}</span>
+                        <span>{doctor.specialization}</span>
                       </div>
                     </div>
 
@@ -782,78 +881,90 @@ const Dentist = () => {
                       <div className="flex items-center gap-2">
                         <GraduationCap className="w-4 h-4 text-primary flex-shrink-0" />
                         <span className="text-muted-foreground">
-                          {dentist.experience_years} years exp.
+                          {doctor.experience_years} years exp.
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Users className="w-4 h-4 text-primary flex-shrink-0" />
                         <span className="text-muted-foreground">
-                          {dentist.total_patients?.toLocaleString()} patients
+                          {doctor.total_patients?.toLocaleString()} patients
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Building2 className="w-4 h-4 text-primary flex-shrink-0" />
                         <span className="text-muted-foreground">
-                          {dentist.clinic_locations?.length} location
-                          {dentist.clinic_locations?.length !== 1 ? "s" : ""}
+                          {doctor.clinic_locations?.length || 0} location
+                          {(doctor.clinic_locations?.length || 0) !== 1
+                            ? "s"
+                            : ""}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-primary flex-shrink-0" />
                         <span className="text-muted-foreground">
-                          {dentist.next_available}
+                          {doctor.next_available}
                         </span>
                       </div>
                     </div>
 
                     {/* Clinic Locations Preview */}
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium text-foreground">
-                        Practice Locations:
-                      </h4>
-                      {dentist.clinic_locations
-                        ?.slice(0, 2)
-                        .map((clinic, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-2 text-sm text-muted-foreground"
-                          >
-                            <MapPin className="w-3 h-3 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-foreground truncate">
-                                {clinic.clinic_name}
+                    {doctor.clinic_locations &&
+                      doctor.clinic_locations.length > 0 && (
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-medium text-foreground">
+                            Practice Locations:
+                          </h4>
+                          {doctor.clinic_locations
+                            ?.slice(0, 2)
+                            .map((clinic, i) => (
+                              <div
+                                key={i}
+                                className="flex items-center gap-2 text-sm text-muted-foreground"
+                              >
+                                <MapPin className="w-3 h-3 flex-shrink-0" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-foreground truncate">
+                                    {clinic.clinic_name}
+                                  </div>
+                                  <div className="text-xs truncate">
+                                    {clinic.address}
+                                    {clinic.distance_km > 0 && (
+                                      <span>
+                                        {" "}
+                                        • {clinic.distance_km.toFixed(1)}km away
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
-                              <div className="text-xs truncate">
-                                {clinic.address} • {clinic.schedule}
-                              </div>
+                            ))}
+                          {doctor.clinic_locations?.length > 2 && (
+                            <div className="text-xs text-muted-foreground">
+                              +{doctor.clinic_locations.length - 2} more
+                              locations
                             </div>
-                          </div>
-                        ))}
-                      {dentist.clinic_locations?.length > 2 && (
-                        <div className="text-xs text-muted-foreground">
-                          +{dentist.clinic_locations.length - 2} more locations
+                          )}
                         </div>
                       )}
-                    </div>
 
                     {/* Awards & Certifications */}
                     <div className="flex items-center gap-4 text-sm">
-                      {dentist.awards?.length > 0 && (
+                      {doctor.awards?.length > 0 && (
                         <div className="flex items-center gap-1 text-warning">
                           <Trophy className="w-4 h-4" />
                           <span>
-                            {dentist.awards.length} award
-                            {dentist.awards.length !== 1 ? "s" : ""}
+                            {doctor.awards.length} award
+                            {doctor.awards.length !== 1 ? "s" : ""}
                           </span>
                         </div>
                       )}
-                      {dentist.certifications &&
-                        Object.keys(dentist.certifications).length > 0 && (
+                      {doctor.certifications &&
+                        Object.keys(doctor.certifications).length > 0 && (
                           <div className="flex items-center gap-1 text-info">
                             <Badge className="w-4 h-4" />
                             <span>
-                              {Object.keys(dentist.certifications).length} cert
-                              {Object.keys(dentist.certifications).length !== 1
+                              {Object.keys(doctor.certifications).length} cert
+                              {Object.keys(doctor.certifications).length !== 1
                                 ? "s"
                                 : ""}
                             </span>
@@ -862,26 +973,30 @@ const Dentist = () => {
                     </div>
 
                     {/* Bio Preview */}
-                    <div className="text-sm text-muted-foreground">
-                      {dentist.bio?.substring(0, 100)}
-                      {dentist.bio?.length > 100 && "..."}
-                    </div>
+                    {doctor.bio && (
+                      <div className="text-sm text-muted-foreground">
+                        {doctor.bio.substring(0, 100)}
+                        {doctor.bio.length > 100 && "..."}
+                      </div>
+                    )}
 
                     {/* Action Buttons */}
                     <div className="flex gap-3 pt-2">
+                      {doctor.phone && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(`tel:${doctor.phone}`, "_self");
+                          }}
+                          className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-border text-foreground rounded-xl hover:border-primary/50 hover:bg-muted/50 transition-colors font-medium"
+                        >
+                          <Phone className="w-4 h-4" />
+                        </button>
+                      )}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          window.open(`tel:${dentist.phone}`, "_self");
-                        }}
-                        className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-border text-foreground rounded-xl hover:border-primary/50 hover:bg-muted/50 transition-colors font-medium"
-                      >
-                        <Phone className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.open(`mailto:${dentist.email}`, "_self");
+                          window.open(`mailto:${doctor.email}`, "_self");
                         }}
                         className="flex items-center justify-center gap-2 px-4 py-3 bg-secondary text-secondary-foreground rounded-xl hover:bg-secondary/80 transition-colors font-medium"
                       >
@@ -890,7 +1005,7 @@ const Dentist = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          bookAppointment(dentist);
+                          bookAppointment(doctor);
                         }}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors font-medium"
                       >
@@ -926,9 +1041,15 @@ const Dentist = () => {
               {/* Modal Header */}
               <div className="relative h-64 overflow-hidden">
                 <img
-                  src={selectedDentist.profile_image_url}
+                  src={
+                    selectedDentist.profile_image_url ||
+                    "/assets/images/dental.png"
+                  }
                   alt={selectedDentist.name}
                   className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.src = "/assets/images/dental.png";
+                  }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
                 <button
@@ -947,7 +1068,7 @@ const Dentist = () => {
                         {renderStars(selectedDentist.rating)}
                       </div>
                       <span className="text-lg font-medium">
-                        {selectedDentist.rating}
+                        {selectedDentist.rating.toFixed(1)}
                       </span>
                       <span className="text-sm opacity-90">
                         ({selectedDentist.total_reviews} reviews)
@@ -970,11 +1091,13 @@ const Dentist = () => {
                         ? "Available for Appointments"
                         : "Currently Busy"}
                     </span>
-                    <span className="text-sm opacity-90 flex items-center gap-2">
-                      <DollarSign className="w-4 h-4" />₱
-                      {selectedDentist.consultation_fee?.toLocaleString()}{" "}
-                      consultation
-                    </span>
+                    {selectedDentist.consultation_fee && (
+                      <span className="text-sm opacity-90 flex items-center gap-2">
+                        <DollarSign className="w-4 h-4" />₱
+                        {selectedDentist.consultation_fee?.toLocaleString()}{" "}
+                        consultation
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1008,17 +1131,19 @@ const Dentist = () => {
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-start gap-3">
-                        <Phone className="w-5 h-5 text-primary flex-shrink-0 mt-1" />
-                        <div>
-                          <div className="font-medium text-foreground">
-                            Phone
-                          </div>
-                          <div className="text-sm text-muted-foreground">
-                            {selectedDentist.phone}
+                      {selectedDentist.phone && (
+                        <div className="flex items-start gap-3">
+                          <Phone className="w-5 h-5 text-primary flex-shrink-0 mt-1" />
+                          <div>
+                            <div className="font-medium text-foreground">
+                              Phone
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {selectedDentist.phone}
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )}
                       <div className="flex items-start gap-3">
                         <Mail className="w-5 h-5 text-primary flex-shrink-0 mt-1" />
                         <div>
@@ -1033,28 +1158,32 @@ const Dentist = () => {
                     </div>
 
                     {/* About */}
-                    <div>
-                      <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
-                        <User className="w-5 h-5" />
-                        About Dr. {selectedDentist.name.split(" ").pop()}
-                      </h3>
-                      <p className="text-foreground leading-relaxed">
-                        {selectedDentist.bio}
-                      </p>
-                    </div>
-
-                    {/* Education */}
-                    <div>
-                      <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
-                        <GraduationCap className="w-5 h-5" />
-                        Education & Training
-                      </h3>
-                      <div className="bg-muted/30 rounded-xl p-4">
+                    {selectedDentist.bio && (
+                      <div>
+                        <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                          <User className="w-5 h-5" />
+                          About Dr. {selectedDentist.name.split(" ").pop()}
+                        </h3>
                         <p className="text-foreground leading-relaxed">
-                          {selectedDentist.education}
+                          {selectedDentist.bio}
                         </p>
                       </div>
-                    </div>
+                    )}
+
+                    {/* Education */}
+                    {selectedDentist.education && (
+                      <div>
+                        <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                          <GraduationCap className="w-5 h-5" />
+                          Education & Training
+                        </h3>
+                        <div className="bg-muted/30 rounded-xl p-4">
+                          <p className="text-foreground leading-relaxed">
+                            {selectedDentist.education}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Certifications */}
                     {selectedDentist.certifications &&
@@ -1112,38 +1241,49 @@ const Dentist = () => {
                     )}
 
                     {/* Practice Locations */}
-                    <div>
-                      <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
-                        <Building2 className="w-5 h-5" />
-                        Practice Locations
-                      </h3>
-                      <div className="grid gap-4">
-                        {selectedDentist.clinic_locations?.map(
-                          (clinic, index) => (
-                            <div
-                              key={index}
-                              className="p-4 bg-muted/30 rounded-xl hover:bg-muted/50 transition-colors"
-                            >
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <h4 className="font-bold text-foreground text-lg mb-2">
-                                    {clinic.clinic_name}
-                                  </h4>
-                                  <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                                    <MapPin className="w-4 h-4" />
-                                    <span>{clinic.address}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                    <Clock className="w-4 h-4" />
-                                    <span>{clinic.schedule}</span>
+                    {selectedDentist.clinic_locations &&
+                      selectedDentist.clinic_locations.length > 0 && (
+                        <div>
+                          <h3 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                            <Building2 className="w-5 h-5" />
+                            Practice Locations
+                          </h3>
+                          <div className="grid gap-4">
+                            {selectedDentist.clinic_locations?.map(
+                              (clinic, index) => (
+                                <div
+                                  key={index}
+                                  className="p-4 bg-muted/30 rounded-xl hover:bg-muted/50 transition-colors"
+                                >
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <h4 className="font-bold text-foreground text-lg mb-2">
+                                        {clinic.clinic_name}
+                                      </h4>
+                                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                                        <MapPin className="w-4 h-4" />
+                                        <span>{clinic.address}</span>
+                                        {clinic.distance_km > 0 && (
+                                          <span className="text-primary">
+                                            • {clinic.distance_km.toFixed(1)}km
+                                            away
+                                          </span>
+                                        )}
+                                      </div>
+                                      {clinic.phone && (
+                                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                          <Phone className="w-4 h-4" />
+                                          <span>{clinic.phone}</span>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            </div>
-                          )
-                        )}
-                      </div>
-                    </div>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      )}
                   </div>
 
                   {/* Sidebar */}
@@ -1178,29 +1318,33 @@ const Dentist = () => {
                             {selectedDentist.patient_satisfaction}%
                           </span>
                         </div>
-                        <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                          <span className="text-sm text-muted-foreground">
-                            Consultation Fee
-                          </span>
-                          <span className="font-bold text-primary">
-                            ₱
-                            {selectedDentist.consultation_fee?.toLocaleString()}
-                          </span>
-                        </div>
+                        {selectedDentist.consultation_fee && (
+                          <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                            <span className="text-sm text-muted-foreground">
+                              Consultation Fee
+                            </span>
+                            <span className="font-bold text-primary">
+                              ₱
+                              {selectedDentist.consultation_fee?.toLocaleString()}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
                     {/* Quick Actions */}
                     <div className="space-y-3">
-                      <button
-                        onClick={() =>
-                          window.open(`tel:${selectedDentist.phone}`, "_self")
-                        }
-                        className="w-full flex items-center justify-center gap-3 px-4 py-4 bg-secondary text-secondary-foreground rounded-xl hover:bg-secondary/80 transition-colors font-medium"
-                      >
-                        <Phone className="w-5 h-5" />
-                        Call Now
-                      </button>
+                      {selectedDentist.phone && (
+                        <button
+                          onClick={() =>
+                            window.open(`tel:${selectedDentist.phone}`, "_self")
+                          }
+                          className="w-full flex items-center justify-center gap-3 px-4 py-4 bg-secondary text-secondary-foreground rounded-xl hover:bg-secondary/80 transition-colors font-medium"
+                        >
+                          <Phone className="w-5 h-5" />
+                          Call Now
+                        </button>
+                      )}
                       <button
                         onClick={() =>
                           window.open(

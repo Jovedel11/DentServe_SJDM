@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   GoogleMap,
@@ -7,6 +13,8 @@ import {
   InfoWindow,
 } from "@react-google-maps/api";
 import { useTheme } from "@/core/contexts/ThemeProvider";
+import { useClinicSystem } from "@/hooks/location/useClinicSystem";
+import { useLocationService } from "@/hooks/location/useLocationService";
 import {
   Search,
   MapPin,
@@ -22,22 +30,30 @@ import {
   Building2,
   Award,
   ThumbsUp,
+  AlertCircle,
 } from "lucide-react";
-import { mockClinics } from "@/data/mock-clinics";
-import { availableServices } from "@/data/mock-services";
 
-const Map = () => {
+const GOOGLE_MAPS_LIBRARIES = ["places"];
+
+const MapView = () => {
   const { theme } = useTheme();
+  const {
+    userLocation,
+    locationPermission,
+    getFormattedLocation,
+    isLocationAvailable,
+    requestLocationAccess,
+  } = useLocationService();
+  const { findNearestClinics, searchClinics, getClinicDetail } =
+    useClinicSystem();
 
   // Map state
   const [map, setMap] = useState(null);
-  const [userLocation, setUserLocation] = useState(null);
   const [selectedClinic, setSelectedClinic] = useState(null);
   const [clinics, setClinics] = useState([]);
   const [filteredClinics, setFilteredClinics] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [locationPermission, setLocationPermission] = useState("prompt");
   const [showClinicModal, setShowClinicModal] = useState(false);
   const [modalClinic, setModalClinic] = useState(null);
   const [sortBy, setSortBy] = useState("recommended");
@@ -50,17 +66,42 @@ const Map = () => {
     emergencyHours: false,
     acceptsInsurance: false,
   });
+  const [error, setError] = useState(null);
+
+  // Prevent concurrent API calls
+  const loadingRef = useRef(false);
+
+  // Available services for filters
+  const [availableServices, setAvailableServices] = useState([
+    "General Dentistry",
+    "Teeth Cleaning",
+    "Dental Checkup",
+    "Teeth Whitening",
+    "Root Canal",
+    "Dental Implants",
+    "Orthodontics",
+    "Oral Surgery",
+    "Pediatric Dentistry",
+    "Cosmetic Dentistry",
+  ]);
 
   // Google Maps configuration
   const mapContainerStyle = { width: "100%", height: "100%" };
   const defaultCenter = { lat: 14.815710752120832, lng: 121.07312517865853 };
+
+  // Get properly formatted location for Google Maps
+  const mapCenter = useMemo(() => {
+    const formattedLocation = getFormattedLocation();
+    return formattedLocation || defaultCenter;
+  }, [getFormattedLocation]);
+
   const mapOptions = {
     disableDefaultUI: false,
     zoomControl: true,
     streetViewControl: true,
     mapTypeControl: true,
     fullscreenControl: true,
-    styles: theme === "dark" ? darkMapStyles : lightMapStyles,
+    styles: theme === "dark" ? [] : lightMapStyles,
   };
 
   // Smart recommendations algorithm
@@ -69,59 +110,209 @@ const Map = () => {
       .map((clinic) => {
         let score = 0;
         score += (clinic.rating / 5) * 40; // Rating weight (40%)
-        const feedbackRatio = clinic.helpfulFeedback / clinic.totalFeedback;
+
+        const feedbackRatio =
+          clinic.total_reviews > 0
+            ? (clinic.helpful_feedback || 0) / clinic.total_reviews
+            : 0;
         score += feedbackRatio * 30; // Feedback helpfulness (30%)
+
         const maxDistance = 10;
-        const distanceScore = Math.max(
-          0,
-          (maxDistance - clinic.distance) / maxDistance
-        );
+        const distanceScore = clinic.distance
+          ? Math.max(0, (maxDistance - clinic.distance) / maxDistance)
+          : 0;
         score += distanceScore * 20; // Distance weight (20%)
 
         // Bonus factors (10%)
-        if (clinic.isOpen) score += 3;
-        if (clinic.emergencyHours) score += 2;
-        if (clinic.acceptsInsurance) score += 2;
-        if (clinic.specialOffers?.length > 0) score += 3;
+        if (clinic.is_open) score += 3;
+        if (clinic.emergency_hours) score += 2;
+        if (clinic.accepts_insurance) score += 2;
+        if (clinic.badges?.length > 0) score += 3;
 
         return { ...clinic, recommendationScore: score };
       })
       .sort((a, b) => b.recommendationScore - a.recommendationScore);
   }, [clinics]);
 
-  // Load clinics data
   useEffect(() => {
     const loadClinics = async () => {
+      if (loadingRef.current) return;
+
+      console.log("🚀 MapView: Starting to load clinics...");
       setIsLoading(true);
-      // YOUR API CALL HERE - replace mockClinics with actual data
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      setClinics(mockClinics);
-      setFilteredClinics(mockClinics);
-      setIsLoading(false);
+      setError(null);
+      loadingRef.current = true;
+
+      try {
+        const options = {
+          maxDistance: filters.distance,
+          services: filters.services,
+          minRating: filters.rating,
+          limit: 50,
+        };
+
+        console.log("⚙️ MapView: Options:", options);
+
+        // 🔥 FIXED: Use proper location format
+        const searchLocation = isLocationAvailable()
+          ? {
+              latitude: userLocation.latitude,
+              longitude: userLocation.longitude,
+            }
+          : null;
+
+        console.log("📍 MapView: Search location:", searchLocation);
+
+        const result = await findNearestClinics(searchLocation, options);
+        console.log("📥 MapView: findNearestClinics result:", result);
+
+        if (result?.success && result.clinics?.length > 0) {
+          console.log("✅ MapView: Setting clinics:", result.clinics);
+          setClinics(result.clinics);
+          setFilteredClinics(result.clinics);
+        } else {
+          console.log("❌ MapView: No clinics found");
+          setClinics([]);
+          setFilteredClinics([]);
+
+          if (!result?.success) {
+            setError(result?.error || "Failed to load clinics");
+          }
+        }
+      } catch (error) {
+        console.error("💥 MapView: Error loading clinics:", error);
+        setError("Failed to load clinics. Please try again.");
+        setClinics([]);
+        setFilteredClinics([]);
+      } finally {
+        setIsLoading(false);
+        loadingRef.current = false;
+        console.log("🏁 MapView: Finished loading clinics");
+      }
     };
+
     loadClinics();
-  }, []);
+  }, [
+    userLocation,
+    filters.distance,
+    filters.services,
+    filters.rating,
+    findNearestClinics,
+    isLocationAvailable,
+  ]);
+
+  // Search functionality
+  useEffect(() => {
+    const performSearch = async () => {
+      if (!searchQuery.trim()) {
+        setFilteredClinics(clinics);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const result = await searchClinics(searchQuery, {
+          maxDistance: filters.distance,
+          services: filters.services,
+          minRating: filters.rating,
+        });
+
+        if (result?.clinics) {
+          const transformedClinics = result.clinics.map((clinic) => {
+            // Same transformation as above
+            let latitude, longitude;
+
+            if (clinic.location) {
+              if (
+                typeof clinic.location === "object" &&
+                clinic.location.coordinates
+              ) {
+                longitude = clinic.location.coordinates[0];
+                latitude = clinic.location.coordinates[1];
+              } else if (clinic.latitude && clinic.longitude) {
+                latitude = clinic.latitude;
+                longitude = clinic.longitude;
+              }
+            }
+
+            if (
+              typeof latitude !== "number" ||
+              typeof longitude !== "number" ||
+              isNaN(latitude) ||
+              isNaN(longitude) ||
+              latitude < -90 ||
+              latitude > 90 ||
+              longitude < -180 ||
+              longitude > 180
+            ) {
+              latitude = defaultCenter.lat;
+              longitude = defaultCenter.lng;
+            }
+
+            return {
+              id: clinic.id,
+              name: clinic.name,
+              address: clinic.full_address || clinic.address,
+              position: {
+                lat: latitude,
+                lng: longitude,
+              },
+              rating: clinic.average_rating || clinic.rating || 0,
+              reviews: clinic.total_reviews || 0,
+              distance: clinic.distance_km
+                ? parseFloat(clinic.distance_km).toFixed(1)
+                : "0",
+              phone: clinic.phone,
+              image: clinic.image_url || "/assets/images/dental.png",
+              is_open: clinic.is_open,
+              isOpen: clinic.is_open,
+              emergency_hours: clinic.emergency_hours,
+              emergencyHours: clinic.emergency_hours,
+              accepts_insurance: clinic.accepts_insurance,
+              acceptsInsurance: clinic.accepts_insurance,
+              services: clinic.services_offered || clinic.services || [],
+              badges: clinic.badges || [],
+              hours: clinic.operating_hours || {},
+              nextAvailable: clinic.next_available || "Call for availability",
+              specialOffers: clinic.special_offers || [],
+              doctors: clinic.doctors || [],
+            };
+          });
+
+          setFilteredClinics(transformedClinics);
+        } else {
+          setFilteredClinics([]);
+        }
+      } catch (error) {
+        console.error("Error searching clinics:", error);
+        // Fallback to local filtering
+        const filtered = clinics.filter(
+          (clinic) =>
+            clinic.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            clinic.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            clinic.services?.some((service) =>
+              service.name?.toLowerCase().includes(searchQuery.toLowerCase())
+            )
+        );
+        setFilteredClinics(filtered);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    const debounceTimer = setTimeout(performSearch, 300);
+    return () => clearTimeout(debounceTimer);
+  }, [searchQuery, clinics, searchClinics, filters]);
 
   // Filter and sort logic
   useEffect(() => {
     let filtered = [...clinics];
 
-    if (searchQuery.trim()) {
-      filtered = filtered.filter(
-        (clinic) =>
-          clinic.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          clinic.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          clinic.services?.some((service) =>
-            service.name?.toLowerCase().includes(searchQuery.toLowerCase())
-          )
-      );
-    }
-
     // Apply filters
     if (filters.services.length > 0) {
       filtered = filtered.filter((clinic) =>
         clinic.services?.some((service) =>
-          filters.services.includes(service.name)
+          filters.services.includes(service.name || service)
         )
       );
     }
@@ -129,7 +320,7 @@ const Map = () => {
       filtered = filtered.filter((clinic) => clinic.rating >= filters.rating);
     if (filters.distance < 25)
       filtered = filtered.filter(
-        (clinic) => clinic.distance <= filters.distance
+        (clinic) => parseFloat(clinic.distance) <= filters.distance
       );
     if (filters.openNow) filtered = filtered.filter((clinic) => clinic.isOpen);
     if (filters.emergencyHours)
@@ -140,7 +331,9 @@ const Map = () => {
     // Sort results
     switch (sortBy) {
       case "distance":
-        filtered.sort((a, b) => a.distance - b.distance);
+        filtered.sort(
+          (a, b) => parseFloat(a.distance) - parseFloat(b.distance)
+        );
         break;
       case "rating":
         filtered.sort((a, b) => b.rating - a.rating);
@@ -154,43 +347,33 @@ const Map = () => {
         break;
     }
 
-    setFilteredClinics(filtered);
-  }, [searchQuery, filters, sortBy, clinics, getRecommendedClinics]);
-
-  // Location functions
-  const getUserLocation = useCallback(() => {
-    if (navigator.geolocation) {
-      setLocationPermission("requesting");
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const location = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          };
-          setUserLocation(location);
-          setLocationPermission("granted");
-          if (map) {
-            map.panTo(location);
-            map.setZoom(12);
-          }
-        },
-        (error) => {
-          console.error("Error getting user location:", error);
-          setLocationPermission("denied");
-        }
-      );
-    } else {
-      setLocationPermission("unavailable");
+    if (!searchQuery.trim()) {
+      setFilteredClinics(filtered);
     }
-  }, [map]);
+  }, [filters, sortBy, clinics, getRecommendedClinics, searchQuery]);
+
+  // 🔥 FIXED: Location functions with proper error handling
+  const getUserLocation = useCallback(async () => {
+    try {
+      const result = await requestLocationAccess(true);
+      if (!result.success) {
+        console.error("Failed to get location:", result.error);
+        setError(result.error);
+      }
+    } catch (error) {
+      console.error("Error getting user location:", error);
+      setError("Failed to get your location. Please try again.");
+    }
+  }, [requestLocationAccess]);
 
   const onLoad = useCallback((map) => setMap(map), []);
   const onUnmount = useCallback(() => setMap(null), []);
 
   const getDirections = (clinic) => {
     const destination = `${clinic.position.lat},${clinic.position.lng}`;
-    const origin = userLocation
-      ? `${userLocation.lat},${userLocation.lng}`
+    const formattedLocation = getFormattedLocation();
+    const origin = formattedLocation
+      ? `${formattedLocation.lat},${formattedLocation.lng}`
       : clinic.address;
     window.open(
       `https://www.google.com/maps/dir/${origin}/${destination}`,
@@ -202,9 +385,28 @@ const Map = () => {
     window.location.href = `/patient/book-appointment?clinic=${clinic.id}`;
   };
 
-  const openClinicModal = (clinic) => {
-    setModalClinic(clinic);
+  const openClinicModal = async (clinic) => {
     setShowClinicModal(true);
+    setModalClinic(clinic);
+
+    // Load detailed clinic information
+    try {
+      const detailedClinic = await getClinicDetail(clinic.id);
+      if (detailedClinic) {
+        setModalClinic({
+          ...clinic,
+          ...detailedClinic,
+          // Ensure compatibility with existing modal structure
+          services: detailedClinic.services || clinic.services,
+          doctors: detailedClinic.doctors || clinic.doctors,
+          hours: detailedClinic.operating_hours || clinic.hours,
+          specialOffers: detailedClinic.special_offers || clinic.specialOffers,
+        });
+      }
+    } catch (error) {
+      console.error("Error loading clinic details:", error);
+      // Continue with basic clinic info
+    }
   };
 
   const renderStars = (rating) => {
@@ -253,6 +455,24 @@ const Map = () => {
             recommendations and real-time availability.
           </p>
         </motion.div>
+
+        {/* Error Message */}
+        {error && (
+          <motion.div
+            className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-xl flex items-center gap-3"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0" />
+            <p className="text-destructive">{error}</p>
+            <button
+              onClick={() => setError(null)}
+              className="ml-auto px-3 py-1 bg-destructive text-destructive-foreground rounded-lg text-sm hover:bg-destructive/90"
+            >
+              Dismiss
+            </button>
+          </motion.div>
+        )}
 
         {/* Search and Controls */}
         <motion.div
@@ -507,20 +727,20 @@ const Map = () => {
             <div className="h-96 md:h-[500px] lg:h-[600px] w-full">
               <LoadScript
                 googleMapsApiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}
-                libraries={["places"]}
+                libraries={GOOGLE_MAPS_LIBRARIES}
               >
                 <GoogleMap
                   mapContainerStyle={mapContainerStyle}
-                  center={userLocation || defaultCenter}
-                  zoom={userLocation ? 12 : 10}
+                  center={mapCenter}
+                  zoom={isLocationAvailable() ? 12 : 10}
                   options={mapOptions}
                   onLoad={onLoad}
                   onUnmount={onUnmount}
                 >
                   {/* User Location */}
-                  {userLocation && (
+                  {isLocationAvailable() && (
                     <Marker
-                      position={userLocation}
+                      position={getFormattedLocation()}
                       icon={{
                         url:
                           "data:image/svg+xml;charset=UTF-8," +
@@ -536,28 +756,57 @@ const Map = () => {
                     />
                   )}
 
-                  {/* Clinic Markers */}
-                  {filteredClinics.map((clinic) => (
-                    <Marker
-                      key={clinic.id}
-                      position={clinic.position}
-                      onClick={() => setSelectedClinic(clinic)}
-                      icon={{
-                        url:
-                          "data:image/svg+xml;charset=UTF-8," +
-                          encodeURIComponent(`
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="${
-                                clinic.isOpen ? "#059669" : "#DC2626"
-                              }" stroke="white" stroke-width="1"/>
-                              <circle cx="12" cy="9" r="2.5" fill="white"/>
-                            </svg>
-                          `),
-                        scaledSize: new window.google.maps.Size(32, 32),
-                      }}
-                      title={clinic.name}
-                    />
-                  ))}
+                  {filteredClinics.map((clinic, index) => {
+                    console.log(
+                      `🗺️ Rendering marker ${index} for ${clinic.name}:`,
+                      {
+                        position: clinic.position,
+                        coordinates: clinic.coordinates,
+                        distance: clinic.distance,
+                      }
+                    );
+
+                    // Validate position before rendering
+                    if (
+                      !clinic.position ||
+                      typeof clinic.position.lat !== "number" ||
+                      typeof clinic.position.lng !== "number" ||
+                      isNaN(clinic.position.lat) ||
+                      isNaN(clinic.position.lng)
+                    ) {
+                      console.warn(
+                        `⚠️ Invalid position for clinic ${clinic.name}:`,
+                        clinic.position
+                      );
+                      return null;
+                    }
+
+                    return (
+                      <Marker
+                        key={`${clinic.id}-${index}`} // Ensure unique keys
+                        position={clinic.position}
+                        onClick={() => setSelectedClinic(clinic)}
+                        icon={{
+                          url:
+                            "data:image/svg+xml;charset=UTF-8," +
+                            encodeURIComponent(`
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="${
+                clinic.isOpen ? "#059669" : "#DC2626"
+              }" stroke="white" stroke-width="1"/>
+              <circle cx="12" cy="9" r="2.5" fill="white"/>
+              <text x="12" y="9" text-anchor="middle" dy="0.3em" font-size="8" fill="${
+                clinic.isOpen ? "#059669" : "#DC2626"
+              }">${index + 1}</text>
+            </svg>
+          `),
+                          scaledSize: new window.google.maps.Size(32, 32),
+                          anchor: new window.google.maps.Point(16, 32),
+                        }}
+                        title={`${clinic.name} (${clinic.distance}km)`}
+                      />
+                    );
+                  })}
 
                   {/* Info Window */}
                   {selectedClinic && (
@@ -577,8 +826,8 @@ const Map = () => {
                             {renderStars(selectedClinic.rating)}
                           </div>
                           <span className="text-sm text-gray-600">
-                            {selectedClinic.rating} ({selectedClinic.reviews}{" "}
-                            reviews)
+                            {selectedClinic.rating.toFixed(1)} (
+                            {selectedClinic.reviews} reviews)
                           </span>
                         </div>
                         <div className="flex gap-2">
@@ -669,6 +918,9 @@ const Map = () => {
                       src={clinic.image}
                       alt={clinic.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      onError={(e) => {
+                        e.target.src = "/assets/images/dental.png";
+                      }}
                     />
                     <div className="absolute top-3 left-3 flex items-center gap-2">
                       <span
@@ -684,11 +936,21 @@ const Map = () => {
                           Top Pick
                         </span>
                       )}
+                      {clinic.badges?.length > 0 && (
+                        <span className="px-2 py-1 bg-yellow-500/90 text-white text-xs font-medium rounded-full">
+                          Verified
+                        </span>
+                      )}
                     </div>
-                    <div className="absolute top-3 right-3">
+                    <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
                       <span className="px-2 py-1 bg-black/70 text-white text-xs font-medium rounded-full">
                         {clinic.distance}km
                       </span>
+                      {parseFloat(clinic.distance) <= 2 && (
+                        <span className="px-2 py-1 bg-green-600/90 text-white text-xs font-medium rounded-full">
+                          Very Close
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -701,7 +963,7 @@ const Map = () => {
                       <div className="flex items-center gap-2 mb-2">
                         <div className="flex">{renderStars(clinic.rating)}</div>
                         <span className="text-sm text-muted-foreground">
-                          {clinic.rating} ({clinic.reviews})
+                          {clinic.rating.toFixed(1)} ({clinic.reviews})
                         </span>
                       </div>
                       <div className="flex items-center text-sm text-muted-foreground">
@@ -717,7 +979,7 @@ const Map = () => {
                           key={i}
                           className="px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full"
                         >
-                          {service.name}
+                          {service.name || service}
                         </span>
                       )) || []}
                       {clinic.services?.length > 2 && (
@@ -732,8 +994,10 @@ const Map = () => {
                       <div className="flex items-center text-muted-foreground">
                         <Clock className="w-4 h-4 mr-1" />
                         <span>
-                          {clinic.hours?.[getCurrentDay()] ||
-                            "Hours not available"}
+                          {typeof clinic.hours === "object" &&
+                          clinic.hours._currentHours
+                            ? clinic.hours._currentHours
+                            : clinic.hours || "Hours not available"}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -810,6 +1074,9 @@ const Map = () => {
                   src={modalClinic.image}
                   alt={modalClinic.name}
                   className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.src = "/assets/images/dental.png";
+                  }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                 <button
@@ -827,7 +1094,8 @@ const Map = () => {
                       {renderStars(modalClinic.rating)}
                     </div>
                     <span className="text-sm">
-                      {modalClinic.rating} ({modalClinic.reviews} reviews)
+                      {modalClinic.rating.toFixed(1)} ({modalClinic.reviews}{" "}
+                      reviews)
                     </span>
                   </div>
                 </div>
@@ -847,7 +1115,7 @@ const Map = () => {
                     <div className="flex items-center gap-2 text-sm">
                       <Phone className="w-4 h-4 text-primary flex-shrink-0" />
                       <span className="text-muted-foreground">
-                        {modalClinic.phone}
+                        {modalClinic.phone || "Call for info"}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
@@ -860,7 +1128,10 @@ const Map = () => {
                         }
                       >
                         {modalClinic.isOpen ? "Open Now" : "Closed"} •{" "}
-                        {modalClinic.hours?.[getCurrentDay()]}
+                        {typeof modalClinic.hours === "object" &&
+                        modalClinic.hours._currentHours
+                          ? modalClinic.hours._currentHours
+                          : modalClinic.hours || "Hours vary"}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
@@ -910,15 +1181,15 @@ const Map = () => {
                               <Stethoscope className="w-4 h-4 text-primary" />
                               <div>
                                 <div className="font-medium text-foreground">
-                                  {service.name}
+                                  {service.name || service}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
-                                  {service.duration}
+                                  {service.duration || "Duration varies"}
                                 </div>
                               </div>
                             </div>
                             <div className="text-sm font-medium text-primary">
-                              {service.price}
+                              {service.price || "Call for pricing"}
                             </div>
                           </div>
                         )) || []}
@@ -946,25 +1217,36 @@ const Map = () => {
                             className="flex items-center gap-4 p-3 bg-muted/30 rounded-lg"
                           >
                             <img
-                              src={doctor.image}
-                              alt={doctor.name}
+                              src={
+                                doctor.image ||
+                                doctor.profile_image_url ||
+                                "/assets/images/dental.png"
+                              }
+                              alt={doctor.name || doctor.full_name}
                               className="w-12 h-12 rounded-full object-cover border-2 border-border"
+                              onError={(e) => {
+                                e.target.src = "/assets/images/dental.png";
+                              }}
                             />
                             <div className="flex-1">
                               <div className="font-medium text-foreground">
-                                {doctor.name}
+                                {doctor.name || doctor.full_name}
                               </div>
                               <div className="text-sm text-primary">
-                                {doctor.specialty}
+                                {doctor.specialty || doctor.specialization}
                               </div>
                               <div className="text-xs text-muted-foreground">
-                                {doctor.experience} • {doctor.availability}
+                                {doctor.experience ||
+                                  `${doctor.years_experience} years`}{" "}
+                                • {doctor.availability || "Available"}
                               </div>
                             </div>
                             <div className="flex items-center gap-1">
                               <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
                               <span className="text-sm font-medium">
-                                {doctor.rating}
+                                {doctor.rating ||
+                                  doctor.average_rating ||
+                                  "N/A"}
                               </span>
                             </div>
                           </div>
@@ -1030,15 +1312,7 @@ const Map = () => {
   );
 };
 
-const lightMapStyles = [
-  { featureType: "poi.business", stylers: [{ visibility: "off" }] },
-  {
-    featureType: "poi.park",
-    elementType: "labels.text",
-    stylers: [{ visibility: "off" }],
-  },
-];
-
+// Dark theme map styles
 const darkMapStyles = [
   { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
   { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
@@ -1049,9 +1323,38 @@ const darkMapStyles = [
     stylers: [{ color: "#d59563" }],
   },
   {
+    featureType: "poi",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#d59563" }],
+  },
+  {
+    featureType: "poi.business",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "poi.park",
+    elementType: "geometry",
+    stylers: [{ color: "#263c3f" }],
+  },
+  {
+    featureType: "poi.park",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#6b9a76" }],
+  },
+  {
     featureType: "road",
     elementType: "geometry",
     stylers: [{ color: "#38414e" }],
+  },
+  {
+    featureType: "road",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#212a37" }],
+  },
+  {
+    featureType: "road",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#9ca5b3" }],
   },
   {
     featureType: "road.highway",
@@ -1059,10 +1362,50 @@ const darkMapStyles = [
     stylers: [{ color: "#746855" }],
   },
   {
+    featureType: "road.highway",
+    elementType: "geometry.stroke",
+    stylers: [{ color: "#1f2835" }],
+  },
+  {
+    featureType: "road.highway",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#f3d19c" }],
+  },
+  {
+    featureType: "transit",
+    elementType: "geometry",
+    stylers: [{ color: "#2f3948" }],
+  },
+  {
+    featureType: "transit.station",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#d59563" }],
+  },
+  {
     featureType: "water",
     elementType: "geometry",
     stylers: [{ color: "#17263c" }],
   },
+  {
+    featureType: "water",
+    elementType: "labels.text.fill",
+    stylers: [{ color: "#515c6d" }],
+  },
+  {
+    featureType: "water",
+    elementType: "labels.text.stroke",
+    stylers: [{ color: "#17263c" }],
+  },
 ];
 
-export default Map;
+// Light theme map styles
+const lightMapStyles = [
+  { featureType: "poi.business", stylers: [{ visibility: "off" }] },
+  {
+    featureType: "poi.park",
+    elementType: "labels.text",
+    stylers: [{ visibility: "off" }],
+  },
+];
+
+export default MapView;

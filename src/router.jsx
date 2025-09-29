@@ -172,14 +172,7 @@ export const router = createBrowserRouter([
               { path: "history", element: withSuspense(AppointmentHistory) },
             ],
           },
-          {
-            path: "clinics",
-            children: [
-              { index: true, element: withSuspense(MapView) },
-              { path: "map", element: withSuspense(MapView) },
-              { path: "list", element: withSuspense(ClinicList) },
-            ],
-          },
+          { path: "clinics/map", element: withSuspense(MapView) },
           { path: "dentists", element: withSuspense(Dentist) },
           { path: "feedbacks", element: withSuspense(PatientFeedback) },
           { path: "profile", element: withSuspense(PatientProfile) },

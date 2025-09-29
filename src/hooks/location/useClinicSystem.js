@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
 import { useLocationService } from './useLocationService';
 import { useClinicDiscovery } from './useClinicDiscovery';
+import { supabase } from '@/lib/supabaseClient';
 
 export const useClinicSystem = () => {
   const { user, profile } = useAuth();
@@ -24,7 +25,7 @@ export const useClinicSystem = () => {
     }
   });
 
-  // 🔥 UNIFIED: Use discovery hook for clinic discovery
+  // Use discovery hook for clinic discovery
   const findNearestClinics = useCallback(async (location = null, options = {}) => {
     const searchLocation = location || userLocation;
     
@@ -42,7 +43,7 @@ export const useClinicSystem = () => {
     return await discoverClinics(searchLocation, options);
   }, [userLocation, getCurrentLocation, discoverClinics]);
 
-  // 🔥 UNIFIED: Use discovery hook for clinic search
+  // Use discovery hook for clinic search
   const searchClinics = useCallback(async (query, options = {}) => {
     return await searchClinicsDiscovery(query);
   }, [searchClinicsDiscovery]);
@@ -71,7 +72,7 @@ export const useClinicSystem = () => {
     }));
   }, []);
 
-  // 🔥 FIXED: Use proper RPC function for advanced search
+  // Use proper RPC function for advanced search
   const advancedClinicSearch = useCallback(async (searchParams) => {
     const {
       latitude,
