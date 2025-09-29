@@ -8,7 +8,6 @@ import {
   FiPlus,
   FiTrash2,
   FiSave,
-  FiCamera,
 } from "react-icons/fi";
 
 import { useProfileManager } from "@/app/shared/hook/useProfileManager";
@@ -16,11 +15,11 @@ import { ProfileHeader } from "@/app/shared/profile/profile-header";
 import { ProfileCard } from "@/app/shared/profile/profile-card";
 import { ProfileField } from "@/app/shared/profile/profile-field";
 import { ProfileAvatar } from "@/app/shared/profile/profile-avatar";
+import { ClinicAvatar } from "@/app/shared/profile/clinic-avatar"; // 🔥 NEW
+import { DoctorAvatar } from "@/app/shared/profile/doctor-avatar"; // 🔥 NEW
 import { AlertMessage } from "@/core/components/ui/alert-message";
 import Loader from "@/core/components/Loader";
 import { FaBuilding } from "react-icons/fa";
-import { useImageUpload } from "@/core/hooks/useImageUpload";
-import { useAuth } from "@/auth/context/AuthProvider";
 
 const StaffProfile = () => {
   const {
@@ -40,9 +39,8 @@ const StaffProfile = () => {
     handleSave,
     handleEditToggle,
     handleImageUpdate,
-    handleClinicUpdate,
-    handleServicesUpdate,
-    handleDoctorsUpdate,
+    handleClinicImageUpdate, // 🔥 NEW
+    handleDoctorImageUpdate, // 🔥 NEW
     services,
     doctors,
     clinicId,
@@ -52,22 +50,7 @@ const StaffProfile = () => {
     enableDoctorManagement: true,
   });
 
-  const { session } = useAuth();
   const [activeSection, setActiveSection] = useState("profile");
-
-  // 🔥 **CLINIC IMAGE UPLOAD HOOK**
-  const clinicImageUpload = useImageUpload({
-    onUploadSuccess: async (result) => {
-      console.log("🏥 Clinic image uploaded:", result.imageUrl);
-      // Update the local state immediately
-      handleInputChange("clinic_data", "image_url", result.imageUrl);
-      // Refresh profile to get updated data
-      await handleRefresh();
-    },
-    onUploadError: (error) => {
-      console.error("🏥 Clinic image upload error:", error);
-    },
-  });
 
   const isDataLoading =
     loading ||
@@ -101,29 +84,7 @@ const StaffProfile = () => {
     { value: "Management", label: "Management" },
   ];
 
-  // 🔥 **CLINIC IMAGE HANDLERS**
-  const handleClinicImageSelect = async (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      const result = await clinicImageUpload.selectFile(file);
-      if (result.success) {
-        await clinicImageUpload.uploadFile();
-      }
-    }
-  };
-
-  // 🔥 **DOCTOR IMAGE HANDLERS**
-  const handleDoctorImageSelect = async (event, doctorIndex) => {
-    const file = event.target.files[0];
-    if (file) {
-      // For now, just update the local state
-      // In a real implementation, you'd upload to a doctor-specific endpoint
-      console.log("Doctor image selected for index:", doctorIndex);
-      // You can implement doctor-specific image upload here
-    }
-  };
-
-  // Handle service operations
+  // 🔥 **FIXED: Handle service operations**
   const handleAddService = () => {
     const newService = {
       id: `new_${Date.now()}`,
@@ -134,6 +95,7 @@ const StaffProfile = () => {
       min_price: 1000,
       max_price: 2000,
       is_active: true,
+      _action: "create",
     };
 
     const currentServices = editedData?.services_data || [];
@@ -147,7 +109,7 @@ const StaffProfile = () => {
     handleInputChange("services_data", "", updatedServices);
   };
 
-  // Handle doctor operations
+  // 🔥 **FIXED: Handle doctor operations**
   const handleAddDoctor = () => {
     const newDoctor = {
       id: `new_${Date.now()}`,
@@ -161,6 +123,7 @@ const StaffProfile = () => {
       consultation_fee: 1500,
       is_available: true,
       image_url: "",
+      _action: "create",
     };
 
     const currentDoctors = editedData?.doctors_data || [];
@@ -455,68 +418,19 @@ const StaffProfile = () => {
                 placeholder="Enter clinic name"
               />
 
-              {/* 🔥 **FIXED: Simple Clinic Image Upload** */}
+              {/* 🔥 **IMPROVED: Clinic Image Upload - No Edit Mode Required** */}
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-semibold text-muted-foreground">
                   Clinic Image
                 </label>
-                <div className="relative">
-                  <div
-                    className="w-20 h-20 bg-muted rounded-lg overflow-hidden flex items-center justify-center cursor-pointer group relative border-2 border-dashed border-border hover:border-primary transition-colors"
-                    onClick={() =>
-                      isEditing &&
-                      document.getElementById("clinic-image-input")?.click()
-                    }
-                  >
-                    {clinicImageUpload.preview ||
-                    currentData?.clinic_data?.image_url ? (
-                      <img
-                        src={
-                          clinicImageUpload.preview ||
-                          currentData?.clinic_data?.image_url
-                        }
-                        alt="Clinic"
-                        className="w-full h-full object-cover transition-all duration-300 group-hover:scale-105"
-                      />
-                    ) : (
-                      <FaBuilding className="w-8 h-8 text-muted-foreground" />
-                    )}
-
-                    {isEditing && (
-                      <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                        {clinicImageUpload.isProcessing ? (
-                          <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <FiCamera className="text-white text-xl" />
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {isEditing && (
-                    <input
-                      id="clinic-image-input"
-                      type="file"
-                      accept="image/jpeg,image/jpg,image/png,image/webp"
-                      onChange={handleClinicImageSelect}
-                      disabled={clinicImageUpload.isProcessing}
-                      className="hidden"
-                    />
-                  )}
-
-                  {/* Status Messages */}
-                  {clinicImageUpload.error && (
-                    <div className="absolute top-full left-0 right-0 mt-2 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-xs">
-                      {clinicImageUpload.error}
-                    </div>
-                  )}
-
-                  {clinicImageUpload.success && (
-                    <div className="absolute top-full left-0 right-0 mt-2 p-2 bg-green-50 border border-green-200 rounded text-green-700 text-xs">
-                      {clinicImageUpload.success}
-                    </div>
-                  )}
-                </div>
+                <ClinicAvatar
+                  clinicId={clinicId}
+                  imageUrl={currentData?.clinic_data?.image_url}
+                  clinicName={currentData?.clinic_data?.name}
+                  onImageUpdate={handleClinicImageUpdate}
+                  size="xxl"
+                  editable={true}
+                />
               </div>
 
               <ProfileField
@@ -621,8 +535,9 @@ const StaffProfile = () => {
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-semibold">Manage Services</h3>
                   <button
+                    type="button"
                     onClick={handleAddService}
-                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors duration-200"
                   >
                     <FiPlus className="w-4 h-4 mr-2 inline" />
                     Add Service
@@ -662,8 +577,9 @@ const StaffProfile = () => {
                       </h4>
                       {isEditing && (
                         <button
+                          type="button"
                           onClick={() => handleRemoveService(index)}
-                          className="text-red-500 hover:text-red-700"
+                          className="text-red-500 hover:text-red-700 transition-colors duration-200"
                         >
                           <FiTrash2 className="w-4 h-4" />
                         </button>
@@ -695,7 +611,7 @@ const StaffProfile = () => {
                                 "services_data",
                                 index,
                                 "min_price",
-                                parseFloat(e.target.value)
+                                parseFloat(e.target.value) || 0
                               )
                             }
                             className="px-2 py-1 border border-border rounded"
@@ -709,7 +625,7 @@ const StaffProfile = () => {
                                 "services_data",
                                 index,
                                 "max_price",
-                                parseFloat(e.target.value)
+                                parseFloat(e.target.value) || 0
                               )
                             }
                             className="px-2 py-1 border border-border rounded"
@@ -738,7 +654,7 @@ const StaffProfile = () => {
                               "services_data",
                               index,
                               "duration_minutes",
-                              parseInt(e.target.value)
+                              parseInt(e.target.value) || 0
                             )
                           }
                           className="w-full px-2 py-1 border border-border rounded"
@@ -795,8 +711,9 @@ const StaffProfile = () => {
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-semibold">Manage Doctors</h3>
                   <button
+                    type="button"
                     onClick={handleAddDoctor}
-                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors duration-200"
                   >
                     <FiPlus className="w-4 h-4 mr-2 inline" />
                     Add Doctor
@@ -815,25 +732,17 @@ const StaffProfile = () => {
                   >
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex items-center gap-3">
-                        {/* 🔥 **SIMPLE DOCTOR IMAGE** */}
-                        <div className="relative">
-                          <div className="w-16 h-16 bg-muted rounded-full overflow-hidden flex items-center justify-center">
-                            {doctor.image_url ? (
-                              <img
-                                src={doctor.image_url}
-                                alt={`Dr. ${doctor.first_name} ${doctor.last_name}`}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <FiUser className="w-6 h-6 text-muted-foreground" />
-                            )}
-                          </div>
-                          {isEditing && (
-                            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
-                              <FiCamera className="w-3 h-3" />
-                            </div>
-                          )}
-                        </div>
+                        {/* 🔥 **IMPROVED: Doctor Image Upload - No Edit Mode Required** */}
+                        <DoctorAvatar
+                          doctorId={doctor.id}
+                          imageUrl={doctor.image_url}
+                          doctorName={`${doctor.first_name} ${doctor.last_name}`}
+                          onImageUpdate={(newImageUrl) =>
+                            handleDoctorImageUpdate(doctor.id, newImageUrl)
+                          }
+                          size="lg"
+                          editable={true}
+                        />
 
                         <h4 className="font-semibold text-foreground">
                           {isEditing ? (
@@ -875,8 +784,9 @@ const StaffProfile = () => {
                       </div>
                       {isEditing && (
                         <button
+                          type="button"
                           onClick={() => handleRemoveDoctor(index)}
-                          className="text-red-500 hover:text-red-700"
+                          className="text-red-500 hover:text-red-700 transition-colors duration-200"
                         >
                           <FiTrash2 className="w-4 h-4" />
                         </button>
@@ -922,7 +832,7 @@ const StaffProfile = () => {
                                 "doctors_data",
                                 index,
                                 "experience_years",
-                                parseInt(e.target.value)
+                                parseInt(e.target.value) || 0
                               )
                             }
                             className="px-2 py-1 border border-border rounded"
@@ -936,7 +846,7 @@ const StaffProfile = () => {
                                 "doctors_data",
                                 index,
                                 "consultation_fee",
-                                parseFloat(e.target.value)
+                                parseFloat(e.target.value) || 0
                               )
                             }
                             className="px-2 py-1 border border-border rounded"

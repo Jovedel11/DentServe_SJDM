@@ -22,12 +22,12 @@ export const useImageUpload = (options = {}) => {
     maxWidthOrHeight = 800,
     quality = 0.8,
     allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"],
-    maxFileSize = 5 * 1024 * 1024, // 5MB
+    maxFileSize = 5 * 1024 * 1024, // Default 5MB
     
     // Cloudinary options
-    folder = null, // Override default folder
-    transformations = null, // Override default transformations
-    publicIdPrefix = null, // Override default public_id prefix
+    folder = null,
+    transformations = null,
+    publicIdPrefix = null,
   } = options;
 
   const { session } = useAuth();
@@ -46,7 +46,7 @@ export const useImageUpload = (options = {}) => {
   const abortControllerRef = useRef(null);
   const access_token = session?.access_token;
 
-  // Get default configurations based on upload type
+  // 🔥 **IMPROVED: Get default configurations with higher limits for clinic**
   const getUploadConfig = useCallback(() => {
     const configs = {
       profile: {
@@ -60,18 +60,20 @@ export const useImageUpload = (options = {}) => {
         publicIdPrefix: 'user',
         maxSizeMB: 1,
         maxWidthOrHeight: 400,
+        maxFileSize: 5 * 1024 * 1024, // 5MB
       },
       clinic: {
         endpoint: 'clinic-image',
         folder: 'clinics',
         fieldName: 'clinicImage',
         transformations: [
-          { width: 800, height: 600, crop: 'fill' },
-          { quality: 'auto', fetch_format: 'auto' }
+          { width: 1200, height: 800, crop: 'fill' },
+          { quality: 'auto:good', fetch_format: 'auto' } // 🔥 Better quality for clinic images
         ],
         publicIdPrefix: 'clinic',
-        maxSizeMB: 2,
+        maxSizeMB: 5, // 🔥 Increased compression target but allow larger input
         maxWidthOrHeight: 1200,
+        maxFileSize: 50 * 1024 * 1024, // 🔥 50MB input allowed
       },
       doctor: {
         endpoint: 'doctor-image',
@@ -84,6 +86,7 @@ export const useImageUpload = (options = {}) => {
         publicIdPrefix: 'doctor',
         maxSizeMB: 1,
         maxWidthOrHeight: 400,
+        maxFileSize: 5 * 1024 * 1024, // 5MB
       },
       general: {
         endpoint: 'general-image',
@@ -96,6 +99,7 @@ export const useImageUpload = (options = {}) => {
         publicIdPrefix: 'img',
         maxSizeMB: 3,
         maxWidthOrHeight: 1500,
+        maxFileSize: 10 * 1024 * 1024, // 10MB
       }
     };
 
@@ -109,8 +113,9 @@ export const useImageUpload = (options = {}) => {
       publicIdPrefix: publicIdPrefix || defaultConfig.publicIdPrefix,
       maxSizeMB: maxSizeMB || defaultConfig.maxSizeMB,
       maxWidthOrHeight: maxWidthOrHeight || defaultConfig.maxWidthOrHeight,
+      maxFileSize: maxFileSize || defaultConfig.maxFileSize,
     };
-  }, [uploadType, folder, fieldName, transformations, publicIdPrefix, maxSizeMB, maxWidthOrHeight]);
+  }, [uploadType, folder, fieldName, transformations, publicIdPrefix, maxSizeMB, maxWidthOrHeight, maxFileSize]);
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -135,20 +140,20 @@ export const useImageUpload = (options = {}) => {
   const simulateProgress = useCallback((uploadId) => {
     let progress = 0;
     const interval = setInterval(() => {
-      progress += Math.random() * 15;
-      if (progress > 95) {
-        progress = 95;
+      progress += Math.random() * 10; // 🔥 Slower progress for large files
+      if (progress > 90) {
+        progress = 90;
         clearInterval(interval);
       }
       
       setUploadState(prev => 
-        prev.uploadId === uploadId ? { ...prev, progress: Math.min(progress, 95) } : prev
+        prev.uploadId === uploadId ? { ...prev, progress: Math.min(progress, 90) } : prev
       );
       
       if (onUploadProgress) {
-        onUploadProgress(Math.min(progress, 95));
+        onUploadProgress(Math.min(progress, 90));
       }
-    }, 200);
+    }, 300); // 🔥 Slower updates for large files
 
     return interval;
   }, [onUploadProgress]);
@@ -163,8 +168,13 @@ export const useImageUpload = (options = {}) => {
       return { success: false, error: 'No file selected' };
     }
 
-    // Validate file
-    const validationError = validateFile(file, { allowedTypes, maxFileSize });
+    const config = getUploadConfig();
+
+    // 🔥 **IMPROVED: Use config-specific file size validation**
+    const validationError = validateFile(file, { 
+      allowedTypes, 
+      maxFileSize: config.maxFileSize 
+    });
     if (validationError) {
       setError(validationError);
       return { success: false, error: validationError };
@@ -178,18 +188,28 @@ export const useImageUpload = (options = {}) => {
       setPreview(previewUrl);
 
       if (autoCompress) {
-        const config = getUploadConfig();
         // Start compression
         setUploadState(prev => ({ ...prev, isCompressing: true }));
         
-        const compressed = await compressImage(file, {
+        // 🔥 **IMPROVED: Use less aggressive compression for clinic images**
+        const compressionSettings = uploadType === 'clinic' ? {
+          maxSizeMB: config.maxSizeMB,
+          maxWidthOrHeight: config.maxWidthOrHeight,
+          quality: 0.85, // Higher quality for clinic images
+          alwaysKeepResolution: false,
+          useWebWorker: true,
+        } : {
           maxSizeMB: config.maxSizeMB,
           maxWidthOrHeight: config.maxWidthOrHeight,
           quality,
-        });
+        };
+
+        const compressed = await compressImage(file, compressionSettings);
         
         setCompressedFile(compressed);
         setUploadState(prev => ({ ...prev, isCompressing: false }));
+        
+        console.log(`🔧 Compression complete: ${(file.size / 1024 / 1024).toFixed(2)}MB → ${(compressed.size / 1024 / 1024).toFixed(2)}MB`);
       }
 
       return { success: true, preview: previewUrl };
@@ -200,11 +220,13 @@ export const useImageUpload = (options = {}) => {
       cleanup();
       return { success: false, error: errorMessage };
     }
-  }, [allowedTypes, maxFileSize, autoCompress, quality, cleanup, getUploadConfig]);
+  }, [allowedTypes, autoCompress, quality, cleanup, getUploadConfig, uploadType]);
 
-  // Handle upload
+  // 🔥 **IMPROVED: Handle upload with better validation and error handling**
   const uploadFile = useCallback(async (customOptions = {}) => {
-    if (!compressedFile && !originalFile) {
+    const fileToUpload = compressedFile || originalFile;
+    
+    if (!fileToUpload) {
       const error = 'Please select a file first';
       setError(error);
       return { success: false, error };
@@ -216,14 +238,19 @@ export const useImageUpload = (options = {}) => {
       return { success: false, error };
     }
 
-    // Validate required entityId for non-profile uploads
-    if (uploadType !== 'profile' && uploadType !== 'general' && !entityId) {
-      const error = `${uploadType} ID is required for ${uploadType} uploads`;
+    // 🔥 **IMPROVED: Better entity validation**
+    if (uploadType === 'clinic' && !entityId) {
+      const error = 'Clinic ID is required for clinic image uploads';
       setError(error);
       return { success: false, error };
     }
 
-    const fileToUpload = compressedFile || originalFile;
+    if (uploadType === 'doctor' && (!entityId || entityId.toString().startsWith('new_'))) {
+      const error = 'Doctor must be saved before uploading image';
+      setError(error);
+      return { success: false, error };
+    }
+
     const config = getUploadConfig();
     const uploadOptions = { ...config, ...customOptions };
     
@@ -264,6 +291,8 @@ export const useImageUpload = (options = {}) => {
         formData.append('transformations', JSON.stringify(customOptions.transformations));
       }
 
+      console.log(`🚀 Uploading ${uploadType} image: ${(fileToUpload.size / 1024 / 1024).toFixed(2)}MB`);
+
       const result = await imageService.uploadGenericImage(
         access_token,
         formData,
@@ -290,7 +319,7 @@ export const useImageUpload = (options = {}) => {
 
     } catch (error) {
       clearInterval(progressInterval);
-      console.error('Upload error:', error);
+      console.error(`❌ ${uploadType} upload error:`, error);
       
       let errorMessage = 'Upload failed. Please try again.';
       
@@ -298,6 +327,8 @@ export const useImageUpload = (options = {}) => {
         errorMessage = 'Upload cancelled';
       } else if (error.message.includes('Network error')) {
         errorMessage = 'Network error. Please check your connection.';
+      } else if (error.message.includes('413') || error.message.includes('too large')) {
+        errorMessage = `File too large. Maximum size for ${uploadType} images is ${Math.round(config.maxFileSize / 1024 / 1024)}MB.`;
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -316,6 +347,15 @@ export const useImageUpload = (options = {}) => {
       return { success: false, error: errorMessage };
     }
   }, [compressedFile, originalFile, access_token, uploadType, entityId, simulateProgress, onUploadStart, onUploadSuccess, onUploadError, cleanup, getUploadConfig]);
+
+  // 🔥 **AUTO UPLOAD: Select and upload in one go**
+  const selectAndUpload = useCallback(async (file) => {
+    const selectResult = await selectFile(file);
+    if (selectResult.success) {
+      return await uploadFile();
+    }
+    return selectResult;
+  }, [selectFile, uploadFile]);
 
   // Cancel upload
   const cancelUpload = useCallback(async () => {
@@ -354,6 +394,7 @@ export const useImageUpload = (options = {}) => {
     // Actions
     selectFile,
     uploadFile,
+    selectAndUpload,
     cancelUpload,
     reset,
     cleanup,

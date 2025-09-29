@@ -1,9 +1,6 @@
 import React from "react";
 import { FiCamera, FiUser } from "react-icons/fi";
 import ProfileUpload from "@/core/components/image/ProfileUpload";
-import { useAuth } from "@/auth/context/AuthProvider";
-import ClinicImageUpload from "@/core/components/image/ClinicImageUpload";
-import DoctorImageUpload from "@/core/components/image/DoctorImageUpload";
 
 /**
  * Reusable ProfileAvatar Component
@@ -18,8 +15,6 @@ export const ProfileAvatar = ({
   editable = true,
   className = "",
 }) => {
-  const { isStaff, isAdmin } = useAuth();
-
   const sizeClasses = {
     sm: "w-12 h-12",
     md: "w-16 h-16",
@@ -30,25 +25,14 @@ export const ProfileAvatar = ({
   if (editable && onImageUpdate) {
     return (
       <div className={`relative flex-shrink-0 ${className}`}>
-        {isStaff ? (
-          <ClinicImageUpload
-            currentImageUrl={imageUrl}
-            onImageUpdate={onImageUpdate}
-            variant="avatar"
-            size={size}
-            showFileInfo={false}
-            showGuidelines={false}
-          />
-        ) : (
-          <DoctorImageUpload
-            currentImageUrl={imageUrl}
-            onImageUpdate={onImageUpdate}
-            variant="avatar"
-            size={size}
-            showFileInfo={false}
-            showGuidelines={false}
-          />
-        )}
+        <ProfileUpload
+          currentImageUrl={imageUrl}
+          onImageUpdate={onImageUpdate}
+          variant="avatar"
+          size={size}
+          showFileInfo={false}
+          showGuidelines={false}
+        />
         <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-primary text-primary-foreground border-4 border-card flex items-center justify-center shadow-lg">
           <FiCamera className="w-4 h-4" />
         </div>

@@ -27,7 +27,6 @@ export const useStaffDoctors = (clinicId, options = {}) => {
           schedule,
           doctors (
             id,
-            user_id,
             license_number,
             specialization,
             first_name,

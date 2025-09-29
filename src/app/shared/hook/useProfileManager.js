@@ -397,6 +397,88 @@ export const useProfileManager = (options = {}) => {
     }
   }, [isPatient, isStaff, isAdmin, updatePatientProfile, updateStaffProfile, updateAdminProfile, handleRefreshProfile]);
 
+  // 🔥 **NEW: Handle clinic image update**
+  const handleClinicImageUpdate = useCallback(async (newImageUrl) => {
+    if (!isStaff || !clinicId) {
+      setError('Only staff can update clinic images');
+      return { success: false, error: 'Access denied' };
+    }
+
+    try {
+      // Update clinic image directly without edit mode
+      const result = await updateStaffProfile(
+        {}, // No profile data changes
+        {}, // No staff data changes
+        { imageUrl: newImageUrl }, // Only clinic image
+        [], // No services changes
+        [] // No doctors changes
+      );
+
+      if (result?.success) {
+        await handleRefresh();
+        setSuccess('Clinic image updated successfully!');
+        setTimeout(() => setSuccess(''), 3000);
+        return { success: true };
+      } else {
+        setError(result?.error || 'Failed to update clinic image');
+        return { success: false, error: result?.error };
+      }
+    } catch (error) {
+      console.error('Error updating clinic image:', error);
+      setError('Failed to update clinic image');
+      return { success: false, error: error.message };
+    }
+  }, [isStaff, clinicId, updateStaffProfile, handleRefresh]);
+
+  // 🔥 **NEW: Handle doctor image update**
+  const handleDoctorImageUpdate = useCallback(async (doctorId, newImageUrl) => {
+    if (!isStaff || !clinicId) {
+      setError('Only staff can update doctor images');
+      return { success: false, error: 'Access denied' };
+    }
+
+    try {
+      // Find the doctor in current doctors data
+      const currentDoctors = doctors || [];
+      const doctorIndex = currentDoctors.findIndex(d => d.id === doctorId);
+      
+      if (doctorIndex === -1) {
+        setError('Doctor not found');
+        return { success: false, error: 'Doctor not found' };
+      }
+
+      // Update only this doctor's image
+      const updatedDoctors = [...currentDoctors];
+      updatedDoctors[doctorIndex] = {
+        ...updatedDoctors[doctorIndex],
+        image_url: newImageUrl,
+        _action: 'update'
+      };
+
+      const result = await updateStaffProfile(
+        {}, // No profile data changes
+        {}, // No staff data changes
+        {}, // No clinic changes
+        [], // No services changes
+        updatedDoctors // Only doctor changes
+      );
+
+      if (result?.success) {
+        await handleRefresh();
+        setSuccess('Doctor image updated successfully!');
+        setTimeout(() => setSuccess(''), 3000);
+        return { success: true };
+      } else {
+        setError(result?.error || 'Failed to update doctor image');
+        return { success: false, error: result?.error };
+      }
+    } catch (error) {
+      console.error('Error updating doctor image:', error);
+      setError('Failed to update doctor image');
+      return { success: false, error: error.message };
+    }
+  }, [isStaff, clinicId, doctors, updateStaffProfile, handleRefresh]);
+
   return {
     // Data
     profileData,
@@ -419,6 +501,8 @@ export const useProfileManager = (options = {}) => {
     handleSave,
     handleEditToggle,
     handleImageUpdate,
+    handleClinicImageUpdate, 
+    handleDoctorImageUpdate, 
     initializeEditData,
     
     // Staff-specific management

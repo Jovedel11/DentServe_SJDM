@@ -86,6 +86,48 @@ create table "public"."staff_profiles" (
   "updated_at" timestamp with time zone default now()
 );
 
+create table public.doctors (
+  "id" uuid not null default extensions.uuid_generate_v4 (),
+  "license_number" character varying(100) not null,
+  "specialization" character varying(200) not null,
+  "education" text null,
+  "experience_years" integer null,
+  "bio" text null,
+  "consultation_fee" numeric(10, 2) null,
+  "profile_image_url" text null,
+  "languages_spoken" text[] null,
+  "certifications" jsonb null,
+  "awards" text[] null,
+  "is_available" boolean null default true,
+  "rating" numeric(3, 2) null default 0.00,
+  "total_reviews" integer null default 0,
+  "created_at" timestamp with time zone null default now(),
+  "updated_at" timestamp with time zone null default now(),
+  "first_name" character varying(100) not null default ''::character varying,
+  "last_name" character varying(100) not null default ''::character varying,
+  constraint doctors_pkey primary key (id),
+  constraint doctors_license_number_key unique (license_number),
+  constraint doctors_user_id_fkey foreign KEY (user_id) references users (id) on delete CASCADE
+) TABLESPACE pg_default;
+
+create index IF not exists idx_doctors_user_id on public.doctors using btree (user_id) TABLESPACE pg_default;
+
+create index IF not exists idx_doctors_specialization_available on public.doctors using btree (specialization, is_available) TABLESPACE pg_default
+where
+  (is_available = true);
+
+create index IF not exists idx_doctors_available_rating on public.doctors using btree (is_available, rating desc) TABLESPACE pg_default
+where
+  (is_available = true);
+
+create index IF not exists idx_doctors_clinic_search on public.doctors using btree (is_available, specialization, rating desc) TABLESPACE pg_default
+where
+  (is_available = true);
+
+create trigger update_doctors_updated_at BEFORE
+update on doctors for EACH row
+execute FUNCTION update_updated_at_column ();
+
 -- User archive preferences
 create table "public"."user_archive_preferences" (
   "id" uuid not null default gen_random_uuid(),
@@ -97,6 +139,47 @@ create table "public"."user_archive_preferences" (
   "created_at" timestamp with time zone default now(),
   "updated_at" timestamp with time zone default now()
 );
+
+create table public.clinics (
+  "id" uuid not null default extensions.uuid_generate_v4 (),
+  "name" character varying(200) not null,
+  "description" text null,
+  "address" text not null,
+  "city" character varying(100) not null,
+  "province" character varying(100) null,
+  "zip_code" character varying(20) null,
+  "country" character varying(100) not null default 'Philippines'::character varying,
+  "location" geography not null,
+  "phone" character varying(20) null,
+  "email" character varying(255) not null,
+  "website_url" text null,
+  "operating_hours" jsonb null,
+  "services_offered" jsonb null,
+  "appointment_limit_per_patient" integer null default 1000000,
+  "cancellation_policy_hours" integer null default 48,
+  "is_active" boolean null default true,
+  "rating" numeric(3, 2) null default 0.00,
+  "total_reviews" integer null default 0,
+  "created_at" timestamp with time zone null default now(),
+  "updated_at" timestamp with time zone null default now(),
+  "image_url" text null,
+  "timezone" character varying(50) null default 'Asia/Manila'::character varying,
+  constraint clinics_pkey primary key (id)
+) TABLESPACE pg_default;
+
+create index IF not exists idx_clinics_location on public.clinics using gist (location) TABLESPACE pg_default;
+
+create index IF not exists idx_clinics_location_active on public.clinics using gist (location) TABLESPACE pg_default
+where
+  (is_active = true);
+
+create index IF not exists idx_clinics_search_optimized on public.clinics using btree (is_active, rating desc, total_reviews desc) TABLESPACE pg_default
+where
+  (is_active = true);
+
+create trigger update_clinics_updated_at BEFORE
+update on clinics for EACH row
+execute FUNCTION update_updated_at_column ();
 
 -- ========================================
 -- USER PROFILE CYCLE FUNCTIONS

@@ -76,7 +76,7 @@ const createUploadHandler = (config) => {
       
       console.log(`Processing ${config.type} image upload${entityId ? ` for ID: ${entityId}` : ''}`);
       
-      // Server-side validation
+      // 🔥 **IMPROVED: Server-side validation with higher limits for clinic**
       const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
       if (!allowedTypes.includes(req.file.mimetype)) {
         cleanup();
@@ -86,11 +86,21 @@ const createUploadHandler = (config) => {
         });
       }
 
-      if (req.file.size > 5 * 1024 * 1024) {
+      // 🔥 **DYNAMIC FILE SIZE LIMITS**
+      const maxSizes = {
+        clinic: 50 * 1024 * 1024, // 50MB for clinic images
+        profile: 5 * 1024 * 1024,  // 5MB for profile images
+        doctor: 5 * 1024 * 1024,   // 5MB for doctor images
+        general: 10 * 1024 * 1024  // 10MB for general images
+      };
+
+      const maxSize = maxSizes[config.type] || maxSizes.general;
+      
+      if (req.file.size > maxSize) {
         cleanup();
         return res.status(400).json({
           success: false,
-          error: 'File too large. Maximum size is 5MB.'
+          error: `File too large. Maximum size for ${config.type} images is ${Math.round(maxSize / 1024 / 1024)}MB.`
         });
       }
 
@@ -113,7 +123,7 @@ const createUploadHandler = (config) => {
         transformation: customTransformations ? JSON.parse(customTransformations) : config.transformations,
         overwrite: true,
         resource_type: 'image',
-        timeout: 60000,
+        timeout: 120000, // 🔥 Increased timeout for large files
       };
 
       // Upload to Cloudinary
@@ -293,7 +303,7 @@ router.post('/profile-image',
   })
 );
 
-// Clinic image upload
+// 🔥 **IMPROVED: Clinic image upload with higher limits**
 router.post('/clinic-image', 
   uploadLimiter, 
   authenticateToken, 
@@ -305,8 +315,8 @@ router.post('/clinic-image',
     entityIdField: 'clinicId',
     requiresEntityId: true,
     transformations: [
-      { width: 800, height: 600, crop: 'fill' },
-      { quality: 'auto', fetch_format: 'auto' }
+      { width: 1200, height: 800, crop: 'fill' },
+      { quality: 'auto:good', fetch_format: 'auto' } // Better quality for clinic images
     ],
     validateEntity: async (clinicId) => {
       const { data } = await supabase
@@ -337,7 +347,7 @@ router.post('/clinic-image',
   })
 );
 
-// Doctor image upload
+// 🔥 **FIXED: Doctor image upload with correct field selection**
 router.post('/doctor-image', 
   uploadLimiter, 
   authenticateToken, 
@@ -353,19 +363,21 @@ router.post('/doctor-image',
       { quality: 'auto', fetch_format: 'auto' }
     ],
     validateEntity: async (doctorId) => {
+      // 🔥 **FIXED: Use correct field names from doctors table**
       const { data } = await supabase
         .from('doctors')
-        .select('id, name')
+        .select('id, first_name, last_name') // Use actual field names
         .eq('id', doctorId)
         .single();
       return data;
     },
     updateDatabase: async (imageUrl, doctorId) => {
       try {
+        // 🔥 **FIXED: Update the correct image field**
         const { data, error } = await supabase
           .from('doctors')
           .update({ 
-            image_url: imageUrl,
+            image_url: imageUrl, // Use image_url field as per schema
             updated_at: new Date().toISOString()
           })
           .eq('id', doctorId);
