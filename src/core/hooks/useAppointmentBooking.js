@@ -127,7 +127,7 @@ export const useAppointmentBooking = () => {
             rating,
             first_name,
             last_name,
-            profile_image_url
+            image_url
           )
         `)
         .eq('clinic_id', clinicId)
@@ -151,7 +151,7 @@ export const useAppointmentBooking = () => {
           rating: doctor?.rating,
           name: `Dr. ${firstName} ${lastName}`.trim(),
           display_name: `${firstName} ${lastName}`.trim() || doctor?.specialization || 'Unknown',
-          profile_image_url: doctor?.profile_image_url
+          image_url: doctor?.image_url
         };
       }).filter(Boolean);
 

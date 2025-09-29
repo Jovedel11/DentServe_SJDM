@@ -22,8 +22,9 @@ export const useBookingFlow = () => {
   const [crossClinicWarnings, setCrossClinicWarnings] = useState([]);
   const [bookingWarnings, setBookingWarnings] = useState([]);
   const [validationLoading, setValidationLoading] = useState(false);
+  const [patientReliability, setPatientReliability] = useState(null);
 
-  // ✅ FIX: Use refs to prevent infinite loops
+  // Use refs to prevent infinite loops
   const lastValidationRef = useRef({ clinicId: null, date: null });
   const isInitializedRef = useRef(false);
 
@@ -36,7 +37,7 @@ export const useBookingFlow = () => {
     setToastMessage("");
   }, []);
 
-  // ✅ FIX: Stable fetch clinics function
+  // Fetch clinics with enhanced location support
   const fetchClinics = useCallback(async (userLocation = null) => {
     if (!isPatient) return;
 
@@ -62,7 +63,7 @@ export const useBookingFlow = () => {
     }
   }, [isPatient, showToast]);
 
-  // ✅ FIX: Stable fetch doctors function
+  // Fetch doctors with availability info
   const fetchDoctors = useCallback(async (clinicId) => {
     if (clinicId) {
       const result = await appointmentHook.getAvailableDoctors(clinicId);
@@ -76,7 +77,7 @@ export const useBookingFlow = () => {
     }
   }, [appointmentHook.getAvailableDoctors, showToast]);
 
-  // ✅ FIX: Stable fetch services function  
+  // Fetch services with pricing info
   const fetchServices = useCallback(async (clinicId) => {
     if (clinicId) {
       const result = await appointmentHook.getServices(clinicId);
@@ -90,57 +91,70 @@ export const useBookingFlow = () => {
     }
   }, [appointmentHook.getServices, showToast]);
 
-  // ✅ FIX: Check appointment limits with deduplication
+  // Enhanced appointment limit checking
   const checkAppointmentLimits = useCallback(async (clinicId, appointmentDate = null) => {
     if (!clinicId || !isPatient || !profile?.user_id) return;
 
-    // ✅ Prevent duplicate calls
     const validationKey = `${clinicId}-${appointmentDate || 'null'}`;
     if (lastValidationRef.current.key === validationKey && lastValidationRef.current.loading) {
-      return; // Already checking this combination
+      return;
     }
 
     lastValidationRef.current = { key: validationKey, loading: true };
     setValidationLoading(true);
     
     try {
-      const { data, error } = await supabase.rpc('check_appointment_limit', {
+      // Check appointment limits
+      const { data: limitData, error: limitError } = await supabase.rpc('check_appointment_limit', {
         p_patient_id: profile.user_id,
         p_clinic_id: clinicId,
         p_appointment_date: appointmentDate
       });
 
-      if (error) throw error;
+      if (limitError) throw limitError;
+      setAppointmentLimitInfo(limitData);
+      
+      // Check patient reliability
+      const { data: reliabilityData, error: reliabilityError } = await supabase.rpc('check_patient_reliability', {
+        p_patient_id: profile.user_id,
+        p_clinic_id: clinicId
+      });
 
-      setAppointmentLimitInfo(data);
+      if (!reliabilityError && reliabilityData) {
+        setPatientReliability(reliabilityData);
+      }
       
       // Extract cross-clinic warnings
-      const crossClinicAppts = data?.data?.cross_clinic_appointments || [];
+      const crossClinicAppts = limitData?.data?.cross_clinic_appointments || [];
       setCrossClinicWarnings(crossClinicAppts);
       
-      // Set booking warnings based on limits
+      // Set booking warnings based on limits and reliability
       const warnings = [];
-      if (!data.allowed) {
+      if (!limitData.allowed) {
         warnings.push({
           type: 'error',
-          message: data.message,
-          reason: data.reason
+          message: limitData.message,
+          reason: limitData.reason
         });
       } else {
-        // Add informational warnings
+        // Cross-clinic coordination warnings
         if (crossClinicAppts.length > 0) {
           warnings.push({
             type: 'info',
-            message: `You have ${crossClinicAppts.length} appointment(s) at other clinics. Please inform your healthcare providers.`
+            message: `You have ${crossClinicAppts.length} appointment(s) at other clinics. Please inform your healthcare providers for better care coordination.`
           });
         }
-        
-        const clinicCount = data.data?.clinic_appointments || 0;
-        const clinicLimit = data.data?.clinic_limit || 0;
-        if (clinicCount >= clinicLimit - 1) {
+
+        // Reliability warnings
+        if (reliabilityData?.risk_level === 'high_risk') {
           warnings.push({
             type: 'warning',
-            message: `This will be your last available appointment at this clinic (${clinicCount + 1}/${clinicLimit}).`
+            message: 'Your appointment history shows some missed appointments. Please ensure you can attend this appointment.'
+          });
+        } else if (reliabilityData?.risk_level === 'moderate_risk') {
+          warnings.push({
+            type: 'info',
+            message: 'Please remember to attend your appointment or cancel with adequate notice.'
           });
         }
       }
@@ -156,7 +170,7 @@ export const useBookingFlow = () => {
     }
   }, [isPatient, profile?.user_id, showToast]);
 
-  // ✅ FIX: Stable event handlers
+  // Enhanced event handlers
   const handleClinicSelect = useCallback((clinic) => {
     appointmentHook.updateBookingData({
       clinic,
@@ -166,7 +180,6 @@ export const useBookingFlow = () => {
       time: null,
     });
     
-    // Check appointment limits for selected clinic
     checkAppointmentLimits(clinic.id);
   }, [appointmentHook.updateBookingData, checkAppointmentLimits]);
 
@@ -194,17 +207,15 @@ export const useBookingFlow = () => {
     });
   }, [appointmentHook.updateBookingData]);
 
-  // ✅ FIX: Enhanced date selection with limit checking
   const handleDateSelect = useCallback((date) => {
     appointmentHook.updateBookingData({ date, time: null });
     
-    // Re-check limits with specific date
     if (appointmentHook.bookingData.clinic?.id) {
       checkAppointmentLimits(appointmentHook.bookingData.clinic.id, date);
     }
   }, [appointmentHook.updateBookingData, appointmentHook.bookingData.clinic?.id, checkAppointmentLimits]);
 
-  // ✅ FIX: Stable submit handler
+  // Enhanced submit handler with comprehensive validation
   const handleSubmit = useCallback(async () => {
     if (!isPatient) {
       showToast("Only patients can book appointments", "error");
@@ -217,31 +228,66 @@ export const useBookingFlow = () => {
       return;
     }
 
+    // Reliability check
+    if (patientReliability?.risk_level === 'high_risk') {
+      const confirmed = window.confirm(
+        "Your appointment history shows some missed appointments. Are you sure you can attend this appointment? Continued no-shows may affect your booking privileges."
+      );
+      if (!confirmed) return;
+    }
+
     const result = await appointmentHook.bookAppointment();
 
     if (result.success) {
       setBookingSuccess(true);
       
-      // Enhanced success message with additional info
-      let successMessage = "Appointment booked successfully!";
-      if (result.appointment.symptoms_sent) {
-        successMessage += " Your symptoms have been sent to the staff.";
+      // Enhanced success message
+      let successMessage = "Appointment booked successfully! ";
+      
+      if (result.appointment.details?.requires_approval) {
+        successMessage += "Your appointment is pending clinic approval. ";
       }
+      
+      if (result.appointment.symptoms_sent) {
+        successMessage += "Your symptoms have been sent to the staff. ";
+      }
+      
       if (crossClinicWarnings.length > 0) {
-        successMessage += " Please inform your healthcare providers about your other appointments.";
+        successMessage += "Please inform your healthcare providers about your other appointments for better care coordination.";
       }
       
       showToast(successMessage, "success");
 
+      // Redirect after success
       setTimeout(() => {
         window.location.href = "/patient/appointments";
       }, 3000);
     } else {
       showToast(`Booking failed: ${result.error}`, "error");
     }
-  }, [isPatient, appointmentHook.bookAppointment, appointmentLimitInfo, crossClinicWarnings, showToast]);
+  }, [isPatient, appointmentHook.bookAppointment, appointmentLimitInfo, patientReliability, crossClinicWarnings, showToast]);
 
-  // ✅ FIX: Effects with proper dependencies and initialization checks
+  // Enhanced cancellation policy info
+  const getCancellationInfo = useCallback(() => {
+    if (!appointmentHook.bookingData.clinic) return null;
+    
+    const policyHours = appointmentHook.bookingData.clinic.cancellation_policy_hours || 24;
+    const appointmentDateTime = appointmentHook.bookingData.date && appointmentHook.bookingData.time 
+      ? new Date(`${appointmentHook.bookingData.date}T${appointmentHook.bookingData.time}`)
+      : null;
+    
+    if (!appointmentDateTime) return null;
+    
+    const cancellationDeadline = new Date(appointmentDateTime.getTime() - (policyHours * 60 * 60 * 1000));
+    
+    return {
+      policyHours,
+      cancellationDeadline,
+      canStillCancel: new Date() < cancellationDeadline
+    };
+  }, [appointmentHook.bookingData.clinic, appointmentHook.bookingData.date, appointmentHook.bookingData.time]);
+
+  // Effects
   useEffect(() => {
     if (!isInitializedRef.current) {
       isInitializedRef.current = true;
@@ -280,6 +326,7 @@ export const useBookingFlow = () => {
     crossClinicWarnings,
     bookingWarnings,
     validationLoading,
+    patientReliability,
     
     // Handlers
     showToast,
@@ -292,5 +339,6 @@ export const useBookingFlow = () => {
     
     // Enhanced methods
     checkAppointmentLimits,
+    getCancellationInfo,
   };
 };

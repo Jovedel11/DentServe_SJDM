@@ -203,7 +203,7 @@ alter table "public"."doctor_clinics" enable row level security;
     "experience_years" integer,
     "bio" text,
     "consultation_fee" numeric(10,2),
-    "profile_image_url" text,
+    "image_url" text,
     "languages_spoken" text[],
     "certifications" jsonb,
     "awards" text[],

@@ -102,7 +102,7 @@ export const useClinicSystem = () => {
             rating,
             total_reviews,
             is_available,
-            profile_image_url,
+            image_url,
             bio
           )
         `)

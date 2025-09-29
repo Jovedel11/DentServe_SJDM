@@ -35,7 +35,7 @@ export const useDoctorManager = () => {
             experience_years,
             bio,
             consultation_fee,
-            profile_image_url,
+            image_url,
             languages_spoken,
             certifications,
             awards,

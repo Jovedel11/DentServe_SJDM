@@ -6,9 +6,9 @@ import { useAuth } from '@/auth/context/AuthProvider';
 export const useImageUpload = (options = {}) => {
   const {
     // Upload configuration
-    uploadType = 'profile', // 'profile', 'clinic', 'doctor', 'general'
-    entityId = null, // clinicId, doctorId, etc.
-    fieldName = 'image', // Form field name
+    uploadType = 'profile',
+    entityId = null,
+    fieldName = 'image',
     
     // Callbacks
     onUploadSuccess,
@@ -18,16 +18,18 @@ export const useImageUpload = (options = {}) => {
     
     // File processing options
     autoCompress = true,
-    maxSizeMB = 1,
-    maxWidthOrHeight = 800,
     quality = 0.8,
     allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"],
-    maxFileSize = 5 * 1024 * 1024, // Default 5MB
     
     // Cloudinary options
     folder = null,
     transformations = null,
     publicIdPrefix = null,
+    
+    // 🔥 **REMOVED: Don't use default values that override config**
+    // maxSizeMB = 1,  // REMOVED - will use config values
+    // maxWidthOrHeight = 800,  // REMOVED - will use config values  
+    // maxFileSize = 5 * 1024 * 1024,  // REMOVED - will use config values
   } = options;
 
   const { session } = useAuth();
@@ -44,9 +46,10 @@ export const useImageUpload = (options = {}) => {
   const [success, setSuccess] = useState('');
   
   const abortControllerRef = useRef(null);
+  const isProcessingRef = useRef(false);
   const access_token = session?.access_token;
 
-  // 🔥 **IMPROVED: Get default configurations with higher limits for clinic**
+  // 🔥 **FIXED: Get upload configurations with proper values**
   const getUploadConfig = useCallback(() => {
     const configs = {
       profile: {
@@ -60,7 +63,7 @@ export const useImageUpload = (options = {}) => {
         publicIdPrefix: 'user',
         maxSizeMB: 1,
         maxWidthOrHeight: 400,
-        maxFileSize: 5 * 1024 * 1024, // 5MB
+        maxFileSize: 5 * 1024 * 1024,
       },
       clinic: {
         endpoint: 'clinic-image',
@@ -68,12 +71,12 @@ export const useImageUpload = (options = {}) => {
         fieldName: 'clinicImage',
         transformations: [
           { width: 1200, height: 800, crop: 'fill' },
-          { quality: 'auto:good', fetch_format: 'auto' } // 🔥 Better quality for clinic images
+          { quality: 'auto:good', fetch_format: 'auto' }
         ],
         publicIdPrefix: 'clinic',
-        maxSizeMB: 5, // 🔥 Increased compression target but allow larger input
-        maxWidthOrHeight: 1200,
-        maxFileSize: 50 * 1024 * 1024, // 🔥 50MB input allowed
+        maxSizeMB: 10, // 🔥 Higher compression limit for clinic images
+        maxWidthOrHeight: 1600, // 🔥 Higher resolution for clinic images
+        maxFileSize: 50 * 1024 * 1024, // 🔥 50MB max file size for clinic images
       },
       doctor: {
         endpoint: 'doctor-image',
@@ -86,7 +89,7 @@ export const useImageUpload = (options = {}) => {
         publicIdPrefix: 'doctor',
         maxSizeMB: 1,
         maxWidthOrHeight: 400,
-        maxFileSize: 5 * 1024 * 1024, // 5MB
+        maxFileSize: 5 * 1024 * 1024,
       },
       general: {
         endpoint: 'general-image',
@@ -99,23 +102,24 @@ export const useImageUpload = (options = {}) => {
         publicIdPrefix: 'img',
         maxSizeMB: 3,
         maxWidthOrHeight: 1500,
-        maxFileSize: 10 * 1024 * 1024, // 10MB
+        maxFileSize: 10 * 1024 * 1024,
       }
     };
 
     const defaultConfig = configs[uploadType] || configs.general;
     
+    // 🔥 **FIXED: Use config values, allow options to override if provided**
     return {
       endpoint: defaultConfig.endpoint,
       folder: folder || defaultConfig.folder,
       fieldName: fieldName !== 'image' ? fieldName : defaultConfig.fieldName,
       transformations: transformations || defaultConfig.transformations,
       publicIdPrefix: publicIdPrefix || defaultConfig.publicIdPrefix,
-      maxSizeMB: maxSizeMB || defaultConfig.maxSizeMB,
-      maxWidthOrHeight: maxWidthOrHeight || defaultConfig.maxWidthOrHeight,
-      maxFileSize: maxFileSize || defaultConfig.maxFileSize,
+      maxSizeMB: options.maxSizeMB || defaultConfig.maxSizeMB, // Use config value
+      maxWidthOrHeight: options.maxWidthOrHeight || defaultConfig.maxWidthOrHeight, // Use config value
+      maxFileSize: options.maxFileSize || defaultConfig.maxFileSize, // Use config value
     };
-  }, [uploadType, folder, fieldName, transformations, publicIdPrefix, maxSizeMB, maxWidthOrHeight, maxFileSize]);
+  }, [uploadType, folder, fieldName, transformations, publicIdPrefix, options.maxSizeMB, options.maxWidthOrHeight, options.maxFileSize]);
 
   // Cleanup function
   const cleanup = useCallback(() => {
@@ -130,6 +134,7 @@ export const useImageUpload = (options = {}) => {
       progress: 0,
       uploadId: null,
     });
+    isProcessingRef.current = false;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -140,7 +145,7 @@ export const useImageUpload = (options = {}) => {
   const simulateProgress = useCallback((uploadId) => {
     let progress = 0;
     const interval = setInterval(() => {
-      progress += Math.random() * 10; // 🔥 Slower progress for large files
+      progress += Math.random() * 8;
       if (progress > 90) {
         progress = 90;
         clearInterval(interval);
@@ -153,13 +158,18 @@ export const useImageUpload = (options = {}) => {
       if (onUploadProgress) {
         onUploadProgress(Math.min(progress, 90));
       }
-    }, 300); // 🔥 Slower updates for large files
+    }, 400);
 
     return interval;
   }, [onUploadProgress]);
 
-  // Handle file selection
+  // 🔥 **FIXED: Handle file selection with proper config values**
   const selectFile = useCallback(async (file) => {
+    if (isProcessingRef.current) {
+      console.log('⏳ Already processing, ignoring new file selection');
+      return { success: false, error: 'Already processing a file' };
+    }
+
     setError('');
     setSuccess('');
 
@@ -170,17 +180,27 @@ export const useImageUpload = (options = {}) => {
 
     const config = getUploadConfig();
 
-    // 🔥 **IMPROVED: Use config-specific file size validation**
+    console.log(`📁 Processing ${uploadType} file:`, {
+      name: file.name,
+      size: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
+      type: file.type,
+      maxAllowed: `${(config.maxFileSize / 1024 / 1024).toFixed(0)}MB`
+    });
+
+    // 🔥 **FIXED: Use the correct validation with proper config**
     const validationError = validateFile(file, { 
       allowedTypes, 
-      maxFileSize: config.maxFileSize 
+      maxFileSize: config.maxFileSize
     });
+    
     if (validationError) {
       setError(validationError);
       return { success: false, error: validationError };
     }
 
     try {
+      isProcessingRef.current = true;
+      
       setOriginalFile(file);
       
       // Create preview
@@ -188,28 +208,25 @@ export const useImageUpload = (options = {}) => {
       setPreview(previewUrl);
 
       if (autoCompress) {
-        // Start compression
         setUploadState(prev => ({ ...prev, isCompressing: true }));
         
-        // 🔥 **IMPROVED: Use less aggressive compression for clinic images**
-        const compressionSettings = uploadType === 'clinic' ? {
-          maxSizeMB: config.maxSizeMB,
-          maxWidthOrHeight: config.maxWidthOrHeight,
-          quality: 0.85, // Higher quality for clinic images
-          alwaysKeepResolution: false,
+        // 🔥 **FIXED: Use config values for compression settings**
+        const compressionSettings = {
+          maxSizeMB: config.maxSizeMB, // Use config value
+          maxWidthOrHeight: config.maxWidthOrHeight, // Use config value
+          quality: uploadType === 'clinic' ? 0.9 : quality, // Higher quality for clinic images
+          alwaysKeepResolution: uploadType === 'clinic', // Keep resolution for clinic images
           useWebWorker: true,
-        } : {
-          maxSizeMB: config.maxSizeMB,
-          maxWidthOrHeight: config.maxWidthOrHeight,
-          quality,
+          fileType: uploadType === 'clinic' ? 'image/jpeg' : undefined, // Force JPEG for better compression
         };
 
+        console.log(`🔧 Compressing ${uploadType} image with settings:`, compressionSettings);
         const compressed = await compressImage(file, compressionSettings);
         
         setCompressedFile(compressed);
         setUploadState(prev => ({ ...prev, isCompressing: false }));
         
-        console.log(`🔧 Compression complete: ${(file.size / 1024 / 1024).toFixed(2)}MB → ${(compressed.size / 1024 / 1024).toFixed(2)}MB`);
+        console.log(`✅ Compression complete: ${(file.size / 1024 / 1024).toFixed(2)}MB → ${(compressed.size / 1024 / 1024).toFixed(2)}MB`);
       }
 
       return { success: true, preview: previewUrl };
@@ -219,11 +236,17 @@ export const useImageUpload = (options = {}) => {
       setError(errorMessage);
       cleanup();
       return { success: false, error: errorMessage };
+    } finally {
+      isProcessingRef.current = false;
     }
   }, [allowedTypes, autoCompress, quality, cleanup, getUploadConfig, uploadType]);
 
-  // 🔥 **IMPROVED: Handle upload with better validation and error handling**
   const uploadFile = useCallback(async (customOptions = {}) => {
+    if (isProcessingRef.current || uploadState.isUploading) {
+      console.log('⏳ Upload already in progress');
+      return { success: false, error: 'Upload already in progress' };
+    }
+
     const fileToUpload = compressedFile || originalFile;
     
     if (!fileToUpload) {
@@ -238,7 +261,7 @@ export const useImageUpload = (options = {}) => {
       return { success: false, error };
     }
 
-    // 🔥 **IMPROVED: Better entity validation**
+    // Validate entity requirements
     if (uploadType === 'clinic' && !entityId) {
       const error = 'Clinic ID is required for clinic image uploads';
       setError(error);
@@ -254,26 +277,44 @@ export const useImageUpload = (options = {}) => {
     const config = getUploadConfig();
     const uploadOptions = { ...config, ...customOptions };
     
+    // 🔥 **FIXED: Create abort controller OUTSIDE try block to prevent premature cleanup**
     abortControllerRef.current = new AbortController();
     
-    const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    setUploadState({
-      isUploading: true,
-      isCompressing: false,
-      progress: 0,
-      uploadId,
-    });
-    setError('');
-    setSuccess('');
-
-    if (onUploadStart) {
-      onUploadStart(fileToUpload);
-    }
-
-    const progressInterval = simulateProgress(uploadId);
-
     try {
+      isProcessingRef.current = true;
+      
+      // 🔥 **FIXED: Much longer timeout and no automatic abort**
+      const timeout = uploadType === 'clinic' ? 300000 : 120000; // 5 minutes for clinic, 2 minutes for others
+      let timeoutId;
+      
+      // Only set timeout if upload takes too long
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          console.log(`⏰ ${uploadType} upload timeout after ${timeout}ms`);
+          if (abortControllerRef.current && !abortControllerRef.current.signal.aborted) {
+            abortControllerRef.current.abort();
+          }
+          reject(new Error(`Upload timeout after ${timeout/1000} seconds`));
+        }, timeout);
+      });
+      
+      const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      setUploadState({
+        isUploading: true,
+        isCompressing: false,
+        progress: 0,
+        uploadId,
+      });
+      setError('');
+      setSuccess('');
+
+      if (onUploadStart) {
+        onUploadStart(fileToUpload);
+      }
+
+      const progressInterval = simulateProgress(uploadId);
+
       const formData = new FormData();
       formData.append(uploadOptions.fieldName, fileToUpload);
       
@@ -285,15 +326,17 @@ export const useImageUpload = (options = {}) => {
         formData.append(idFieldName, entityId);
       }
 
-      // Add custom upload options to form data if needed
+      // Add custom upload options
       if (customOptions.folder) formData.append('folder', customOptions.folder);
       if (customOptions.transformations) {
         formData.append('transformations', JSON.stringify(customOptions.transformations));
       }
 
-      console.log(`🚀 Uploading ${uploadType} image: ${(fileToUpload.size / 1024 / 1024).toFixed(2)}MB`);
+      console.log(`🚀 Uploading ${uploadType} image: ${(fileToUpload.size / 1024 / 1024).toFixed(2)}MB to ${uploadOptions.endpoint}`);
+      console.log(`🚀 Using timeout: ${timeout/1000} seconds`);
 
-      const result = await imageService.uploadGenericImage(
+      // 🔥 **FIXED: Race between upload and timeout**
+      const uploadPromise = imageService.uploadGenericImage(
         access_token,
         formData,
         uploadOptions.endpoint,
@@ -301,6 +344,11 @@ export const useImageUpload = (options = {}) => {
         abortControllerRef.current.signal
       );
 
+      // Wait for either upload to complete or timeout
+      const result = await Promise.race([uploadPromise, timeoutPromise]);
+
+      // Clear timeout if upload completed
+      clearTimeout(timeoutId);
       clearInterval(progressInterval);
       setUploadState(prev => ({ ...prev, progress: 100 }));
       
@@ -318,17 +366,20 @@ export const useImageUpload = (options = {}) => {
       return { success: true, data: result };
 
     } catch (error) {
-      clearInterval(progressInterval);
       console.error(`❌ ${uploadType} upload error:`, error);
       
       let errorMessage = 'Upload failed. Please try again.';
       
-      if (error.name === 'AbortError' || error.message === 'Upload cancelled') {
-        errorMessage = 'Upload cancelled';
+      if (error.name === 'AbortError' || error.message.includes('Upload cancelled')) {
+        errorMessage = `Upload cancelled. This might be due to network issues or the file being too large for your connection.`;
+      } else if (error.message.includes('timeout')) {
+        errorMessage = `Upload timeout. Please try with a smaller image or check your connection.`;
       } else if (error.message.includes('Network error')) {
-        errorMessage = 'Network error. Please check your connection.';
+        errorMessage = 'Network error. Please check your internet connection.';
       } else if (error.message.includes('413') || error.message.includes('too large')) {
         errorMessage = `File too large. Maximum size for ${uploadType} images is ${Math.round(config.maxFileSize / 1024 / 1024)}MB.`;
+      } else if (error.message.includes('Server error')) {
+        errorMessage = 'Server error. Please try again in a few moments.';
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -345,17 +396,36 @@ export const useImageUpload = (options = {}) => {
       }
 
       return { success: false, error: errorMessage };
+    } finally {
+      isProcessingRef.current = false;
+      // Don't clear abort controller here - let it be cleared in cleanup
     }
-  }, [compressedFile, originalFile, access_token, uploadType, entityId, simulateProgress, onUploadStart, onUploadSuccess, onUploadError, cleanup, getUploadConfig]);
+  }, [compressedFile, originalFile, access_token, uploadType, entityId, simulateProgress, onUploadStart, onUploadSuccess, onUploadError, cleanup, getUploadConfig, uploadState.isUploading]);
 
-  // 🔥 **AUTO UPLOAD: Select and upload in one go**
+
+  // 🔥 **FIXED: Properly synchronized auto upload**
   const selectAndUpload = useCallback(async (file) => {
-    const selectResult = await selectFile(file);
-    if (selectResult.success) {
-      return await uploadFile();
+    try {
+      console.log(`🔄 Starting selectAndUpload for ${uploadType}`);
+      
+      // Step 1: Select and process the file
+      const selectResult = await selectFile(file);
+      if (!selectResult.success) {
+        console.error('❌ File selection failed:', selectResult.error);
+        return selectResult;
+      }
+
+      // Step 2: Wait a moment for state to update
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Step 3: Upload the processed file
+      const uploadResult = await uploadFile();
+      return uploadResult;
+    } catch (error) {
+      console.error('❌ selectAndUpload error:', error);
+      return { success: false, error: error.message };
     }
-    return selectResult;
-  }, [selectFile, uploadFile]);
+  }, [selectFile, uploadFile, uploadType]);
 
   // Cancel upload
   const cancelUpload = useCallback(async () => {
@@ -387,8 +457,8 @@ export const useImageUpload = (options = {}) => {
     success,
     
     // Computed
-    isProcessing: uploadState.isUploading || uploadState.isCompressing,
-    canUpload: (compressedFile || originalFile) && !uploadState.isUploading && access_token,
+    isProcessing: uploadState.isUploading || uploadState.isCompressing || isProcessingRef.current,
+    canUpload: (compressedFile || originalFile) && !uploadState.isUploading && access_token && !isProcessingRef.current,
     uploadConfig: getUploadConfig(),
     
     // Actions

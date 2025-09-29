@@ -39,6 +39,86 @@ create table "public"."appointments" (
   "timezone" character varying(50) default 'Asia/Manila'::character varying
 );
 
+create table public.clinics (
+  "id" uuid not null default extensions.uuid_generate_v4 (),
+  "name" character varying(200) not null,
+  "description" text null,
+  "address" text not null,
+  "city" character varying(100) not null,
+  "province" character varying(100) null,
+  "zip_code" character varying(20) null,
+  "country" character varying(100) not null default 'Philippines'::character varying,
+  "location" geography not null,
+  "phone" character varying(20) null,
+  "email" character varying(255) not null,
+  "website_url" text null,
+  "operating_hours" jsonb null,
+  "services_offered" jsonb null,
+  "appointment_limit_per_patient" integer null default 1000000,
+  "cancellation_policy_hours" integer null default 48,
+  "is_active" boolean null default true,
+  "rating" numeric(3, 2) null default 0.00,
+  "total_reviews" integer null default 0,
+  "created_at" timestamp with time zone null default now(),
+  "updated_at" timestamp with time zone null default now(),
+  "image_url" text null,
+  "timezone" character varying(50) null default 'Asia/Manila'::character varying,
+  constraint clinics_pkey primary key (id)
+) TABLESPACE pg_default;
+
+create index IF not exists idx_clinics_location on public.clinics using gist (location) TABLESPACE pg_default;
+
+create index IF not exists idx_clinics_location_active on public.clinics using gist (location) TABLESPACE pg_default
+where
+  (is_active = true);
+
+create index IF not exists idx_clinics_search_optimized on public.clinics using btree (is_active, rating desc, total_reviews desc) TABLESPACE pg_default
+where
+  (is_active = true);
+
+create trigger update_clinics_updated_at BEFORE
+update on clinics for EACH row
+execute FUNCTION update_updated_at_column ();
+
+create table public.doctors (
+  "id" uuid not null default extensions.uuid_generate_v4 (),
+  "license_number" character varying(100) not null,
+  "specialization" character varying(200) not null,
+  "education" text null,
+  "experience_years" integer null,
+  "bio" text null,
+  "consultation_fee" numeric(10, 2) null,
+  "image_url" text null,
+  "languages_spoken" text[] null,
+  "certifications" jsonb null,
+  "awards" text[] null,
+  "is_available" boolean null default true,
+  "rating" numeric(3, 2) null default 0.00,
+  "total_reviews" integer null default 0,
+  "created_at" timestamp with time zone null default now(),
+  "updated_at" timestamp with time zone null default now(),
+  "first_name" character varying(100) not null default ''::character varying,
+  "last_name" character varying(100) not null default ''::character varying,
+  constraint doctors_pkey primary key (id),
+  constraint doctors_license_number_key unique (license_number)
+) TABLESPACE pg_default;
+
+create index IF not exists idx_doctors_specialization_available on public.doctors using btree (specialization, is_available) TABLESPACE pg_default
+where
+  (is_available = true);
+
+create index IF not exists idx_doctors_available_rating on public.doctors using btree (is_available, rating desc) TABLESPACE pg_default
+where
+  (is_available = true);
+
+create index IF not exists idx_doctors_clinic_search on public.doctors using btree (is_available, specialization, rating desc) TABLESPACE pg_default
+where
+  (is_available = true);
+
+create trigger update_doctors_updated_at BEFORE
+update on doctors for EACH row
+execute FUNCTION update_updated_at_column ();
+
 -- Junction table for appointment services (many-to-many)
 create table "public"."appointment_services" (
   "id" uuid not null default extensions.uuid_generate_v4(),
@@ -730,20 +810,6 @@ BEGIN
         ON CONFLICT (patient_id, clinic_id) DO UPDATE SET
             current_count = EXCLUDED.current_count,
             updated_at = NOW();
-    END IF;
-    
-    -- Check clinic-specific limit
-    IF clinic_current_count >= clinic_limit THEN
-        RETURN jsonb_build_object(
-            'allowed', false,
-            'reason', 'clinic_limit_exceeded', 
-            'message', format('Maximum %s appointments allowed at this clinic', clinic_limit),
-            'data', jsonb_build_object(
-                'current_count', clinic_current_count,
-                'limit_count', clinic_limit,
-                'clinic_id', p_clinic_id
-            )
-        );
     END IF;
     
     -- RULE 6: Get cross-clinic appointments for transparency

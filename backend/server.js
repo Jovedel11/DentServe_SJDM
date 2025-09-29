@@ -52,8 +52,8 @@ app.use(cors({
 }));
 
 // parse data
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '60mb' })); 
+app.use(express.urlencoded({ extended: true, limit: '60mb' })); 
 
 // log all queries/ to debug
 app.use(morgan('combined'));

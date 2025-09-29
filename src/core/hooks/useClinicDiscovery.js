@@ -256,7 +256,7 @@ export const useClinicDiscovery = () => {
             rating,
             first_name,
             last_name,
-            profile_image_url,
+            image_url,
             bio,
             education,
             certifications,

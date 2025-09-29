@@ -7,13 +7,17 @@ import {
   CheckCircle2,
   Info,
   AlertTriangle,
+  Shield,
+  Clock,
 } from "lucide-react";
 
 // UI Components
+import { Card, CardContent } from "@/core/components/ui/card";
+import { Button } from "@/core/components/ui/button";
+import { Alert } from "@/core/components/ui/alert";
+import { Progress } from "@/core/components/ui/progress";
 import Toast from "@/core/components/ui/toast";
 import ProgressIndicator from "@/core/components/ui/process-indicator";
-import Alert from "@/core/components/Alert";
-import StepCard from "@/core/components/ui/step-card";
 
 // Step Components
 import ClinicSelectionStep from "../components/booking/clinic-selection-step";
@@ -25,13 +29,14 @@ import ConfirmationStep from "../components/booking/confirmation-step";
 // Logic Hook
 import { useBookingFlow } from "../hook/useBookingFlow";
 import { Navigate } from "react-router-dom";
+import { cn } from "@/lib/utils";
 
 const BOOKING_STEPS = [
-  "Clinic",
-  "Services",
-  "Doctor",
-  "Date & Time",
-  "Confirm",
+  { key: "clinic", label: "Clinic", icon: "🏥" },
+  { key: "services", label: "Services", icon: "🦷" },
+  { key: "doctor", label: "Doctor", icon: "👨‍⚕️" },
+  { key: "datetime", label: "Date & Time", icon: "📅" },
+  { key: "confirm", label: "Confirm", icon: "✅" },
 ];
 
 const BookAppointment = () => {
@@ -61,6 +66,7 @@ const BookAppointment = () => {
     crossClinicWarnings,
     bookingWarnings,
     validationLoading,
+    patientReliability,
 
     // Auth
     isPatient,
@@ -80,13 +86,16 @@ const BookAppointment = () => {
     // Other
     availableTimes,
     checkingAvailability,
+    getCancellationInfo,
   } = useBookingFlow();
 
   // Enhanced validation message
   const getStepValidationMessage = () => {
     switch (bookingStep) {
       case "clinic":
-        return !bookingData.clinic ? "Please select a clinic" : null;
+        return !bookingData.clinic
+          ? "Please select a clinic to continue"
+          : null;
       case "services":
         return !bookingData.services?.length
           ? "Please select at least one service"
@@ -102,21 +111,30 @@ const BookAppointment = () => {
     }
   };
 
+  // Get current step info
+  const currentStep = BOOKING_STEPS[currentStepIndex] || BOOKING_STEPS[0];
+  const stepValidationMessage = getStepValidationMessage();
+  const cancellationInfo = getCancellationInfo();
+
   // Access control
   if (!isPatient) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="max-w-md mx-auto text-center p-8 glass-effect rounded-xl border shadow-lg">
-          <div className="w-16 h-16 mx-auto mb-4 bg-destructive/10 rounded-full flex items-center justify-center">
-            <AlertCircle className="w-8 h-8 text-destructive" />
-          </div>
-          <h1 className="text-xl font-semibold text-foreground mb-2">
-            Access Denied
-          </h1>
-          <p className="text-muted-foreground">
-            Only patients can book appointments.
-          </p>
-        </div>
+        <Card className="max-w-md mx-auto border-destructive/20">
+          <CardContent className="text-center p-8">
+            <div className="w-16 h-16 mx-auto mb-6 bg-destructive/10 rounded-full flex items-center justify-center">
+              <AlertCircle className="w-8 h-8 text-destructive" />
+            </div>
+            <h1 className="text-2xl font-bold text-foreground mb-4">
+              Access Denied
+            </h1>
+            <p className="text-muted-foreground mb-6">
+              Only patients can book appointments. Please log in with a patient
+              account.
+            </p>
+            <Button onClick={() => window.history.back()}>Go Back</Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -125,216 +143,357 @@ const BookAppointment = () => {
   if (bookingSuccess) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="max-w-md mx-auto text-center p-8 glass-effect rounded-xl border shadow-lg">
-          <div className="w-20 h-20 mx-auto mb-6 bg-success/10 rounded-full flex items-center justify-center animate-fadeIn">
-            <CheckCircle2 className="w-10 h-10 text-success" />
-          </div>
-          <h1 className="text-2xl font-bold text-foreground mb-4">
-            Appointment Booked Successfully!
-          </h1>
-          <p className="text-muted-foreground mb-6">
-            Your appointment has been scheduled and the clinic has been
-            notified.
-            {bookingData.symptoms && (
-              <span className="block mt-2 text-sm">
-                Your symptoms have been shared with the staff.
-              </span>
-            )}
-            {crossClinicWarnings.length > 0 && (
-              <span className="block mt-2 text-sm text-info">
-                Remember to inform your healthcare providers about your other
-                appointments.
-              </span>
-            )}
-          </p>
-          <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <div className="animate-spin rounded-full h-4 w-4 border-2 border-muted border-t-primary" />
-            <Navigate to="patient/appointments/upcoming">
-              Redirecting to your upcoming appointments...
-            </Navigate>
-          </div>
-        </div>
+        <Card className="max-w-lg mx-auto border-success/20 bg-success/5">
+          <CardContent className="text-center p-8">
+            <div className="w-20 h-20 mx-auto mb-6 bg-success/10 rounded-full flex items-center justify-center animate-fadeIn">
+              <CheckCircle2 className="w-10 h-10 text-success" />
+            </div>
+            <h1 className="text-2xl font-bold text-foreground mb-4">
+              Appointment Booked Successfully!
+            </h1>
+            <div className="space-y-4 text-left">
+              <div className="bg-card border rounded-lg p-4">
+                <h3 className="font-semibold text-foreground mb-2">
+                  Appointment Details
+                </h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Clinic:</span>
+                    <span className="font-medium">
+                      {bookingData.clinic?.name}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Doctor:</span>
+                    <span className="font-medium">
+                      Dr. {bookingData.doctor?.first_name}{" "}
+                      {bookingData.doctor?.last_name}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Date:</span>
+                    <span className="font-medium">
+                      {new Date(bookingData.date).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Time:</span>
+                    <span className="font-medium">{bookingData.time}</span>
+                  </div>
+                </div>
+              </div>
+
+              {bookingData.symptoms && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <div className="text-sm">
+                    Your symptoms have been shared with the clinic staff for
+                    better preparation.
+                  </div>
+                </Alert>
+              )}
+
+              {crossClinicWarnings.length > 0 && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <div className="text-sm">
+                    <strong>Care Coordination Notice:</strong>
+                    <br />
+                    You have appointments at other clinics. Please inform your
+                    healthcare providers for better care coordination.
+                  </div>
+                </Alert>
+              )}
+
+              {patientReliability?.risk_level &&
+                patientReliability.risk_level !== "low_risk" && (
+                  <Alert variant="warning">
+                    <AlertTriangle className="h-4 w-4" />
+                    <div className="text-sm">
+                      <strong>Attendance Reminder:</strong>
+                      <br />
+                      Please ensure you attend this appointment or cancel with
+                      adequate notice to maintain your booking privileges.
+                    </div>
+                  </Alert>
+                )}
+            </div>
+
+            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mt-6">
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-muted border-t-primary" />
+              <span>Redirecting to your appointments...</span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  const stepValidationMessage = getStepValidationMessage();
-
   return (
-    <div className="min-h-screen bg-background py-8">
-      <div className="max-w-6xl mx-auto px-4">
-        {/* Toast */}
-        {toastMessage && (
-          <Toast
-            message={toastMessage.message}
-            type={toastMessage.type}
-            onClose={closeToast}
-          />
-        )}
+    <div className="min-h-screen bg-background">
+      {/* Toast */}
+      {toastMessage && (
+        <Toast
+          message={toastMessage.message}
+          type={toastMessage.type}
+          onClose={closeToast}
+        />
+      )}
 
-        {/* Header */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-              <Calendar className="w-6 h-6 text-primary" />
+      {/* Header */}
+      <div className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-4 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                <Calendar className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-foreground">
+                  Book Your Appointment
+                </h1>
+                <p className="text-muted-foreground">
+                  Step {currentStepIndex + 1} of {totalSteps}:{" "}
+                  {currentStep.label}
+                </p>
+              </div>
             </div>
-            <h1 className="text-4xl font-bold text-foreground">
-              Book Your Appointment
-            </h1>
+
+            {/* Quick Progress */}
+            <div className="hidden md:flex items-center gap-4">
+              <div className="text-sm text-muted-foreground">
+                {Math.round(stepProgress)}% Complete
+              </div>
+              <Progress value={stepProgress} className="w-32" />
+            </div>
           </div>
-          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-            Complete the steps below to schedule your dental visit with our
-            professional team
-          </p>
+        </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Enhanced Progress */}
+        <div className="mb-8">
+          <ProgressIndicator
+            currentStep={currentStepIndex}
+            totalSteps={totalSteps}
+            progress={stepProgress}
+            steps={BOOKING_STEPS.map((step) => step.label)}
+          />
         </div>
 
-        {/* Progress */}
-        <ProgressIndicator
-          currentStep={currentStepIndex}
-          totalSteps={totalSteps}
-          progress={stepProgress}
-          steps={BOOKING_STEPS}
-        />
-
-        {/* Enhanced Alerts Section */}
+        {/* System Status Alerts */}
         <div className="space-y-4 mb-8">
           {/* Error Display */}
           {error && (
-            <Alert
-              type="error"
-              message={error}
-              icon={<AlertCircle className="w-5 h-5" />}
-            />
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <div>
+                <strong>Booking Error</strong>
+                <p className="text-sm mt-1">{error}</p>
+              </div>
+            </Alert>
           )}
 
           {/* Validation Message */}
           {stepValidationMessage && (
-            <Alert
-              type="warning"
-              message={stepValidationMessage}
-              icon={<AlertCircle className="w-5 h-5" />}
-            />
+            <Alert variant="warning">
+              <AlertTriangle className="h-4 w-4" />
+              <div>
+                <strong>Required Selection</strong>
+                <p className="text-sm mt-1">{stepValidationMessage}</p>
+              </div>
+            </Alert>
+          )}
+
+          {/* Validation Loading */}
+          {validationLoading && (
+            <Alert>
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-info border-t-transparent" />
+              <div>
+                <strong>Checking Availability</strong>
+                <p className="text-sm mt-1">
+                  Validating appointment limits and availability...
+                </p>
+              </div>
+            </Alert>
           )}
 
           {/* Booking Warnings */}
           {bookingWarnings.map((warning, index) => (
             <Alert
               key={index}
-              type={warning.type}
-              message={warning.message}
-              icon={
-                warning.type === "error" ? (
-                  <AlertCircle className="w-5 h-5" />
-                ) : warning.type === "warning" ? (
-                  <AlertTriangle className="w-5 h-5" />
-                ) : (
-                  <Info className="w-5 h-5" />
-                )
+              variant={
+                warning.type === "error"
+                  ? "destructive"
+                  : warning.type === "warning"
+                  ? "warning"
+                  : "default"
               }
-            />
+            >
+              {warning.type === "error" ? (
+                <AlertCircle className="h-4 w-4" />
+              ) : warning.type === "warning" ? (
+                <AlertTriangle className="h-4 w-4" />
+              ) : (
+                <Info className="h-4 w-4" />
+              )}
+              <div>
+                <strong>
+                  {warning.type === "error"
+                    ? "Booking Restriction"
+                    : warning.type === "warning"
+                    ? "Important Notice"
+                    : "Information"}
+                </strong>
+                <p className="text-sm mt-1">{warning.message}</p>
+              </div>
+            </Alert>
           ))}
 
-          {/* Validation Loading */}
-          {validationLoading && (
-            <Alert
-              type="info"
-              message="Checking appointment availability..."
-              icon={
-                <div className="animate-spin rounded-full h-5 w-5 border-2 border-info border-t-transparent" />
-              }
-            />
+          {/* Patient Reliability Warning */}
+          {patientReliability &&
+            patientReliability.risk_level !== "low_risk" && (
+              <Alert variant="warning">
+                <Shield className="h-4 w-4" />
+                <div>
+                  <strong>Attendance Notice</strong>
+                  <p className="text-sm mt-1">
+                    {patientReliability.risk_level === "high_risk"
+                      ? "Your appointment history shows several missed appointments. Continued no-shows may affect your booking privileges."
+                      : "Please remember to attend your appointment or cancel with adequate notice."}
+                  </p>
+                  {patientReliability.statistics && (
+                    <div className="text-xs mt-2 text-muted-foreground">
+                      Completion rate:{" "}
+                      {patientReliability.statistics.completion_rate}%
+                    </div>
+                  )}
+                </div>
+              </Alert>
+            )}
+
+          {/* Cancellation Policy Info */}
+          {cancellationInfo && bookingStep === "confirm" && (
+            <Alert>
+              <Clock className="h-4 w-4" />
+              <div>
+                <strong>Cancellation Policy</strong>
+                <p className="text-sm mt-1">
+                  You can cancel this appointment until{" "}
+                  {cancellationInfo.cancellationDeadline.toLocaleString()}. (
+                  {cancellationInfo.policyHours} hours notice required)
+                </p>
+              </div>
+            </Alert>
           )}
         </div>
 
         {/* Step Content */}
-        <StepCard>
-          {bookingStep === "clinic" && (
-            <ClinicSelectionStep
-              clinics={clinics}
-              clinicsLoading={clinicsLoading}
-              selectedClinic={bookingData.clinic}
-              onClinicSelect={handleClinicSelect}
-            />
-          )}
+        <Card className="mb-8">
+          <CardContent className="p-8">
+            {bookingStep === "clinic" && (
+              <ClinicSelectionStep
+                clinics={clinics}
+                clinicsLoading={clinicsLoading}
+                selectedClinic={bookingData.clinic}
+                onClinicSelect={handleClinicSelect}
+              />
+            )}
 
-          {bookingStep === "services" && (
-            <ServicesSelectionStep
-              services={services}
-              selectedServices={bookingData.services}
-              onServiceToggle={handleServiceToggle}
-            />
-          )}
+            {bookingStep === "services" && (
+              <ServicesSelectionStep
+                services={services}
+                selectedServices={bookingData.services}
+                onServiceToggle={handleServiceToggle}
+              />
+            )}
 
-          {bookingStep === "doctor" && (
-            <DoctorSelectionStep
-              doctors={doctors}
-              selectedDoctor={bookingData.doctor}
-              onDoctorSelect={handleDoctorSelect}
-            />
-          )}
+            {bookingStep === "doctor" && (
+              <DoctorSelectionStep
+                doctors={doctors}
+                selectedDoctor={bookingData.doctor}
+                onDoctorSelect={handleDoctorSelect}
+              />
+            )}
 
-          {bookingStep === "datetime" && (
-            <DateTimeSelectionStep
-              bookingData={bookingData}
-              availableTimes={availableTimes}
-              checkingAvailability={checkingAvailability}
-              onUpdateBookingData={updateBookingData}
-              onDateSelect={handleDateSelect}
-            />
-          )}
+            {bookingStep === "datetime" && (
+              <DateTimeSelectionStep
+                bookingData={bookingData}
+                availableTimes={availableTimes}
+                checkingAvailability={checkingAvailability}
+                onUpdateBookingData={updateBookingData}
+                onDateSelect={handleDateSelect}
+              />
+            )}
 
-          {bookingStep === "confirm" && (
-            <ConfirmationStep
-              bookingData={bookingData}
-              services={services}
-              profile={profile}
-              appointmentLimitInfo={appointmentLimitInfo}
-              crossClinicWarnings={crossClinicWarnings}
-            />
-          )}
-        </StepCard>
+            {bookingStep === "confirm" && (
+              <ConfirmationStep
+                bookingData={bookingData}
+                services={services}
+                profile={profile}
+                appointmentLimitInfo={appointmentLimitInfo}
+                crossClinicWarnings={crossClinicWarnings}
+                patientReliability={patientReliability}
+                cancellationInfo={cancellationInfo}
+              />
+            )}
+          </CardContent>
+        </Card>
 
         {/* Enhanced Navigation */}
-        <div className="flex justify-between">
-          <button
+        <div className="flex justify-between items-center">
+          <Button
+            variant="outline"
             onClick={previousStep}
             disabled={currentStepIndex === 0}
-            className="flex items-center gap-2 px-6 py-3 border border-border rounded-lg text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-medium"
+            className="flex items-center gap-2"
           >
             <ChevronLeft className="w-4 h-4" />
             Previous
-          </button>
+          </Button>
 
-          {bookingStep === "confirm" ? (
-            <button
-              onClick={handleSubmit}
-              disabled={
-                !canProceed || loading || !appointmentLimitInfo?.allowed
-              }
-              className="flex items-center gap-2 px-8 py-3 bg-success text-white rounded-lg hover:bg-success/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold shadow-md"
-            >
-              {loading ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                  Booking...
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  Confirm Appointment
-                </>
-              )}
-            </button>
-          ) : (
-            <button
-              onClick={nextStep}
-              disabled={!canProceed}
-              className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-medium"
-            >
-              Next
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          )}
+          <div className="flex items-center gap-4">
+            {/* Step indicator for mobile */}
+            <div className="md:hidden text-sm text-muted-foreground">
+              Step {currentStepIndex + 1} of {totalSteps}
+            </div>
+
+            {bookingStep === "confirm" ? (
+              <Button
+                onClick={handleSubmit}
+                disabled={
+                  !canProceed ||
+                  loading ||
+                  !appointmentLimitInfo?.allowed ||
+                  validationLoading
+                }
+                className="flex items-center gap-2 bg-success hover:bg-success/90"
+                size="lg"
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                    Booking...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    Confirm Appointment
+                  </>
+                )}
+              </Button>
+            ) : (
+              <Button
+                onClick={nextStep}
+                disabled={!canProceed || validationLoading}
+                className="flex items-center gap-2"
+                size="lg"
+              >
+                Next
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -1,37 +1,70 @@
 const IMAGE_SERVER_URL = import.meta.env.VITE_API_URL; 
 
 export const imageService = {
-  // Generic upload method
+  // Generic upload method with better error handling
   async uploadGenericImage(access_token, formData, endpoint, onProgress = null, signal = null) {
     const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    const response = await fetch(`${IMAGE_SERVER_URL}/api/upload/${endpoint}`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${access_token}`,
-        'X-Upload-Id': uploadId,
-      },
-      body: formData,
-      signal,
-    });
+    console.log(`📤 Starting upload to: ${IMAGE_SERVER_URL}/api/upload/${endpoint}`);
+    console.log(`📤 Upload ID: ${uploadId}`);
+    
+    try {
+      const response = await fetch(`${IMAGE_SERVER_URL}/api/upload/${endpoint}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${access_token}`,
+          'X-Upload-Id': uploadId,
+        },
+        body: formData,
+        signal,
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorData;
-      try {
-        errorData = JSON.parse(errorText);
-      } catch {
-        errorData = { error: errorText || 'Unknown error' };
+      console.log(`📤 Upload response status: ${response.status} ${response.statusText}`);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`📤 Upload failed with status ${response.status}:`, errorText);
+        
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText || 'Unknown error' };
+        }
+        
+        if (response.status === 499) {
+          throw new Error("Upload cancelled by client");
+        }
+        if (response.status === 413) {
+          throw new Error("File too large for server");
+        }
+        if (response.status === 408) {
+          throw new Error("Upload timeout - please try again");
+        }
+        if (response.status >= 500) {
+          throw new Error("Server error - please try again later");
+        }
+        
+        throw new Error(errorData.error || `Upload failed with status ${response.status}`);
       }
+
+      const data = await response.json();
+      console.log(`📤 Upload successful:`, data);
+      return { ...data, uploadId };
       
-      if (response.status === 499) {
+    } catch (error) {
+      console.error(`📤 Upload exception:`, error);
+      
+      if (error.name === 'AbortError') {
         throw new Error("Upload cancelled");
       }
-      throw new Error(errorData.error || "Upload failed");
+      
+      if (error.message.includes('fetch')) {
+        throw new Error("Network error - please check your connection");
+      }
+      
+      throw error;
     }
-
-    const data = await response.json();
-    return { ...data, uploadId };
   },
 
   // Legacy profile image upload (for backward compatibility)

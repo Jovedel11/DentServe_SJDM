@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react"; // 🔥 Added useCallback
 import { AnimatePresence } from "framer-motion";
 import {
   FiUser,
@@ -15,8 +15,8 @@ import { ProfileHeader } from "@/app/shared/profile/profile-header";
 import { ProfileCard } from "@/app/shared/profile/profile-card";
 import { ProfileField } from "@/app/shared/profile/profile-field";
 import { ProfileAvatar } from "@/app/shared/profile/profile-avatar";
-import { ClinicAvatar } from "@/app/shared/profile/clinic-avatar"; // 🔥 NEW
-import { DoctorAvatar } from "@/app/shared/profile/doctor-avatar"; // 🔥 NEW
+import { ClinicAvatar } from "@/app/shared/profile/clinic-avatar";
+import { DoctorAvatar } from "@/app/shared/profile/doctor-avatar";
 import { AlertMessage } from "@/core/components/ui/alert-message";
 import Loader from "@/core/components/Loader";
 import { FaBuilding } from "react-icons/fa";
@@ -39,8 +39,8 @@ const StaffProfile = () => {
     handleSave,
     handleEditToggle,
     handleImageUpdate,
-    handleClinicImageUpdate, // 🔥 NEW
-    handleDoctorImageUpdate, // 🔥 NEW
+    handleClinicImageUpdate,
+    handleDoctorImageUpdate,
     services,
     doctors,
     clinicId,
@@ -84,58 +84,131 @@ const StaffProfile = () => {
     { value: "Management", label: "Management" },
   ];
 
-  // 🔥 **FIXED: Handle service operations**
-  const handleAddService = () => {
-    const newService = {
-      id: `new_${Date.now()}`,
-      name: "New Service",
-      description: "Service description",
-      category: "General",
-      duration_minutes: 60,
-      min_price: 1000,
-      max_price: 2000,
-      is_active: true,
-      _action: "create",
-    };
+  // 🔥 **FIXED: Service operations with useCallback to prevent re-renders**
+  const handleAddService = useCallback(
+    (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
 
-    const currentServices = editedData?.services_data || [];
-    const updatedServices = [...currentServices, newService];
-    handleInputChange("services_data", "", updatedServices);
-  };
+      console.log("🔧 Adding new service");
 
-  const handleRemoveService = (index) => {
-    const currentServices = editedData?.services_data || [];
-    const updatedServices = currentServices.filter((_, i) => i !== index);
-    handleInputChange("services_data", "", updatedServices);
-  };
+      const newService = {
+        id: `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        name: "",
+        description: "",
+        category: "General",
+        duration_minutes: 60,
+        min_price: 1000,
+        max_price: 2000,
+        is_active: true,
+        _action: "create",
+      };
 
-  // 🔥 **FIXED: Handle doctor operations**
-  const handleAddDoctor = () => {
-    const newDoctor = {
-      id: `new_${Date.now()}`,
-      license_number: "",
-      specialization: "",
-      first_name: "",
-      last_name: "",
-      education: "",
-      experience_years: 0,
-      bio: "",
-      consultation_fee: 1500,
-      is_available: true,
-      image_url: "",
-      _action: "create",
-    };
+      const currentServices = editedData?.services_data || [];
+      const updatedServices = [...currentServices, newService];
 
-    const currentDoctors = editedData?.doctors_data || [];
-    const updatedDoctors = [...currentDoctors, newDoctor];
-    handleInputChange("doctors_data", "", updatedDoctors);
-  };
+      console.log("🔧 Updated services:", updatedServices.length);
+      handleInputChange("services_data", "", updatedServices);
+    },
+    [editedData?.services_data, handleInputChange]
+  );
 
-  const handleRemoveDoctor = (index) => {
-    const currentDoctors = editedData?.doctors_data || [];
-    const updatedDoctors = currentDoctors.filter((_, i) => i !== index);
-    handleInputChange("doctors_data", "", updatedDoctors);
-  };
+  const handleRemoveService = useCallback(
+    (index, e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      console.log("🗑️ Removing service at index:", index);
+
+      const currentServices = editedData?.services_data || [];
+      const serviceToRemove = currentServices[index];
+
+      // If it's an existing service (has a real ID), mark for deletion
+      if (
+        serviceToRemove &&
+        !serviceToRemove.id?.toString().startsWith("new_")
+      ) {
+        const updatedServices = currentServices.map((service, i) =>
+          i === index ? { ...service, _action: "delete" } : service
+        );
+        handleInputChange("services_data", "", updatedServices);
+      } else {
+        // If it's a new service, just remove it from the array
+        const updatedServices = currentServices.filter((_, i) => i !== index);
+        handleInputChange("services_data", "", updatedServices);
+      }
+
+      console.log("🗑️ Services after removal:", currentServices.length - 1);
+    },
+    [editedData?.services_data, handleInputChange]
+  );
+
+  // 🔥 **FIXED: Doctor operations with proper event handling**
+  const handleAddDoctor = useCallback(
+    (e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      console.log("👨‍⚕️ Adding new doctor");
+
+      const newDoctor = {
+        id: `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        license_number: "",
+        specialization: "",
+        first_name: "",
+        last_name: "",
+        education: "",
+        experience_years: 0,
+        bio: "",
+        consultation_fee: 1500,
+        is_available: true,
+        image_url: "",
+        _action: "create",
+      };
+
+      const currentDoctors = editedData?.doctors_data || [];
+      const updatedDoctors = [...currentDoctors, newDoctor];
+
+      console.log("👨‍⚕️ Updated doctors:", updatedDoctors.length);
+      handleInputChange("doctors_data", "", updatedDoctors);
+    },
+    [editedData?.doctors_data, handleInputChange]
+  );
+
+  const handleRemoveDoctor = useCallback(
+    (index, e) => {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      console.log("🗑️ Removing doctor at index:", index);
+
+      const currentDoctors = editedData?.doctors_data || [];
+      const doctorToRemove = currentDoctors[index];
+
+      // If it's an existing doctor (has a real ID), mark for deletion
+      if (doctorToRemove && !doctorToRemove.id?.toString().startsWith("new_")) {
+        const updatedDoctors = currentDoctors.map((doctor, i) =>
+          i === index ? { ...doctor, _action: "delete" } : doctor
+        );
+        handleInputChange("doctors_data", "", updatedDoctors);
+      } else {
+        // If it's a new doctor, just remove it from the array
+        const updatedDoctors = currentDoctors.filter((_, i) => i !== index);
+        handleInputChange("doctors_data", "", updatedDoctors);
+      }
+
+      console.log("🗑️ Doctors after removal:", currentDoctors.length - 1);
+    },
+    [editedData?.doctors_data, handleInputChange]
+  );
 
   if (loading) {
     return <Loader message="Loading staff profile... Please wait a moment" />;
@@ -418,7 +491,7 @@ const StaffProfile = () => {
                 placeholder="Enter clinic name"
               />
 
-              {/* 🔥 **IMPROVED: Clinic Image Upload - No Edit Mode Required** */}
+              {/* Clinic Image Upload */}
               <div className="flex flex-col gap-2">
                 <label className="text-sm font-semibold text-muted-foreground">
                   Clinic Image
@@ -534,12 +607,14 @@ const StaffProfile = () => {
               {isEditing && (
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-semibold">Manage Services</h3>
+                  {/* 🔥 **FIXED: Add Service Button with proper event handling** */}
                   <button
                     type="button"
                     onClick={handleAddService}
-                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors duration-200"
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors duration-200 flex items-center gap-2 disabled:opacity-50"
+                    disabled={saving}
                   >
-                    <FiPlus className="w-4 h-4 mr-2 inline" />
+                    <FiPlus className="w-4 h-4" />
                     Add Service
                   </button>
                 </div>
@@ -547,15 +622,17 @@ const StaffProfile = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {(isEditing
-                  ? editedData?.services_data
+                  ? editedData?.services_data?.filter(
+                      (service) => service._action !== "delete"
+                    )
                   : services || currentData?.services_data || []
                 ).map((service, index) => (
                   <div
-                    key={service.id || index}
+                    key={service.id || `service-${index}`}
                     className="p-4 border border-border rounded-lg"
                   >
                     <div className="flex justify-between items-start mb-4">
-                      <h4 className="font-semibold text-foreground">
+                      <h4 className="font-semibold text-foreground flex-1">
                         {isEditing ? (
                           <input
                             type="text"
@@ -575,11 +652,13 @@ const StaffProfile = () => {
                           service.name || "Unnamed Service"
                         )}
                       </h4>
+                      {/* 🔥 **FIXED: Remove Service Button with proper event handling** */}
                       {isEditing && (
                         <button
                           type="button"
-                          onClick={() => handleRemoveService(index)}
-                          className="text-red-500 hover:text-red-700 transition-colors duration-200"
+                          onClick={(e) => handleRemoveService(index, e)}
+                          className="text-red-500 hover:text-red-700 transition-colors duration-200 ml-2 p-1 disabled:opacity-50"
+                          disabled={saving}
                         >
                           <FiTrash2 className="w-4 h-4" />
                         </button>
@@ -710,12 +789,14 @@ const StaffProfile = () => {
               {isEditing && (
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-semibold">Manage Doctors</h3>
+                  {/* 🔥 **FIXED: Add Doctor Button with proper event handling** */}
                   <button
                     type="button"
                     onClick={handleAddDoctor}
-                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors duration-200"
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors duration-200 flex items-center gap-2 disabled:opacity-50"
+                    disabled={saving}
                   >
-                    <FiPlus className="w-4 h-4 mr-2 inline" />
+                    <FiPlus className="w-4 h-4" />
                     Add Doctor
                   </button>
                 </div>
@@ -723,16 +804,18 @@ const StaffProfile = () => {
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {(isEditing
-                  ? editedData?.doctors_data
+                  ? editedData?.doctors_data?.filter(
+                      (doctor) => doctor._action !== "delete"
+                    )
                   : doctors || currentData?.doctors_data || []
                 ).map((doctor, index) => (
                   <div
-                    key={doctor.id || index}
+                    key={doctor.id || `doctor-${index}`}
                     className="p-4 border border-border rounded-lg"
                   >
                     <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
-                        {/* 🔥 **IMPROVED: Doctor Image Upload - No Edit Mode Required** */}
+                      <div className="flex items-center gap-3 flex-1">
+                        {/* Doctor Image Upload */}
                         <DoctorAvatar
                           doctorId={doctor.id}
                           imageUrl={doctor.image_url}
@@ -744,49 +827,52 @@ const StaffProfile = () => {
                           editable={true}
                         />
 
-                        <h4 className="font-semibold text-foreground">
-                          {isEditing ? (
-                            <div className="grid grid-cols-1 gap-2">
-                              <input
-                                type="text"
-                                value={doctor.first_name || ""}
-                                onChange={(e) =>
-                                  handleArrayUpdate(
-                                    "doctors_data",
-                                    index,
-                                    "first_name",
-                                    e.target.value
-                                  )
-                                }
-                                className="px-2 py-1 border border-border rounded"
-                                placeholder="First name"
-                              />
-                              <input
-                                type="text"
-                                value={doctor.last_name || ""}
-                                onChange={(e) =>
-                                  handleArrayUpdate(
-                                    "doctors_data",
-                                    index,
-                                    "last_name",
-                                    e.target.value
-                                  )
-                                }
-                                className="px-2 py-1 border border-border rounded"
-                                placeholder="Last name"
-                              />
-                            </div>
-                          ) : (
-                            `Dr. ${doctor.first_name} ${doctor.last_name}` ||
-                            "Unnamed Doctor"
-                          )}
-                        </h4>
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-foreground">
+                            {isEditing ? (
+                              <div className="grid grid-cols-1 gap-2">
+                                <input
+                                  type="text"
+                                  value={doctor.first_name || ""}
+                                  onChange={(e) =>
+                                    handleArrayUpdate(
+                                      "doctors_data",
+                                      index,
+                                      "first_name",
+                                      e.target.value
+                                    )
+                                  }
+                                  className="px-2 py-1 border border-border rounded"
+                                  placeholder="First name"
+                                />
+                                <input
+                                  type="text"
+                                  value={doctor.last_name || ""}
+                                  onChange={(e) =>
+                                    handleArrayUpdate(
+                                      "doctors_data",
+                                      index,
+                                      "last_name",
+                                      e.target.value
+                                    )
+                                  }
+                                  className="px-2 py-1 border border-border rounded"
+                                  placeholder="Last name"
+                                />
+                              </div>
+                            ) : (
+                              `Dr. ${doctor.first_name} ${doctor.last_name}` ||
+                              "Unnamed Doctor"
+                            )}
+                          </h4>
+                        </div>
                       </div>
                       {isEditing && (
                         <button
                           type="button"
-                          onClick={() => handleRemoveDoctor(index)}
-                          className="text-red-500 hover:text-red-700 transition-colors duration-200"
+                          onClick={(e) => handleRemoveDoctor(index, e)}
+                          className="text-red-500 hover:text-red-700 transition-colors duration-200 ml-2 p-1 disabled:opacity-50"
+                          disabled={saving}
                         >
                           <FiTrash2 className="w-4 h-4" />
                         </button>
