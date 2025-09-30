@@ -188,6 +188,324 @@ execute FUNCTION update_updated_at_column ();
 -- 1. USER CREATION AND SETUP FUNCTIONS
 -- ========================================
 
+CREATE OR REPLACE FUNCTION public.approve_partnership_request(p_request_id uuid, p_admin_notes text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    current_user_context jsonb;
+    request_record record;
+    invitation_result jsonb;
+    new_clinic_id uuid;
+    first_name varchar;
+    last_name varchar;
+BEGIN
+    -- Security check
+    current_user_context := get_current_user_context();
+    
+    IF current_user_context->>'user_type' != 'admin' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied. Admin privileges required.');
+    END IF;
+    
+    -- Get the request
+    SELECT * INTO request_record
+    FROM clinic_partnership_requests
+    WHERE id = p_request_id AND status = 'pending';
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Request not found or already processed'
+        );
+    END IF;
+    
+    -- Extract first and last name (basic parsing)
+    first_name := split_part(request_record.clinic_name, ' ', 1);
+    last_name := COALESCE(split_part(request_record.clinic_name, ' ', 2), '');
+    
+    -- Create clinic first (placeholder - will be updated during profile completion)
+    INSERT INTO clinics (
+        name,
+        address,
+        city,
+        province,
+        email,
+        location,
+        is_active
+    ) VALUES (
+        request_record.clinic_name,
+        'To be updated during profile completion',
+        'San Jose Del Monte',
+        'Bulacan', 
+        request_record.email,
+        ST_SetSRID(ST_Point(121.0583, 14.8169), 4326)::geography,
+        true
+    ) RETURNING id INTO new_clinic_id;
+    
+    -- Create staff invitation
+    invitation_result := create_staff_invitation(
+        request_record.email,
+        new_clinic_id,
+        'Clinic Manager',
+        'Administration',
+        first_name,
+        last_name
+    );
+    
+    IF NOT (invitation_result->>'success')::boolean THEN
+        -- Rollback clinic creation if invitation fails
+        DELETE FROM clinics WHERE id = new_clinic_id;
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Failed to create staff invitation: ' || (invitation_result->>'error')
+        );
+    END IF;
+    
+    -- Update request status
+    UPDATE clinic_partnership_requests 
+    SET 
+        status = 'approved',
+        admin_notes = p_admin_notes,
+        reviewed_by = (current_user_context->>'user_id')::uuid,
+        reviewed_at = NOW()
+    WHERE id = p_request_id;
+    
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Partnership request approved and invitation sent',
+        'clinic_id', new_clinic_id,
+        'invitation_id', invitation_result->'invitation_id'
+    );
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Failed to approve partnership request: ' || SQLERRM
+        );
+END;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.create_direct_staff_invitation(p_email character varying)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    current_user_context JSONB;
+    admin_clinic_id UUID;
+    result JSONB;
+BEGIN
+    -- Security check
+    current_user_context := get_current_user_context();
+    
+    IF NOT (current_user_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+    
+    IF (current_user_context->>'user_type') != 'admin' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Only admins can invite staff');
+    END IF;
+    
+    -- Get admin's default clinic (first active clinic)
+    SELECT id INTO admin_clinic_id 
+    FROM clinics 
+    WHERE is_active = true 
+    ORDER BY created_at ASC 
+    LIMIT 1;
+    
+    IF admin_clinic_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'No active clinic found. Please create a clinic first.');
+    END IF;
+    
+    -- Use existing create_staff_invitation function
+    result := create_staff_invitation(
+        p_email,
+        admin_clinic_id,
+        'Staff',
+        'General',
+        NULL,
+        NULL
+    );
+    
+    RETURN result;
+END;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.get_partnership_requests(p_status text DEFAULT NULL::text, p_limit integer DEFAULT 20, p_offset integer DEFAULT 0)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    current_user_context jsonb;
+    requests jsonb;
+BEGIN
+    -- Security check - only admins can access
+    current_user_context := get_current_user_context();
+    
+    IF current_user_context->>'user_type' != 'admin' THEN
+        RAISE EXCEPTION 'Access denied. Admin privileges required.';
+    END IF;
+    
+    -- Get requests with filtering
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', COALESCE(jsonb_agg(
+            jsonb_build_object(
+                'id', cpr.id,
+                'clinic_name', cpr.clinic_name,
+                'email', cpr.email,
+                'address', cpr.address,
+                'reason', cpr.reason,
+                'status', cpr.status::text,
+                'created_at', cpr.created_at,
+                'reviewed_by', cpr.reviewed_by,
+                'reviewed_at', cpr.reviewed_at,
+                'admin_notes', cpr.admin_notes
+            )
+            ORDER BY cpr.created_at DESC
+        ), '[]'::jsonb),
+        'total', COUNT(*)::int
+    ) INTO requests
+    FROM clinic_partnership_requests cpr
+    WHERE (p_status IS NULL OR cpr.status::text = p_status)
+    LIMIT p_limit OFFSET p_offset;
+    
+    RETURN requests;
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', SQLERRM
+        );
+END;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.get_staff_invitations(p_clinic_id uuid DEFAULT NULL::uuid, p_status text DEFAULT NULL::text, p_limit integer DEFAULT 50, p_offset integer DEFAULT 0)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions', 'pg_catalog'
+AS $function$
+DECLARE
+    current_user_context JSONB;
+    invitations JSONB;
+BEGIN
+    -- Security check
+    current_user_context := get_current_user_context();
+    
+    IF NOT (current_user_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+    
+    IF (current_user_context->>'user_type') != 'admin' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Admin access required');
+    END IF;
+    
+    SELECT jsonb_build_object(
+        'success', true,
+        'invitations', jsonb_agg(
+            jsonb_build_object(
+                'id', si.id,
+                'email', si.email,
+                'clinic_name', c.name,
+                'position', si.position,
+                'status', si.status,
+                'created_at', si.created_at,
+                'expires_at', si.expires_at,
+                'expired', si.expires_at < NOW()
+            ) ORDER BY si.created_at DESC
+        )
+    ) INTO invitations
+    FROM staff_invitations si
+    LEFT JOIN clinics c ON si.clinic_id = c.id
+    WHERE (p_clinic_id IS NULL OR si.clinic_id = p_clinic_id)
+    AND (p_status IS NULL OR si.status = p_status)
+    LIMIT p_limit OFFSET p_offset;
+    
+    RETURN COALESCE(invitations, jsonb_build_object('success', true, 'invitations', '[]'::jsonb));
+END;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.reject_partnership_request(p_request_id uuid, p_admin_notes text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+    current_user_context jsonb;
+    request_record record;
+BEGIN
+    -- Security check
+    current_user_context := get_current_user_context();
+    
+    IF current_user_context->>'user_type' != 'admin' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied. Admin privileges required.');
+    END IF;
+    
+    -- Get the request
+    SELECT * INTO request_record
+    FROM clinic_partnership_requests
+    WHERE id = p_request_id AND status = 'pending';
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Request not found or already processed'
+        );
+    END IF;
+    
+    -- Update request status
+    UPDATE clinic_partnership_requests 
+    SET 
+        status = 'rejected',
+        admin_notes = p_admin_notes,
+        reviewed_by = (current_user_context->>'user_id')::uuid,
+        reviewed_at = NOW()
+    WHERE id = p_request_id;
+    
+    -- Create notification record (without metadata column)
+    INSERT INTO notifications (
+        user_id,
+        notification_type,
+        title,
+        message,
+        created_at
+    ) VALUES (
+        (current_user_context->>'user_id')::uuid,
+        'partnership_request',
+        'Partnership Request Rejected',
+        format('Partnership request for %s has been rejected. %s', 
+            request_record.clinic_name,
+            CASE 
+                WHEN p_admin_notes IS NOT NULL THEN 'Reason: ' || p_admin_notes
+                ELSE 'Please contact us if you have any questions.'
+            END
+        ),
+        NOW()
+    );
+    
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Partnership request rejected successfully'
+    );
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Failed to reject partnership request: ' || SQLERRM
+        );
+END;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.create_user_profile_on_signup()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -1661,8 +1979,8 @@ USER PROFILE LIFECYCLE:
 
 2. AUTHENTICATION PHASE
    - get_current_user_context(): Primary context function
-   - get_current_user_id(): Gets current user ID
-   - get_current_user_role(): Gets current user role
+   - get_current_user_id(): Gets current user ID for rls only
+   - get_current_user_role(): Gets current user role for rls only
    - get_user_auth_status(): Comprehensive auth status
 
 3. RETRIEVAL PHASE

@@ -520,7 +520,7 @@ export const useDoctorDiscovery = () => {
     }
   }, [extractCoordinatesFromLocation]);
 
-  // 🔥 Get available specializations
+  // Get available specializations
   const getAvailableSpecializations = useCallback(async () => {
     try {
       const { data, error } = await supabase

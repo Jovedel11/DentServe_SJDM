@@ -1,10 +1,19 @@
 import { useEffect, useMemo } from "react";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { useNavigate } from "react-router-dom";
+import { authService } from "@/auth/hooks/authService";
 import Loader from "@/core/components/Loader";
 
 const RouteGuard = ({ children, allowedRoles = null }) => {
-  const { user, authStatus, loading, isInitialized, canAccessApp } = useAuth();
+  const {
+    user,
+    authStatus,
+    loading,
+    isInitialized,
+    canAccessApp,
+    isStaff,
+    profile,
+  } = useAuth();
   const navigate = useNavigate();
 
   // Memoize role check to prevent unnecessary re-renders
@@ -43,6 +52,31 @@ const RouteGuard = ({ children, allowedRoles = null }) => {
     hasValidRole,
     navigate,
   ]);
+
+  useEffect(() => {
+    const checkProfileCompletion = async () => {
+      if (user && isStaff) {
+        // Check if staff profile is completed
+        const result = await authService.checkStaffProfileCompletionStatus();
+
+        if (result.success && !result.is_completed) {
+          // Redirect to profile completion
+          if (location.pathname !== "/staff/complete-profile") {
+            navigate("/staff/complete-profile", {
+              state: {
+                clinicId: result.clinic_id,
+                clinicName: result.clinic_name,
+                deadline: result.expires_at,
+              },
+              replace: true,
+            });
+          }
+        }
+      }
+    };
+
+    checkProfileCompletion();
+  }, [user, profile, navigate]);
 
   // Simple loading state
   if (!isInitialized || loading) {

@@ -71,86 +71,228 @@ export const authService = {
   },
 
   // for staff invitation
-  async staffInvitation(inviteData) {
+  async validateAndSignupStaffV2(invitationId, email, firstName, lastName, phone = null) {
     try {
-      if (!inviteData.email || !inviteData.first_name || !inviteData.last_name || !inviteData.clinic_id) {
-        throw new Error('Please fill in all required fields')
-      }
-      const tempPassword = generateTempPassword()
+      const { data, error } = await supabase.rpc('validate_and_signup_staff_v2', {
+        p_invitation_id: invitationId,
+        p_email: email,
+        p_first_name: firstName,
+        p_last_name: lastName,
+        p_phone: phone
+      });
 
-      const { data, error: signupError } = await supabase.auth.signUp({
-        email: inviteData.email,
-        password: tempPassword,
-        options: {
-          data: {
-            user_type: 'staff',
-            first_name: inviteData.first_name,
-            last_name: inviteData.last_name,
-            clinic_id: inviteData.clinic_id,
-            position: inviteData.position || 'Staff',
-            department: inviteData.department,
-            employee_id: inviteData.employee_id,
-            hire_date: inviteData.hire_date || new Date().toISOString().split('T')[0],
-            phone: inviteData.phone,
-            temp_password: tempPassword,
-            invited_by: 'admin'
-          },
-          emailRedirectTo: `${window.location.origin}/auth-callback?type=staff&temp_password=${encodeURIComponent(tempPassword)}`
-        }
-      })
+      if (error) throw new Error(error.message);
+      if (data && !data.success) throw new Error(data.error);
 
-      if (signupError) throw new Error(signupError?.message || 'Staff signup failed')
-
-      return {
-        success: true,
-        tempPassword,
-        message: `Staff invitation sent to ${inviteData.email}. Temporary password: ${tempPassword}`
-      }
-
+      return { 
+        success: true, 
+        data,
+        message: 'Invitation validated. Clinic created. Please complete your profile.'
+      };
     } catch (error) {
-      console.error('Staff invitation error:', error)
-      const errorMsg = error?.message || String(error) || 'Staff invitation failed'
-      return { success: false, error: errorMsg }
+      console.error('Validate staff signup v2 error:', error);
+      return { success: false, error: error.message || 'Failed to validate invitation' };
     }
   },
 
-  // admin invitation
-  async adminInvitation(inviteData) {
+  // Complete staff profile (v2 - creates services in services table)
+  async updateStaffCompleteProfileV2(profileData, clinicData, servicesData = []) {
     try {
-      const tempPassword = generateTempPassword()
+      // Transform services from array of names to array of objects
+      const formattedServices = Array.isArray(servicesData) 
+        ? servicesData.map(service => {
+            if (typeof service === 'string') {
+              // If it's just a service name string, create default object
+              return {
+                name: service,
+                description: `${service} service`,
+                category: 'General',
+                duration_minutes: 30,
+                min_price: null,
+                max_price: null,
+                priority: 10,
+                is_active: true
+              };
+            }
+            // If it's already an object, return as is
+            return service;
+          })
+        : [];
 
-      const { data, error: signupError } = await supabase.auth.signUp({
-        email: inviteData.email,
-        password: tempPassword,
-        options: {
-          data: {
-            user_type: 'admin',
-            first_name: inviteData.first_name,
-            last_name: inviteData.last_name,
-            access_level: inviteData.access_level || 1,
-            temp_password: tempPassword,
-            phone: inviteData.phone,
-            invited_by: 'super_admin'
-          },
-          emailRedirectTo: `${window.location.origin}/auth-callback?type=admin&temp_password=${encodeURIComponent(tempPassword)}`
-        }
-      })
+      const { data, error } = await supabase.rpc('update_staff_complete_profile_v2', {
+        p_profile_data: {
+          first_name: profileData.first_name || profileData.firstName,
+          last_name: profileData.last_name || profileData.lastName,
+          phone: profileData.phone
+        },
+        p_clinic_data: {
+          name: clinicData.name || clinicData.clinic_name,
+          address: clinicData.address || clinicData.clinic_address,
+          city: clinicData.city || clinicData.clinic_city,
+          province: clinicData.province || clinicData.clinic_province,
+          zip_code: clinicData.zip_code || clinicData.clinic_zip_code,
+          phone: clinicData.phone || clinicData.clinic_phone,
+          email: clinicData.email || clinicData.clinic_email,
+          operating_hours: clinicData.operating_hours
+        },
+        p_services_data: formattedServices
+      });
 
-      if (signupError) throw new Error(signupError?.message || 'Admin signup failed')
+      if (error) throw new Error(error.message);
+      if (data && !data.success) throw new Error(data.error);
 
-      return {
-        success: true,
-        tempPassword,
-        message: `Admin invitation sent. Temporary password: ${tempPassword}`
-      }
-
+      return { 
+        success: true, 
+        data,
+        message: 'Profile completed successfully. You can now access the system.'
+      };
     } catch (error) {
-      console.error('Admin invitation error:', error)
-      const errorMsg = error?.message || String(error) || 'Admin invitation failed'
-      return { success: false, error: errorMsg }
+      console.error('Update staff complete profile v2 error:', error);
+      return { success: false, error: error.message || 'Failed to complete profile' };
     }
   },
 
+  // Check staff profile completion status
+  async checkStaffProfileCompletionStatus(userId = null) {
+    try {
+      const { data, error } = await supabase.rpc('check_staff_profile_completion_status', {
+        p_user_id: userId
+      });
+
+      if (error) throw new Error(error.message);
+      if (data && !data.success) throw new Error(data.error);
+
+      return { success: true, data };
+    } catch (error) {
+      console.error('Check staff profile completion error:', error);
+      return { success: false, error: error.message || 'Failed to check completion status' };
+    }
+  },
+
+  // Get incomplete staff signups (Admin only)
+  async getIncompleteStaffSignups(limit = 50, offset = 0) {
+    try {
+      const { data, error } = await supabase.rpc('get_incomplete_staff_signups', {
+        p_limit: limit,
+        p_offset: offset
+      });
+
+      if (error) throw new Error(error.message);
+      if (data && !data.success) throw new Error(data.error);
+
+      return { success: true, data: data.data || [], total: data.total_count || 0 };
+    } catch (error) {
+      console.error('Get incomplete staff signups error:', error);
+      return { success: false, error: error.message || 'Failed to get incomplete signups' };
+    }
+  },
+
+  // Send profile completion reminder (Admin only)
+  async sendProfileCompletionReminder(invitationId) {
+    try {
+      const { data, error } = await supabase.rpc('send_profile_completion_reminder', {
+        p_invitation_id: invitationId
+      });
+
+      if (error) throw new Error(error.message);
+      if (data && !data.success) throw new Error(data.error);
+
+      return { success: true, data, message: 'Reminder sent successfully' };
+    } catch (error) {
+      console.error('Send reminder error:', error);
+      return { success: false, error: error.message || 'Failed to send reminder' };
+    }
+  },
+
+  // Admin cleanup specific incomplete staff
+  async adminCleanupIncompleteStaff(invitationId, adminNotes = null) {
+    try {
+      const { data, error } = await supabase.rpc('admin_cleanup_specific_incomplete_staff', {
+        p_invitation_id: invitationId,
+        p_admin_notes: adminNotes
+      });
+
+      if (error) throw new Error(error.message);
+      if (data && !data.success) throw new Error(data.error);
+
+      return { success: true, data, message: 'Cleanup completed successfully' };
+    } catch (error) {
+      console.error('Admin cleanup error:', error);
+      return { success: false, error: error.message || 'Failed to cleanup' };
+    }
+  },
+
+  // Approve partnership request v2 (Admin only - no immediate clinic creation)
+  async approvePartnershipRequestV2(requestId, adminNotes = null) {
+    try {
+      const { data, error } = await supabase.rpc('approve_partnership_request_v2', {
+        p_request_id: requestId,
+        p_admin_notes: adminNotes
+      });
+
+      if (error) throw new Error(error.message);
+      if (data && !data.success) throw new Error(data.error);
+
+      return { 
+        success: true, 
+        data: data  // This should contain email_data
+      };
+    } catch (error) {
+      console.error('Approve partnership v2 error:', error);
+      return { success: false, error: error.message || 'Failed to approve partnership request' };
+    }
+  },
+
+  // Manual cleanup trigger (runs cleanup function)
+  async runManualCleanup(daysThreshold = 7, dryRun = false) {
+    try {
+      const { data, error } = await supabase.rpc('cleanup_incomplete_staff_profiles', {
+        p_days_threshold: daysThreshold,
+        p_dry_run: dryRun
+      });
+
+      if (error) throw new Error(error.message);
+      if (data && !data.success) throw new Error(data.error);
+
+      return { success: true, data };
+    } catch (error) {
+      console.error('Manual cleanup error:', error);
+      return { success: false, error: error.message || 'Failed to run cleanup' };
+    }
+  },
+
+  async completeStaffSignupFromInvitation(invitationId, email, password, firstName, lastName, phone = null) {
+    try {
+      const { data, error } = await supabase.rpc('complete_staff_signup_from_invitation', {
+        p_invitation_id: invitationId,
+        p_email: email,
+        p_password: password,
+        p_first_name: firstName,
+        p_last_name: lastName,
+        p_phone: phone
+      });
+
+      if (error) throw error;
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to create account');
+      }
+
+      return {
+        success: true,
+        data: data.data,
+        message: data.message
+      };
+    } catch (error) {
+      console.error('Complete staff signup error:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to create account'
+      };
+    }
+  },
+
+  // get auth status
   async getAuthStatus (authUserId = null) {
     try {
       const { data, error } = await supabase.rpc('get_user_auth_status', {
@@ -393,7 +535,7 @@ export const authService = {
     }
   },
 
-  // 🔥 FIXED: User list function
+  // User list function
   async getUserList(filter = {}) {
     const { userType = null, clinicId = null, searchTerm = null, limit = 50, offset = 0 } = filter
 

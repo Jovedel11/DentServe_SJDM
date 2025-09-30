@@ -8,14 +8,12 @@ import FAQSection from "../components//home_components/FAQSection";
 import SatisfactionPromise from "../components/home_components/SatisfactionPromise";
 import styles from "../style/pages/Home.module.scss";
 import { FloatButton } from "antd";
-import Delete from "@/test/add-delete-users/Delete";
 
 const Home = () => {
   return (
     <div className={styles.homeContainer}>
       <section className={`${styles.section}`} id="hero">
         <HeroSection />
-        <Delete />
       </section>
 
       <section className={`${styles.section}`} id="map">

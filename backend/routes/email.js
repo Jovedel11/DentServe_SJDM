@@ -17,183 +17,11 @@ const emailLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Email templates
-const getStaffInvitationTemplate = (data) => {
-  const { first_name, last_name, clinic_name, position, invitation_link } = data;
-  
-  return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Welcome to DentServe</title>
-        <style>
-            body { 
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                line-height: 1.6; 
-                color: #333; 
-                margin: 0;
-                padding: 0;
-                background-color: #f8fafc;
-            }
-            .container { 
-                max-width: 600px; 
-                margin: 0 auto; 
-                background-color: #ffffff;
-                border-radius: 12px;
-                overflow: hidden;
-                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-            }
-            .header { 
-                background: linear-gradient(135deg, #10b981, #059669); 
-                color: white; 
-                padding: 40px 30px; 
-                text-align: center; 
-            }
-            .header h1 {
-                margin: 0;
-                font-size: 28px;
-                font-weight: 700;
-            }
-            .header p {
-                margin: 10px 0 0 0;
-                font-size: 16px;
-                opacity: 0.9;
-            }
-            .content { 
-                padding: 40px 30px; 
-            }
-            .content h2 {
-                color: #1f2937;
-                font-size: 24px;
-                margin: 0 0 20px 0;
-            }
-            .content p {
-                font-size: 16px;
-                line-height: 1.6;
-                color: #4b5563;
-                margin: 0 0 16px 0;
-            }
-            .button-container {
-                text-align: center;
-                margin: 30px 0;
-            }
-            .button { 
-                display: inline-block; 
-                background: linear-gradient(135deg, #10b981, #059669);
-                color: white; 
-                padding: 16px 32px; 
-                text-decoration: none; 
-                border-radius: 8px; 
-                font-weight: 600;
-                font-size: 16px;
-                transition: all 0.3s ease;
-                box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-            }
-            .button:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
-            }
-            .info-box {
-                background: #f3f4f6;
-                border-left: 4px solid #10b981;
-                padding: 16px;
-                margin: 24px 0;
-                border-radius: 0 8px 8px 0;
-            }
-            .link-backup {
-                word-break: break-all;
-                background: #f9fafb;
-                padding: 12px;
-                border-radius: 6px;
-                font-family: 'Monaco', 'Menlo', monospace;
-                font-size: 14px;
-                border: 1px solid #e5e7eb;
-                margin: 16px 0;
-            }
-            .footer { 
-                background: #f9fafb; 
-                padding: 30px; 
-                text-align: center; 
-                font-size: 14px; 
-                color: #6b7280; 
-                border-top: 1px solid #e5e7eb;
-            }
-            .footer p {
-                margin: 0 0 8px 0;
-            }
-            .logo {
-                font-size: 32px;
-                margin-bottom: 8px;
-            }
-            @media (max-width: 600px) {
-                .container {
-                    margin: 0 16px;
-                }
-                .header, .content, .footer {
-                    padding: 24px 20px;
-                }
-                .header h1 {
-                    font-size: 24px;
-                }
-                .content h2 {
-                    font-size: 20px;
-                }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="header">
-                <div class="logo">🦷</div>
-                <h1>Welcome to DentServe</h1>
-                <p>You've been invited to join our dental care platform</p>
-            </div>
-            <div class="content">
-                <h2>Hello ${first_name} ${last_name}!</h2>
-                <p>You have been invited to join <strong>${clinic_name}</strong> as a <strong>${position}</strong>.</p>
-                
-                <p>We're excited to have you on board! Click the button below to complete your registration and set up your account:</p>
-                
-                <div class="button-container">
-                    <a href="${invitation_link}" class="button">Complete Registration</a>
-                </div>
-                
-                <div class="info-box">
-                    <p><strong>⏰ Important:</strong> This invitation expires in 7 days. Please complete your registration as soon as possible.</p>
-                </div>
-                
-                <p>If the button above doesn't work, you can copy and paste this link into your browser:</p>
-                <div class="link-backup">${invitation_link}</div>
-                
-                <p>Once you complete your registration, you'll be able to:</p>
-                <ul style="color: #4b5563; padding-left: 20px;">
-                    <li>Access your clinic dashboard</li>
-                    <li>Manage appointments</li>
-                    <li>Communicate with patients</li>
-                    <li>View clinic analytics</li>
-                </ul>
-            </div>
-            <div class="footer">
-                <p><strong>Need help?</strong> Contact our support team if you have any questions.</p>
-                <p>&copy; 2024 DentServe. All rights reserved.</p>
-                <p style="margin-top: 16px; font-size: 12px; color: #9ca3af;">
-                    This email was sent to ${data.email} because you were invited to join DentServe.
-                </p>
-            </div>
-        </div>
-    </body>
-    </html>
-  `;
-};
-
 // Send staff invitation email
 router.post('/send-staff-invitation', emailLimiter, async (req, res) => {
   try {
     const { 
       to_email, 
-      subject, 
       clinic_name, 
       position, 
       first_name, 
@@ -203,36 +31,78 @@ router.post('/send-staff-invitation', emailLimiter, async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!to_email || !subject || !clinic_name || !invitation_id || !invitation_token) {
+    if (!to_email || !clinic_name || !invitation_id || !invitation_token) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: to_email, subject, clinic_name, invitation_id, invitation_token'
+        error: 'Missing required fields'
       });
     }
 
     // Build invitation link
     const invitation_link = `${process.env.FRONTEND_URL}/auth/staff-signup?invitation=${invitation_id}&token=${invitation_token}`;
 
-    // Generate HTML content
-    const html_content = getStaffInvitationTemplate({
-      first_name: first_name || '',
-      last_name: last_name || '',
-      clinic_name,
-      position: position || 'Staff',
-      invitation_link,
-      email: to_email
-    });
-
     // Send email using Resend
     const { data, error } = await resend.emails.send({
-      from: 'DentServe <onboarding@resend.dev>',
+      from: 'DentServe <noreply@dentserve-sjdm.me>', // Use your verified domain
       to: [to_email],
-      subject,
-      html: html_content,
+      subject: `Invitation to Join ${clinic_name} on DentServe`,
+      html: `
+        <div style="font-family: Arial, sans-serif; color:#333; max-width: 600px; margin:0 auto; padding:0; border:1px solid #e5e7eb; border-radius:8px; background:#fafafa;">
+
+          <!-- Header -->
+          <div style="background:#0f172a; padding:20px; border-radius:8px 8px 0 0; text-align:center;">
+            <img src="https://dentserve-sjdm.me/assets/web-app-manifest-192x192.png" alt="DentServe Logo" style="max-height:50px; margin-bottom:8px;" />
+            <h1 style="color:#fff; margin:0; font-size:20px;">DentServe</h1>
+          </div>
+          
+          <div style="font-family: Arial, sans-serif; color:#333; max-width: 550px; margin:0 auto; padding:24px; border:1px solid #e5e7eb; border-radius:8px; background:#fafafa;">
+            <h2 style="color:#0f172a; text-align:center; margin-bottom:20px;">Staff Invitation</h2>
+            
+            <p>Hello <strong>${first_name} ${last_name}</strong>,</p>
+            <p>
+              You have been invited to join <strong>${clinic_name}</strong> as <strong>${position}</strong> 
+              on the DentServe platform.  
+              To activate your staff account, please confirm your invitation by clicking the button below:
+            </p>
+
+            <p style="text-align:center; margin:32px 0;">
+              <a href="${invitation_link}" 
+                style="background:#2563eb; color:#fff; padding:12px 28px; text-decoration:none; border-radius:6px; font-weight:bold; display:inline-block;">
+                Accept Invitation
+              </a>
+            </p>
+
+            <p>After accepting the invitation, you will be asked to complete your staff profile.  
+            This includes entering your clinic details and, if applicable, your doctor information.  
+            Please ensure that the information provided is accurate to help us keep our records up to date.</p>
+
+            <p>If the button above does not work, copy and paste this link into your browser:</p>
+            <p style="word-break: break-all; color:#2563eb;">${invitation_link}</p>
+
+            <hr style="margin:32px 0; border:none; border-top:1px solid #ddd;" />
+
+            <p style="font-size:12px; color:#555;">
+              This Magic Link will expire shortly for your security.  
+              If you did not expect this invitation, you can safely ignore this email.  
+            </p>
+          </div>
+
+          <!-- Footer -->
+          <div style="background:#f3f4f6; padding:16px; text-align:center; border-top:1px solid #e5e7eb; border-radius:0 0 8px 8px;">
+            <p style="font-size:12px; color:#555; margin:0;">
+              This email was sent by <strong>DentServe</strong>.  
+              If you did not request this action, please ignore this message.
+            </p>
+            <p style="font-size:12px; color:#aaa; margin-top:6px;">
+              © 2025 DentServe. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
     });
 
     if (error) {
-      console.error('Resend API error:', error);
+      console.error('❌ Resend error:', error);
       return res.status(400).json({
         success: false,
         error: error.message || 'Failed to send email'
@@ -241,7 +111,6 @@ router.post('/send-staff-invitation', emailLimiter, async (req, res) => {
 
     console.log('✅ Email sent successfully:', { 
       to: to_email, 
-      subject, 
       resend_id: data.id 
     });
 
@@ -250,59 +119,12 @@ router.post('/send-staff-invitation', emailLimiter, async (req, res) => {
       data: {
         email_id: data.id,
         to: to_email,
-        subject,
         sent_at: new Date().toISOString()
       }
     });
 
   } catch (error) {
     console.error('❌ Email service error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Internal server error'
-    });
-  }
-});
-
-// Send general email
-router.post('/send-email', emailLimiter, async (req, res) => {
-  try {
-    const { to, subject, html, from = 'DentServe <onboarding@resend.dev>' } = req.body;
-
-    if (!to || !subject || !html) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields: to, subject, html'
-      });
-    }
-
-    const { data, error } = await resend.emails.send({
-      from,
-      to: Array.isArray(to) ? to : [to],
-      subject,
-      html,
-    });
-
-    if (error) {
-      console.error('Resend API error:', error);
-      return res.status(400).json({
-        success: false,
-        error: error.message || 'Failed to send email'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: {
-        email_id: data.id,
-        to,
-        subject,
-        sent_at: new Date().toISOString()
-      }
-    });
-
-  } catch (error) {
-    console.error('Email service error:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Internal server error'

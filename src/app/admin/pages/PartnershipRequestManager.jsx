@@ -15,7 +15,7 @@ import {
   UserPlus,
 } from "lucide-react";
 
-import { sendStaffInvitation } from "@/services/emailService.js";
+import { authService } from "@/auth/hooks/authService";
 
 const PartnershipRequestManager = () => {
   const [requests, setRequests] = useState([]);
@@ -28,6 +28,10 @@ const PartnershipRequestManager = () => {
   const [showDirectInviteModal, setShowDirectInviteModal] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [adminNotes, setAdminNotes] = useState("");
+  const [error, setError] = useState("");
+
+  const [showInvitationModal, setShowInvitationModal] = useState(false);
+  const [invitationLink, setInvitationLink] = useState("");
 
   // Direct invitation form state
   const [directInviteForm, setDirectInviteForm] = useState({
@@ -84,53 +88,77 @@ const PartnershipRequestManager = () => {
   const handleApprove = async (requestId) => {
     try {
       setActionLoading(true);
+      setError("");
 
-      // First, approve the partnership request
-      const { data, error } = await supabase.rpc(
-        "approve_partnership_request",
-        {
-          p_request_id: requestId,
-          p_admin_notes: adminNotes,
-        }
+      // ✅ Use modal's textarea value (adminNotes state) instead of prompt
+      const result = await authService.approvePartnershipRequestV2(
+        requestId,
+        adminNotes || null // Use the textarea value from modal
       );
 
-      if (error) throw error;
-
-      if (data?.success) {
-        // Send email using Resend
-        if (data.email_data?.success) {
-          const emailResult = await sendStaffInvitation(data.email_data);
-
-          if (emailResult.success) {
-            // Mark email as sent in database
-            await supabase
-              .from("email_queue")
-              .update({
-                status: "sent",
-                sent_at: new Date().toISOString(),
-                attempts: 1,
-              })
-              .eq("id", data.email_data.queue_id);
-
-            toast.success("Partnership approved and invitation email sent!");
-          } else {
-            toast.warning(
-              "Partnership approved but email failed to send. Please try again."
-            );
-          }
-        } else {
-          toast.success("Partnership approved!");
-        }
-
-        fetchRequests();
-        setShowModal(false);
-        setAdminNotes("");
-      } else {
-        throw new Error(data?.error || "Failed to approve request");
+      if (!result.success) {
+        throw new Error(result.error);
       }
-    } catch (error) {
-      console.error("Error approving request:", error);
-      toast.error(error.message || "Failed to approve request");
+
+      // Step 2: Send invitation email via backend
+      const emailData = result.data?.email_data;
+
+      if (emailData) {
+        const invitationUrl = `${window.location.origin}/auth/staff-signup?invitation=${emailData.invitation_id}&token=${emailData.invitation_token}`;
+
+        try {
+          const emailResponse = await fetch(
+            "http://localhost:3000/api/email/send-staff-invitation",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                to_email: emailData.email,
+                clinic_name: emailData.clinic_name,
+                position: emailData.position,
+                first_name: emailData.first_name,
+                last_name: emailData.last_name,
+                invitation_id: emailData.invitation_id,
+                invitation_token: emailData.invitation_token,
+              }),
+            }
+          );
+
+          const emailResult = await emailResponse.json();
+
+          if (!emailResponse.ok || !emailResult.success) {
+            throw new Error(emailResult.error || "Failed to send email");
+          }
+
+          console.log("✅ Email sent successfully:", emailResult);
+          toast.success(
+            "Partnership approved! Invitation email sent successfully."
+          );
+        } catch (emailError) {
+          console.error("❌ Email sending failed:", emailError);
+
+          // Fallback: Show link manually
+          setInvitationLink(invitationUrl);
+          setShowInvitationModal(true);
+          await navigator.clipboard.writeText(invitationUrl);
+
+          toast.warning(
+            "Invitation created but email failed. Link copied to clipboard."
+          );
+        }
+      }
+
+      // ✅ FIXED: Close the modal and reset state after approval
+      setShowModal(false);
+      setAdminNotes("");
+      setSelectedRequest(null);
+
+      fetchRequests();
+    } catch (err) {
+      console.error("Approval error:", err);
+      toast.error(err.message || "Failed to approve request");
     } finally {
       setActionLoading(false);
     }
@@ -553,6 +581,36 @@ const PartnershipRequestManager = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+      {showInvitationModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Invitation Created!</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Please send this link to the staff member via email:
+            </p>
+            <div className="bg-gray-100 p-3 rounded mb-4 break-all">
+              <code className="text-sm">{invitationLink}</code>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(invitationLink);
+                  toast.success("Link copied!");
+                }}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                Copy Link
+              </button>
+              <button
+                onClick={() => setShowInvitationModal(false)}
+                className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

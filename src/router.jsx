@@ -55,6 +55,7 @@ const ResetPassword = lazy(() => import("./auth/components/ResetPassword"));
 const StaffCompleteProfile = lazy(() =>
   import("./auth/components/StaffCompleteProfile")
 );
+const StaffSignup = lazy(() => import("./auth/components/StaffSignup"));
 
 // Layouts
 const PatientLayout = lazy(() => import("./app/patient/layout/PatientLayout"));
@@ -83,7 +84,6 @@ const PatientFeedback = lazy(() =>
   import("@/app/patient/pages/PatientFeedback")
 );
 const MapView = lazy(() => import("@/app/patient/pages/MapView"));
-const ClinicList = lazy(() => import("@/app/patient/pages/AllClinics"));
 const Dentist = lazy(() => import("@/app/patient/pages/Dentist"));
 
 // Staff pages
@@ -143,6 +143,7 @@ export const router = createBrowserRouter([
           { path: "contact", element: withSuspense(Contact) },
           { path: "login", element: withSuspense(Login) },
           { path: "signup", element: withSuspense(Signup) },
+          { path: "auth/staff-signup", element: withSuspense(StaffSignup) },
           { path: "forgot-password", element: withSuspense(ForgotPassword) },
         ],
       },
