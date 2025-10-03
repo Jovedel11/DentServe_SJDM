@@ -18,6 +18,7 @@ import { ProfileField } from "@/app/shared/profile/profile-field";
 import { ProfileAvatar } from "@/app/shared/profile/profile-avatar";
 import { ProfileStats } from "@/app/shared/profile/profile-stats";
 import { AlertMessage } from "@/core/components/ui/alert-message";
+import { FileSizeWarning } from "@/utils/file-size-warning";
 import Loader from "@/core/components/Loader";
 
 const PatientProfile = () => {
@@ -140,6 +141,7 @@ const PatientProfile = () => {
               onImageUpdate={handleImageUpdate}
               size="xl"
             />
+            <FileSizeWarning />
 
             <div className="flex-1 min-w-0">
               <h2 className="text-2xl font-bold text-foreground mb-4">

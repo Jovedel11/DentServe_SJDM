@@ -1,0 +1,277 @@
+import { useState, useCallback } from 'react';
+import { useAuth } from '@/auth/context/AuthProvider';
+import { supabase } from '@/lib/supabaseClient';
+
+/**
+ * Appointment Rescheduling Hook
+ * Handles appointment rescheduling with availability checking
+ * Note: Database doesn't have dedicated reschedule function,
+ * so we implement it as validate + cancel + rebook flow
+ */
+export const useAppointmentReschedule = () => {
+  const { user, profile, isPatient, isStaff } = useAuth();
+
+  const [state, setState] = useState({
+    loading: false,
+    checkingAvailability: false,
+    error: null,
+    availableSlots: [],
+    rescheduleData: null
+  });
+
+  // =====================================================
+  // Check if Appointment Can Be Rescheduled
+  // =====================================================
+  const canRescheduleAppointment = useCallback(async (appointmentId) => {
+    try {
+      // Get appointment details
+      const { data: appointment, error: fetchError } = await supabase
+        .from('appointments')
+        .select('*, clinic:clinics(cancellation_policy_hours)')
+        .eq('id', appointmentId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Check if can cancel (required for reschedule)
+      const { data: canCancel, error: cancelError } = await supabase.rpc('can_cancel_appointment', {
+        p_appointment_id: appointmentId
+      });
+
+      if (cancelError) throw cancelError;
+
+      // Check status
+      const validStatuses = ['pending', 'confirmed'];
+      const isValidStatus = validStatuses.includes(appointment.status);
+
+      // Check time window
+      const policyHours = appointment.clinic?.cancellation_policy_hours || 24;
+      const appointmentDateTime = new Date(`${appointment.appointment_date}T${appointment.appointment_time}`);
+      const now = new Date();
+      const hoursUntil = (appointmentDateTime - now) / (1000 * 60 * 60);
+      const isWithinPolicy = hoursUntil > policyHours;
+
+      return {
+        canReschedule: canCancel && isValidStatus && isWithinPolicy,
+        reason: !canCancel 
+          ? 'Too close to appointment time'
+          : !isValidStatus
+          ? `Cannot reschedule ${appointment.status} appointments`
+          : !isWithinPolicy
+          ? `Must reschedule at least ${policyHours} hours before appointment`
+          : 'Can reschedule',
+        appointment,
+        hoursUntil: Math.round(hoursUntil * 10) / 10,
+        policyHours
+      };
+
+    } catch (err) {
+      console.error('Error checking reschedule eligibility:', err);
+      return {
+        canReschedule: false,
+        reason: 'Error checking reschedule policy',
+        error: err.message
+      };
+    }
+  }, []);
+
+  // =====================================================
+  // Get Available Slots for Rescheduling
+  // =====================================================
+  const getAvailableSlotsForReschedule = useCallback(async (
+    appointmentId,
+    newDate = null,
+    alternativeDates = []
+  ) => {
+    try {
+      setState(prev => ({ ...prev, checkingAvailability: true, error: null }));
+
+      // Get current appointment details
+      const { data: appointment, error: fetchError } = await supabase
+        .from('appointments')
+        .select(`
+          *,
+          services:appointment_services(service_id)
+        `)
+        .eq('id', appointmentId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const serviceIds = appointment.services.map(s => s.service_id);
+      const datesToCheck = newDate ? [newDate] : alternativeDates;
+
+      // Get available slots for each date
+      const slotsPromises = datesToCheck.map(async (date) => {
+        const { data, error } = await supabase.rpc('get_available_time_slots', {
+          p_doctor_id: appointment.doctor_id,
+          p_appointment_date: date,
+          p_service_ids: serviceIds
+        });
+
+        return {
+          date,
+          slots: data || [],
+          error: error?.message
+        };
+      });
+
+      const slotsResults = await Promise.all(slotsPromises);
+
+      setState(prev => ({
+        ...prev,
+        checkingAvailability: false,
+        availableSlots: slotsResults,
+        rescheduleData: {
+          appointmentId,
+          currentDate: appointment.appointment_date,
+          currentTime: appointment.appointment_time,
+          doctorId: appointment.doctor_id,
+          clinicId: appointment.clinic_id,
+          serviceIds
+        }
+      }));
+
+      return { success: true, slots: slotsResults };
+
+    } catch (err) {
+      const errorMsg = err.message || 'Failed to fetch available slots';
+      setState(prev => ({ ...prev, checkingAvailability: false, error: errorMsg }));
+      return { success: false, error: errorMsg };
+    }
+  }, []);
+
+  // =====================================================
+  // Reschedule Appointment
+  // =====================================================
+  const rescheduleAppointment = useCallback(async (
+    appointmentId,
+    newDate,
+    newTime,
+    rescheduleReason = ''
+  ) => {
+    try {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+
+      // Step 1: Verify can reschedule
+      const eligibility = await canRescheduleAppointment(appointmentId);
+      if (!eligibility.canReschedule) {
+        throw new Error(eligibility.reason);
+      }
+
+      const appointment = eligibility.appointment;
+
+      // Step 2: Check new slot availability
+      const { data: isAvailable, error: availError } = await supabase.rpc('check_appointment_availability', {
+        p_doctor_id: appointment.doctor_id,
+        p_appointment_date: newDate,
+        p_appointment_time: newTime,
+        p_duration_minutes: appointment.duration_minutes,
+        p_exclude_appointment_id: appointmentId
+      });
+
+      if (availError) throw availError;
+      if (!isAvailable) {
+        throw new Error('Selected time slot is no longer available');
+      }
+
+      // Step 3: Update appointment (direct update since we verified eligibility)
+      const { data: updatedAppointment, error: updateError } = await supabase
+        .from('appointments')
+        .update({
+          appointment_date: newDate,
+          appointment_time: newTime,
+          notes: `Rescheduled from ${appointment.appointment_date} ${appointment.appointment_time}. Reason: ${rescheduleReason || 'Patient request'}`,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', appointmentId)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      // Step 4: Create notification about reschedule
+      await supabase.rpc('create_appointment_notification', {
+        p_user_id: appointment.doctor_id,
+        p_notification_type: 'appointment_confirmed',
+        p_appointment_id: appointmentId,
+        p_custom_message: `Appointment rescheduled to ${newDate} at ${newTime}`
+      });
+
+      setState(prev => ({ ...prev, loading: false }));
+
+      return {
+        success: true,
+        appointment: updatedAppointment,
+        message: 'Appointment rescheduled successfully',
+        oldDateTime: {
+          date: appointment.appointment_date,
+          time: appointment.appointment_time
+        },
+        newDateTime: {
+          date: newDate,
+          time: newTime
+        }
+      };
+
+    } catch (err) {
+      const errorMsg = err.message || 'Failed to reschedule appointment';
+      setState(prev => ({ ...prev, loading: false, error: errorMsg }));
+      return { success: false, error: errorMsg };
+    }
+  }, [canRescheduleAppointment]);
+
+  // =====================================================
+  // Staff: Suggest Reschedule Options
+  // =====================================================
+  const suggestRescheduleOptions = useCallback(async (appointmentId, numberOfDays = 7) => {
+    if (!isStaff) {
+      return { success: false, error: 'Only staff can suggest reschedule options' };
+    }
+
+    try {
+      // Get appointment details
+      const { data: appointment, error } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('id', appointmentId)
+        .single();
+
+      if (error) throw error;
+
+      // Generate alternative dates (next 7 days from original date)
+      const originalDate = new Date(appointment.appointment_date);
+      const alternativeDates = [];
+      
+      for (let i = 1; i <= numberOfDays; i++) {
+        const altDate = new Date(originalDate);
+        altDate.setDate(altDate.getDate() + i);
+        
+        // Skip weekends (optional)
+        if (altDate.getDay() !== 0 && altDate.getDay() !== 6) {
+          alternativeDates.push(altDate.toISOString().split('T')[0]);
+        }
+      }
+
+      return await getAvailableSlotsForReschedule(appointmentId, null, alternativeDates);
+
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [isStaff, getAvailableSlotsForReschedule]);
+
+  return {
+    // State
+    ...state,
+
+    // Actions
+    canRescheduleAppointment,
+    getAvailableSlotsForReschedule,
+    rescheduleAppointment,
+    suggestRescheduleOptions,
+
+    // Utilities
+    clearError: () => setState(prev => ({ ...prev, error: null })),
+    clearSlots: () => setState(prev => ({ ...prev, availableSlots: [], rescheduleData: null }))
+  };
+};

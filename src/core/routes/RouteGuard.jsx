@@ -53,31 +53,6 @@ const RouteGuard = ({ children, allowedRoles = null }) => {
     navigate,
   ]);
 
-  useEffect(() => {
-    const checkProfileCompletion = async () => {
-      if (user && isStaff) {
-        // Check if staff profile is completed
-        const result = await authService.checkStaffProfileCompletionStatus();
-
-        if (result.success && !result.is_completed) {
-          // Redirect to profile completion
-          if (location.pathname !== "/staff/complete-profile") {
-            navigate("/staff/complete-profile", {
-              state: {
-                clinicId: result.clinic_id,
-                clinicName: result.clinic_name,
-                deadline: result.expires_at,
-              },
-              replace: true,
-            });
-          }
-        }
-      }
-    };
-
-    checkProfileCompletion();
-  }, [user, profile, navigate]);
-
   // Simple loading state
   if (!isInitialized || loading) {
     return <Loader message="Loading..." />;

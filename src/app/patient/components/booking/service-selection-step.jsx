@@ -6,6 +6,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Info,
+  Calendar,
+  Repeat,
 } from "lucide-react";
 import {
   Card,
@@ -24,28 +26,53 @@ const ServicesSelectionStep = ({
   selectedServices = [],
   onServiceToggle,
 }) => {
-  const { totalDuration, totalMinCost, totalMaxCost, selectedServiceDetails } =
-    useMemo(() => {
-      const selected = services.filter((service) =>
-        selectedServices.includes(service.id)
-      );
+  const {
+    totalDuration,
+    totalMinCost,
+    totalMaxCost,
+    selectedServiceDetails,
+    requiresTreatmentPlan,
+    multiVisitServices,
+    estimatedTotalVisits,
+  } = useMemo(() => {
+    const selected = services.filter((service) =>
+      selectedServices.includes(service.id)
+    );
 
-      return {
-        totalDuration: selected.reduce(
-          (total, service) => total + (service.duration_minutes || 0),
-          0
-        ),
-        totalMinCost: selected.reduce(
-          (total, service) => total + (parseFloat(service.min_price) || 0),
-          0
-        ),
-        totalMaxCost: selected.reduce(
-          (total, service) => total + (parseFloat(service.max_price) || 0),
-          0
-        ),
-        selectedServiceDetails: selected,
-      };
-    }, [services, selectedServices]);
+    // ✅ NEW: Check for multi-visit/treatment plan requirements
+    const multiVisit = selected.filter(
+      (s) =>
+        s.requires_multiple_visits ||
+        s.typical_visit_count > 1 ||
+        s.category?.toLowerCase().includes("orthodontics") ||
+        s.category?.toLowerCase().includes("implant") ||
+        s.name?.toLowerCase().includes("root canal")
+    );
+
+    const totalVisits = multiVisit.reduce(
+      (sum, s) => sum + (s.typical_visit_count || 2),
+      0
+    );
+
+    return {
+      totalDuration: selected.reduce(
+        (total, service) => total + (service.duration_minutes || 0),
+        0
+      ),
+      totalMinCost: selected.reduce(
+        (total, service) => total + (parseFloat(service.min_price) || 0),
+        0
+      ),
+      totalMaxCost: selected.reduce(
+        (total, service) => total + (parseFloat(service.max_price) || 0),
+        0
+      ),
+      selectedServiceDetails: selected,
+      requiresTreatmentPlan: multiVisit.length > 0,
+      multiVisitServices: multiVisit,
+      estimatedTotalVisits: totalVisits,
+    };
+  }, [services, selectedServices]);
 
   const formatDuration = (minutes) => {
     if (minutes < 60) return `${minutes}min`;
@@ -89,6 +116,23 @@ const ServicesSelectionStep = ({
         </div>
       </div>
 
+      {/* ✅ NEW: Treatment Plan Notice */}
+      {requiresTreatmentPlan && (
+        <Alert>
+          <Repeat className="h-4 w-4" />
+          <div>
+            <strong>Multi-Visit Treatment Plan</strong>
+            <p className="text-sm mt-1">
+              The selected service{multiVisitServices.length > 1 ? "s" : ""} (
+              {multiVisitServices.map((s) => s.name).join(", ")}) typically
+              require{multiVisitServices.length === 1 ? "s" : ""} approximately{" "}
+              <strong>{estimatedTotalVisits} visits</strong> to complete. Your
+              dentist will create a treatment plan after your first appointment.
+            </p>
+          </div>
+        </Alert>
+      )}
+
       {/* Validation Alerts */}
       {hasValidationErrors && (
         <Alert variant="destructive">
@@ -124,6 +168,13 @@ const ServicesSelectionStep = ({
               const isSelected = selectedServices.includes(service.id);
               const isDisabled = !isSelected && maxReached;
 
+              // ✅ NEW: Check if service requires multiple visits
+              const isMultiVisit =
+                service.requires_multiple_visits ||
+                service.typical_visit_count > 1 ||
+                service.category?.toLowerCase().includes("orthodontics") ||
+                service.category?.toLowerCase().includes("implant");
+
               return (
                 <Card
                   key={service.id}
@@ -145,9 +196,21 @@ const ServicesSelectionStep = ({
                   <CardContent className="p-4">
                     <div className="space-y-3">
                       <div className="pr-8">
-                        <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">
-                          {service.name}
-                        </h3>
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                            {service.name}
+                          </h3>
+                          {/* ✅ NEW: Multi-visit indicator */}
+                          {isMultiVisit && (
+                            <Badge
+                              variant="secondary"
+                              className="text-xs flex-shrink-0"
+                            >
+                              <Repeat className="w-3 h-3 mr-1" />
+                              {service.typical_visit_count || 2}+ visits
+                            </Badge>
+                          )}
+                        </div>
                         {service.description && (
                           <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
                             {service.description}
@@ -171,11 +234,18 @@ const ServicesSelectionStep = ({
                         </div>
                       </div>
 
-                      {service.category && (
-                        <Badge variant="outline" className="text-xs w-fit">
-                          {service.category}
-                        </Badge>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {service.category && (
+                          <Badge variant="outline" className="text-xs">
+                            {service.category}
+                          </Badge>
+                        )}
+                        {service.priority >= 8 && (
+                          <Badge variant="default" className="text-xs">
+                            Popular
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -183,7 +253,7 @@ const ServicesSelectionStep = ({
             })}
           </div>
 
-          {/* Selection Summary */}
+          {/* ✅ ENHANCED: Selection Summary with Treatment Plan Info */}
           {selectedServices.length > 0 && (
             <div className="lg:col-span-2">
               <Card className="border-2 border-primary/20 bg-primary/5">
@@ -195,29 +265,47 @@ const ServicesSelectionStep = ({
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    {selectedServiceDetails.map((service, index) => (
-                      <div
-                        key={service.id}
-                        className="flex items-center justify-between py-2"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="w-6 h-6 bg-primary/20 rounded-full flex items-center justify-center text-xs font-medium text-primary">
-                            {index + 1}
-                          </span>
-                          <span className="font-medium text-foreground">
-                            {service.name}
-                          </span>
+                    {selectedServiceDetails.map((service, index) => {
+                      const isMultiVisit = multiVisitServices.find(
+                        (s) => s.id === service.id
+                      );
+                      return (
+                        <div
+                          key={service.id}
+                          className="flex items-center justify-between py-2"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="w-6 h-6 bg-primary/20 rounded-full flex items-center justify-center text-xs font-medium text-primary">
+                              {index + 1}
+                            </span>
+                            <div>
+                              <span className="font-medium text-foreground">
+                                {service.name}
+                              </span>
+                              {/* ✅ NEW: Multi-visit tag */}
+                              {isMultiVisit && (
+                                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                                  <Calendar className="w-3 h-3" />~
+                                  {service.typical_visit_count || 2}{" "}
+                                  appointments needed
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                            <span>
+                              {formatDuration(service.duration_minutes)}
+                            </span>
+                            <span className="font-medium text-foreground">
+                              {formatPrice(
+                                service.min_price,
+                                service.max_price
+                              )}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <span>
-                            {formatDuration(service.duration_minutes)}
-                          </span>
-                          <span className="font-medium text-foreground">
-                            {formatPrice(service.min_price, service.max_price)}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   <Separator />
@@ -227,16 +315,25 @@ const ServicesSelectionStep = ({
                       <div className="flex items-center gap-2 text-sm">
                         <Clock className="w-4 h-4 text-muted-foreground" />
                         <span className="font-medium text-foreground">
-                          Total Duration: {formatDuration(totalDuration)}
+                          First Visit Duration: {formatDuration(totalDuration)}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 text-sm">
                         <CreditCard className="w-4 h-4 text-muted-foreground" />
                         <span className="font-medium text-foreground">
-                          Estimated Cost:{" "}
+                          Estimated Total Cost:{" "}
                           {formatPrice(totalMinCost, totalMaxCost)}
                         </span>
                       </div>
+                      {/* ✅ NEW: Show total visits if treatment plan required */}
+                      {requiresTreatmentPlan && (
+                        <div className="flex items-center gap-2 text-sm">
+                          <Calendar className="w-4 h-4 text-muted-foreground" />
+                          <span className="font-medium text-foreground">
+                            Estimated Total Visits: {estimatedTotalVisits}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -246,9 +343,9 @@ const ServicesSelectionStep = ({
                       <div className="text-sm">
                         <strong>Extended Appointment</strong>
                         <p className="mt-1">
-                          Your appointment duration is{" "}
-                          {formatDuration(totalDuration)}. This may require
-                          scheduling across multiple time slots.
+                          Your first appointment is{" "}
+                          {formatDuration(totalDuration)}. Please plan
+                          accordingly.
                         </p>
                       </div>
                     </Alert>

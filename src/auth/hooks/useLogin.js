@@ -45,6 +45,21 @@ export const useLogin = () => {
         throw new Error(loginError.message)
       }
 
+            if (data.user) {
+        const { data: authStatus } = await supabase.rpc('get_user_auth_status', {
+          p_auth_user_id: data.user.id
+        });
+
+        if (authStatus?.user_role === 'staff' && authStatus?.next_step === 'pending_staff_activation') {
+          // Redirect to profile completion
+          console.log('⚠️ Staff profile incomplete - redirect needed');
+          return { 
+            success: false, 
+            error: 'Please complete your profile first',
+            redirect: '/auth/staff-complete-profile'
+          };
+        }
+      }
       console.log('✅ Login successful:', data.user.email)
       await checkRateLimit(email, 'login', 5, 15, true) // Log successful attempt
       return { success: true, user: data.user }

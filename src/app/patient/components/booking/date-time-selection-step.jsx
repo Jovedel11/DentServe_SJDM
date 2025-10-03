@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Calendar,
   Clock,
@@ -6,6 +6,10 @@ import {
   Info,
   ChevronLeft,
   ChevronRight,
+  FileText,
+  XCircle,
+  AlertTriangle,
+  Ban,
 } from "lucide-react";
 import {
   Card,
@@ -18,6 +22,7 @@ import { Badge } from "@/core/components/ui/badge";
 import { Alert } from "@/core/components/ui/alert";
 import { Input } from "@/core/components/ui/input";
 import { Label } from "@/core/components/ui/label";
+import { Textarea } from "@/core/components/ui/text-area";
 import Loader from "@/core/components/Loader";
 import { cn } from "@/lib/utils";
 
@@ -27,8 +32,24 @@ const DateTimeSelectionStep = ({
   checkingAvailability,
   onUpdateBookingData,
   onDateSelect,
+  sameDayConflict,
+  sameDayConflictDetails,
+  bookingLimitsInfo,
 }) => {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
+
+  // ✅ Sync selectedMonth when date changes
+  useEffect(() => {
+    if (bookingData.date) {
+      const dateObj = new Date(bookingData.date);
+      if (
+        dateObj.getMonth() !== selectedMonth.getMonth() ||
+        dateObj.getFullYear() !== selectedMonth.getFullYear()
+      ) {
+        setSelectedMonth(dateObj);
+      }
+    }
+  }, [bookingData.date]);
 
   const handleDateChange = (date) => {
     if (onDateSelect) {
@@ -43,6 +64,10 @@ const DateTimeSelectionStep = ({
 
   const handleTimeSelect = (time) => {
     onUpdateBookingData({ time });
+  };
+
+  const handleSymptomsChange = (e) => {
+    onUpdateBookingData({ symptoms: e.target.value });
   };
 
   // Generate calendar days
@@ -132,6 +157,9 @@ const DateTimeSelectionStep = ({
     day: "numeric",
   });
 
+  // ✅ NEW: Check if conflict exists
+  const hasConflict = sameDayConflict || sameDayConflictDetails;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3 mb-8">
@@ -148,9 +176,159 @@ const DateTimeSelectionStep = ({
         </div>
       </div>
 
+      {/* ⚠️ CRITICAL: Same-Day Conflict Warning - Show IMMEDIATELY */}
+      {hasConflict && bookingData.date && (
+        <Alert variant="destructive" className="border-2 border-destructive">
+          <XCircle className="h-6 w-6" />
+          <div className="flex-1">
+            <strong className="text-lg">
+              ⚠️ Cannot Book: Existing Appointment on This Date
+            </strong>
+
+            {sameDayConflictDetails && (
+              <div className="mt-3 space-y-3">
+                {/* Appointment details */}
+                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+                  <p className="text-sm font-semibold mb-2">
+                    📅 Your Existing Appointment:
+                  </p>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Date:</span>
+                      <strong>
+                        {new Date(
+                          sameDayConflictDetails.date
+                        ).toLocaleDateString("en-US", {
+                          weekday: "long",
+                          month: "long",
+                          day: "numeric",
+                        })}
+                      </strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Time:</span>
+                      <strong>{sameDayConflictDetails.time}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Clinic:</span>
+                      <strong>{sameDayConflictDetails.clinicName}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Doctor:</span>
+                      <strong>{sameDayConflictDetails.doctorName}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Status:</span>
+                      <Badge
+                        variant={
+                          sameDayConflictDetails.status === "confirmed"
+                            ? "default"
+                            : "secondary"
+                        }
+                      >
+                        {sameDayConflictDetails.status}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Policy explanation */}
+                <div className="bg-background border rounded-lg p-3">
+                  <p className="text-sm font-semibold mb-2">
+                    📋 Our Booking Policy:
+                  </p>
+                  <ul className="text-sm space-y-1 ml-4 list-disc">
+                    <li>
+                      <strong>Only 1 appointment per day</strong> is allowed
+                      across all clinics
+                    </li>
+                    <li>
+                      To book another appointment on the same day, you must{" "}
+                      <strong>first cancel</strong> your existing appointment
+                    </li>
+                    <li>
+                      {sameDayConflictDetails.status === "confirmed" ? (
+                        <span className="text-warning">
+                          ⚠️ <strong>Important:</strong> Your existing
+                          appointment is confirmed. If it's part of an ongoing
+                          treatment, canceling may affect your treatment plan.
+                          Please consult with your dentist before canceling.
+                        </span>
+                      ) : (
+                        <span className="text-success">
+                          ✓ Your existing appointment is pending and can be
+                          canceled if needed.
+                        </span>
+                      )}
+                    </li>
+                  </ul>
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      (window.location.href = "/patient/appointments/upcoming")
+                    }
+                    className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                  >
+                    <Calendar className="w-4 h-4 mr-2" />
+                    View & Manage Appointments
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      onUpdateBookingData({ date: null, time: null })
+                    }
+                  >
+                    <ChevronLeft className="w-4 h-4 mr-2" />
+                    Choose Different Date
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </Alert>
+      )}
+
+      {/* ⚠️ BOOKING POLICY REMINDER - Enhanced with limits */}
+      {!hasConflict && bookingLimitsInfo && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <div className="text-sm">
+            <strong>Booking Guidelines:</strong>
+            <ul className="mt-2 space-y-1 ml-4 list-disc">
+              <li>
+                <strong>1 appointment per day</strong> across all clinics
+              </li>
+              <li>
+                Maximum{" "}
+                <strong>
+                  {bookingLimitsInfo.maxTotalPending} pending appointments
+                </strong>{" "}
+                at a time
+              </li>
+              <li>
+                Book up to{" "}
+                <strong>{bookingLimitsInfo.maxAdvanceDays} days</strong> in
+                advance
+              </li>
+              <li>
+                You have{" "}
+                <strong>{bookingLimitsInfo.totalRemaining} slot(s)</strong>{" "}
+                remaining
+              </li>
+            </ul>
+          </div>
+        </Alert>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Date Selection */}
-        <Card>
+        <Card className={cn(hasConflict && "opacity-50 pointer-events-none")}>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span>Choose Date</span>
@@ -239,7 +417,7 @@ const DateTimeSelectionStep = ({
         </Card>
 
         {/* Time Selection */}
-        <Card>
+        <Card className={cn(hasConflict && "opacity-50 pointer-events-none")}>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Clock className="w-5 h-5" />
@@ -316,8 +494,39 @@ const DateTimeSelectionStep = ({
         </Card>
       </div>
 
-      {/* Selection Summary */}
-      {bookingData.date && bookingData.time && (
+      {/* Symptoms/Notes Section - Only show if NO conflict */}
+      {bookingData.date && bookingData.time && !hasConflict && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <FileText className="w-5 h-5" />
+              Additional Notes (Optional)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <Label htmlFor="symptoms" className="text-sm font-medium">
+                Symptoms, concerns, or special requests:
+              </Label>
+              <Textarea
+                id="symptoms"
+                placeholder="Please describe any symptoms, concerns, or special requests that will help us prepare for your visit..."
+                value={bookingData.symptoms || ""}
+                onChange={handleSymptomsChange}
+                className="min-h-[120px] resize-none"
+                maxLength={500}
+              />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>This information will be shared with clinic staff</span>
+                <span>{bookingData.symptoms?.length || 0}/500</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Selection Summary - Only show if NO conflict */}
+      {bookingData.date && bookingData.time && !hasConflict && (
         <Alert>
           <Info className="h-4 w-4" />
           <div>

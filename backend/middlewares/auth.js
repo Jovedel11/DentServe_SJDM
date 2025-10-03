@@ -1,72 +1,68 @@
-import { supabase } from "../lib/supabaseSuperAdmin.js";
+import jwt from 'jsonwebtoken';
+import { supabase } from '../lib/supabaseSuperAdmin.js';
 
 const authenticateToken = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const token = authHeader?.split(' ')[1];
+
+    if (!token) {
       return res.status(401).json({
         success: false,
-        error: 'Authorization token required'
+        error: 'No token provided',
       });
     }
-    
-    const token = authHeader.substring(7); // remove 'Bearer ' prefix
-    
-    // verify token with Supabase
+
+    // Verify JWT token
     const { data: { user }, error } = await supabase.auth.getUser(token);
-    
+
     if (error || !user) {
-      console.error('Token verification failed:', error?.message);
       return res.status(401).json({
         success: false,
-        error: 'Invalid or expired token'
+        error: 'Invalid or expired token',
       });
     }
-    
-    // get user's profile information from your database
-    const { data: userProfile, error: profileError } = await supabase
+
+    // Get user from database
+    const { data: userData, error: userError } = await supabase
       .from('users')
-      .select(`
-        id,
-        auth_user_id,
-        email,
-        user_profiles!inner(
-          id,
-          user_type,
-          first_name,
-          last_name
-        )
-      `)
+      .select('id, email, phone, is_active, email_verified')
       .eq('auth_user_id', user.id)
-      .eq('is_active', true)
       .single();
-    
-    if (profileError || !userProfile) {
-      console.error('User profile fetch failed:', profileError?.message);
+
+    if (userError || !userData) {
       return res.status(401).json({
         success: false,
-        error: 'User profile not found'
+        error: 'User not found',
       });
     }
-    
-    // attach user info to request
+
+    // 🆕 Get user profile (allow null for incomplete staff)
+    const { data: profileData } = await supabase
+      .from('user_profiles')
+      .select('id, user_type, first_name, last_name')
+      .eq('user_id', userData.id)
+      .single();
+
+    // Attach user data to request
     req.user = {
+      userId: userData.id,
       authUserId: user.id,
-      userId: userProfile.id,
-      userProfileId: userProfile.user_profiles.id,
-      email: userProfile.email,
-      userType: userProfile.user_profiles.user_type,
-      firstName: userProfile.user_profiles.first_name,
-      lastName: userProfile.user_profiles.last_name
+      email: userData.email,
+      userProfileId: profileData?.id || null, // ✅ Allow null
+      userType: profileData?.user_type || 'unknown',
+      firstName: profileData?.first_name || '',
+      lastName: profileData?.last_name || '',
+      isActive: userData.is_active,
+      emailVerified: userData.email_verified,
     };
-    
+
     next();
   } catch (error) {
-    console.error('Authentication middleware error:', error);
+    console.error('Auth middleware error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Authentication failed'
+      error: 'Authentication failed',
     });
   }
 };

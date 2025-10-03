@@ -13,7 +13,7 @@ import {
   InfoWindow,
 } from "@react-google-maps/api";
 import { useTheme } from "@/core/contexts/ThemeProvider";
-import { useClinicSystem } from "@/hooks/location/useClinicSystem";
+import { useClinicDiscovery } from "@/hooks/location/useClinicDiscovery";
 import { useLocationService } from "@/hooks/location/useLocationService";
 import {
   Search,
@@ -25,12 +25,11 @@ import {
   Calendar,
   SlidersHorizontal,
   X,
-  Users,
   Stethoscope,
   Building2,
   Award,
-  ThumbsUp,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 
 const GOOGLE_MAPS_LIBRARIES = ["places"];
@@ -44,50 +43,40 @@ const MapView = () => {
     isLocationAvailable,
     requestLocationAccess,
   } = useLocationService();
-  const { findNearestClinics, searchClinics, getClinicDetail } =
-    useClinicSystem();
+
+  const {
+    clinics,
+    loading,
+    error: hookError,
+    discoverClinics,
+    searchClinics: searchClinicsHook,
+    getClinicDetails,
+  } = useClinicDiscovery();
 
   // Map state
   const [map, setMap] = useState(null);
   const [selectedClinic, setSelectedClinic] = useState(null);
-  const [clinics, setClinics] = useState([]);
   const [filteredClinics, setFilteredClinics] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
   const [showClinicModal, setShowClinicModal] = useState(false);
   const [modalClinic, setModalClinic] = useState(null);
-  const [sortBy, setSortBy] = useState("recommended");
+  const [sortBy, setSortBy] = useState("distance");
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
     services: [],
     rating: 0,
-    distance: 25,
+    distance: 50,
     openNow: false,
-    emergencyHours: false,
-    acceptsInsurance: false,
   });
   const [error, setError] = useState(null);
 
   // Prevent concurrent API calls
   const loadingRef = useRef(false);
-
-  // Available services for filters
-  const [availableServices, setAvailableServices] = useState([
-    "General Dentistry",
-    "Teeth Cleaning",
-    "Dental Checkup",
-    "Teeth Whitening",
-    "Root Canal",
-    "Dental Implants",
-    "Orthodontics",
-    "Oral Surgery",
-    "Pediatric Dentistry",
-    "Cosmetic Dentistry",
-  ]);
+  const searchTimeoutRef = useRef(null);
 
   // Google Maps configuration
   const mapContainerStyle = { width: "100%", height: "100%" };
-  const defaultCenter = { lat: 14.815710752120832, lng: 121.07312517865853 };
+  const defaultCenter = { lat: 14.8136, lng: 121.0447 }; // San Jose Del Monte
 
   // Get properly formatted location for Google Maps
   const mapCenter = useMemo(() => {
@@ -101,59 +90,130 @@ const MapView = () => {
     streetViewControl: true,
     mapTypeControl: true,
     fullscreenControl: true,
-    styles: theme === "dark" ? [] : lightMapStyles,
+    styles: lightMapStyles,
   };
 
-  // Smart recommendations algorithm
-  const getRecommendedClinics = useMemo(() => {
-    return clinics
-      .map((clinic) => {
-        let score = 0;
-        score += (clinic.rating / 5) * 40; // Rating weight (40%)
+  // ✅ FIXED: Check if clinic is currently open (aligned with database schema)
+  const checkClinicIsOpen = useCallback((operatingHours) => {
+    if (
+      !operatingHours ||
+      typeof operatingHours !== "object" ||
+      Object.keys(operatingHours).length === 0
+    ) {
+      return false;
+    }
 
-        const feedbackRatio =
-          clinic.total_reviews > 0
-            ? (clinic.helpful_feedback || 0) / clinic.total_reviews
-            : 0;
-        score += feedbackRatio * 30; // Feedback helpfulness (30%)
+    try {
+      const now = new Date();
+      const daysOfWeek = [
+        "sunday",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+      ];
+      const currentDay = daysOfWeek[now.getDay()];
 
-        const maxDistance = 10;
-        const distanceScore = clinic.distance
-          ? Math.max(0, (maxDistance - clinic.distance) / maxDistance)
-          : 0;
-        score += distanceScore * 20; // Distance weight (20%)
+      // Get current time in minutes for comparison
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-        // Bonus factors (10%)
-        if (clinic.is_open) score += 3;
-        if (clinic.emergency_hours) score += 2;
-        if (clinic.accepts_insurance) score += 2;
-        if (clinic.badges?.length > 0) score += 3;
+      // Get today's hours using the database schema format
+      const dayHours = operatingHours[currentDay];
 
-        return { ...clinic, recommendationScore: score };
-      })
-      .sort((a, b) => b.recommendationScore - a.recommendationScore);
-  }, [clinics]);
+      if (!dayHours) {
+        return false; // Day not defined = closed
+      }
 
+      // Check if explicitly closed
+      if (dayHours.closed === true || dayHours.is_closed === true) {
+        return false;
+      }
+
+      // ✅ Database uses "open" and "close" keys (not "start" and "end")
+      const openTime = dayHours.open || dayHours.start;
+      const closeTime = dayHours.close || dayHours.end;
+
+      if (!openTime || !closeTime) {
+        return false;
+      }
+
+      // Parse times
+      const parseTime = (timeStr) => {
+        const match = timeStr.match(/(\d{1,2}):(\d{2})/);
+        if (!match) return null;
+        const [, hours, minutes] = match;
+        return parseInt(hours) * 60 + parseInt(minutes);
+      };
+
+      const openMinutes = parseTime(openTime);
+      const closeMinutes = parseTime(closeTime);
+
+      if (openMinutes === null || closeMinutes === null) {
+        return false;
+      }
+
+      // Check if currently open
+      return currentMinutes >= openMinutes && currentMinutes < closeMinutes;
+    } catch (error) {
+      console.error("Error checking clinic hours:", error);
+      return false;
+    }
+  }, []);
+
+  // ✅ Format distance
+  const formatDistance = useCallback(
+    (clinic) => {
+      const distance =
+        clinic.distance_km ||
+        clinic.distance_numeric ||
+        clinic.distance ||
+        (clinic.position && userLocation
+          ? calculateDistance(
+              userLocation.latitude,
+              userLocation.longitude,
+              clinic.position.lat,
+              clinic.position.lng
+            )
+          : null);
+
+      if (!distance || distance === 0 || isNaN(distance)) {
+        return "N/A";
+      }
+
+      const distanceNum = parseFloat(distance);
+      return distanceNum > 0 ? distanceNum.toFixed(1) : "N/A";
+    },
+    [userLocation]
+  );
+
+  // Calculate distance using Haversine formula
+  const calculateDistance = useCallback((lat1, lon1, lat2, lon2) => {
+    if (!lat1 || !lon1 || !lat2 || !lon2) return 0;
+
+    const R = 6371;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  }, []);
+
+  // Load clinics
   useEffect(() => {
     const loadClinics = async () => {
       if (loadingRef.current) return;
 
-      console.log("🚀 MapView: Starting to load clinics...");
-      setIsLoading(true);
-      setError(null);
       loadingRef.current = true;
+      setError(null);
 
       try {
-        const options = {
-          maxDistance: filters.distance,
-          services: filters.services,
-          minRating: filters.rating,
-          limit: 50,
-        };
-
-        console.log("⚙️ MapView: Options:", options);
-
-        // 🔥 FIXED: Use proper location format
         const searchLocation = isLocationAvailable()
           ? {
               latitude: userLocation.latitude,
@@ -161,208 +221,161 @@ const MapView = () => {
             }
           : null;
 
-        console.log("📍 MapView: Search location:", searchLocation);
+        const options = {
+          maxDistance: filters.distance,
+          services: filters.services,
+          minRating: filters.rating > 0 ? filters.rating : null,
+          limit: 50,
+        };
 
-        const result = await findNearestClinics(searchLocation, options);
-        console.log("📥 MapView: findNearestClinics result:", result);
-
-        if (result?.success && result.clinics?.length > 0) {
-          console.log("✅ MapView: Setting clinics:", result.clinics);
-          setClinics(result.clinics);
-          setFilteredClinics(result.clinics);
-        } else {
-          console.log("❌ MapView: No clinics found");
-          setClinics([]);
-          setFilteredClinics([]);
-
-          if (!result?.success) {
-            setError(result?.error || "Failed to load clinics");
-          }
-        }
+        await discoverClinics(searchLocation, options);
       } catch (error) {
-        console.error("💥 MapView: Error loading clinics:", error);
+        console.error("Error loading clinics:", error);
         setError("Failed to load clinics. Please try again.");
-        setClinics([]);
-        setFilteredClinics([]);
       } finally {
-        setIsLoading(false);
         loadingRef.current = false;
-        console.log("🏁 MapView: Finished loading clinics");
       }
     };
 
     loadClinics();
   }, [
-    userLocation,
+    userLocation?.latitude,
+    userLocation?.longitude,
     filters.distance,
     filters.services,
     filters.rating,
-    findNearestClinics,
+    discoverClinics,
     isLocationAvailable,
   ]);
 
-  // Search functionality
+  // Apply filters and sorting
   useEffect(() => {
-    const performSearch = async () => {
-      if (!searchQuery.trim()) {
-        setFilteredClinics(clinics);
-        return;
-      }
+    let filtered = [...clinics].map((clinic) => {
+      const isCurrentlyOpen = checkClinicIsOpen(
+        clinic.operating_hours || clinic.hours
+      );
 
-      setIsLoading(true);
-      try {
-        const result = await searchClinics(searchQuery, {
-          maxDistance: filters.distance,
-          services: filters.services,
-          minRating: filters.rating,
-        });
+      return {
+        ...clinic,
+        is_open: isCurrentlyOpen,
+        isOpen: isCurrentlyOpen,
+        distance: formatDistance(clinic),
+        distance_numeric: parseFloat(formatDistance(clinic)) || 0,
+      };
+    });
 
-        if (result?.clinics) {
-          const transformedClinics = result.clinics.map((clinic) => {
-            // Same transformation as above
-            let latitude, longitude;
-
-            if (clinic.location) {
-              if (
-                typeof clinic.location === "object" &&
-                clinic.location.coordinates
-              ) {
-                longitude = clinic.location.coordinates[0];
-                latitude = clinic.location.coordinates[1];
-              } else if (clinic.latitude && clinic.longitude) {
-                latitude = clinic.latitude;
-                longitude = clinic.longitude;
-              }
-            }
-
-            if (
-              typeof latitude !== "number" ||
-              typeof longitude !== "number" ||
-              isNaN(latitude) ||
-              isNaN(longitude) ||
-              latitude < -90 ||
-              latitude > 90 ||
-              longitude < -180 ||
-              longitude > 180
-            ) {
-              latitude = defaultCenter.lat;
-              longitude = defaultCenter.lng;
-            }
-
-            return {
-              id: clinic.id,
-              name: clinic.name,
-              address: clinic.full_address || clinic.address,
-              position: {
-                lat: latitude,
-                lng: longitude,
-              },
-              rating: clinic.average_rating || clinic.rating || 0,
-              reviews: clinic.total_reviews || 0,
-              distance: clinic.distance_km
-                ? parseFloat(clinic.distance_km).toFixed(1)
-                : "0",
-              phone: clinic.phone,
-              image: clinic.image_url || "/assets/images/dental.png",
-              is_open: clinic.is_open,
-              isOpen: clinic.is_open,
-              emergency_hours: clinic.emergency_hours,
-              emergencyHours: clinic.emergency_hours,
-              accepts_insurance: clinic.accepts_insurance,
-              acceptsInsurance: clinic.accepts_insurance,
-              services: clinic.services_offered || clinic.services || [],
-              badges: clinic.badges || [],
-              hours: clinic.operating_hours || {},
-              nextAvailable: clinic.next_available || "Call for availability",
-              specialOffers: clinic.special_offers || [],
-              doctors: clinic.doctors || [],
-            };
-          });
-
-          setFilteredClinics(transformedClinics);
-        } else {
-          setFilteredClinics([]);
-        }
-      } catch (error) {
-        console.error("Error searching clinics:", error);
-        // Fallback to local filtering
-        const filtered = clinics.filter(
-          (clinic) =>
-            clinic.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            clinic.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            clinic.services?.some((service) =>
-              service.name?.toLowerCase().includes(searchQuery.toLowerCase())
-            )
-        );
-        setFilteredClinics(filtered);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    const debounceTimer = setTimeout(performSearch, 300);
-    return () => clearTimeout(debounceTimer);
-  }, [searchQuery, clinics, searchClinics, filters]);
-
-  // Filter and sort logic
-  useEffect(() => {
-    let filtered = [...clinics];
-
-    // Apply filters
+    // Apply service filter
     if (filters.services.length > 0) {
       filtered = filtered.filter((clinic) =>
         clinic.services?.some((service) =>
-          filters.services.includes(service.name || service)
+          filters.services.some((filterService) =>
+            service.name?.toLowerCase().includes(filterService.toLowerCase())
+          )
         )
       );
     }
-    if (filters.rating > 0)
+
+    // Apply rating filter
+    if (filters.rating > 0) {
       filtered = filtered.filter((clinic) => clinic.rating >= filters.rating);
-    if (filters.distance < 25)
-      filtered = filtered.filter(
-        (clinic) => parseFloat(clinic.distance) <= filters.distance
-      );
-    if (filters.openNow) filtered = filtered.filter((clinic) => clinic.isOpen);
-    if (filters.emergencyHours)
-      filtered = filtered.filter((clinic) => clinic.emergencyHours);
-    if (filters.acceptsInsurance)
-      filtered = filtered.filter((clinic) => clinic.acceptsInsurance);
+    }
+
+    // Apply distance filter
+    if (filters.distance < 50) {
+      filtered = filtered.filter((clinic) => {
+        const dist = parseFloat(
+          clinic.distance_numeric || clinic.distance || 0
+        );
+        return !isNaN(dist) && dist <= filters.distance;
+      });
+    }
+
+    // Apply open now filter
+    if (filters.openNow) {
+      filtered = filtered.filter((clinic) => clinic.is_open === true);
+    }
 
     // Sort results
     switch (sortBy) {
       case "distance":
-        filtered.sort(
-          (a, b) => parseFloat(a.distance) - parseFloat(b.distance)
-        );
+        filtered.sort((a, b) => {
+          const distA = parseFloat(a.distance_numeric || a.distance || 99999);
+          const distB = parseFloat(b.distance_numeric || b.distance || 99999);
+          return distA - distB;
+        });
         break;
       case "rating":
-        filtered.sort((a, b) => b.rating - a.rating);
+        filtered.sort((a, b) => (b.rating || 0) - (a.rating || 0));
         break;
       case "recommended":
-      default:
-        const recommended = getRecommendedClinics.filter((clinic) =>
-          filtered.some((f) => f.id === clinic.id)
-        );
-        filtered = recommended;
+        filtered.sort((a, b) => {
+          const scoreA =
+            (a.rating || 0) * 0.6 +
+            (1 /
+              Math.max(
+                parseFloat(a.distance_numeric || a.distance || 1),
+                0.1
+              )) *
+              0.3 +
+            Math.log(Math.max(a.total_reviews || 1, 1)) * 0.1;
+          const scoreB =
+            (b.rating || 0) * 0.6 +
+            (1 /
+              Math.max(
+                parseFloat(b.distance_numeric || b.distance || 1),
+                0.1
+              )) *
+              0.3 +
+            Math.log(Math.max(b.total_reviews || 1, 1)) * 0.1;
+          return scoreB - scoreA;
+        });
         break;
+      default:
+        break;
+    }
+
+    setFilteredClinics(filtered);
+  }, [clinics, filters, sortBy, checkClinicIsOpen, formatDistance]);
+
+  // Search with debounce
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
     }
 
     if (!searchQuery.trim()) {
-      setFilteredClinics(filtered);
+      return;
     }
-  }, [filters, sortBy, clinics, getRecommendedClinics, searchQuery]);
 
-  // 🔥 FIXED: Location functions with proper error handling
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        await searchClinicsHook(searchQuery, {
+          maxDistance: filters.distance,
+          services: filters.services,
+          minRating: filters.rating > 0 ? filters.rating : null,
+        });
+      } catch (error) {
+        console.error("Error searching clinics:", error);
+      }
+    }, 300);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery, filters, searchClinicsHook]);
+
+  // Location functions
   const getUserLocation = useCallback(async () => {
     try {
       const result = await requestLocationAccess(true);
       if (!result.success) {
-        console.error("Failed to get location:", result.error);
         setError(result.error);
       }
     } catch (error) {
       console.error("Error getting user location:", error);
-      setError("Failed to get your location. Please try again.");
+      setError("Failed to get your location.");
     }
   }, [requestLocationAccess]);
 
@@ -386,26 +399,34 @@ const MapView = () => {
   };
 
   const openClinicModal = async (clinic) => {
-    setShowClinicModal(true);
-    setModalClinic(clinic);
+    const isCurrentlyOpen = checkClinicIsOpen(
+      clinic.operating_hours || clinic.hours
+    );
+    const updatedClinic = {
+      ...clinic,
+      is_open: isCurrentlyOpen,
+      isOpen: isCurrentlyOpen,
+      distance: formatDistance(clinic),
+    };
 
-    // Load detailed clinic information
+    setShowClinicModal(true);
+    setModalClinic(updatedClinic);
+
     try {
-      const detailedClinic = await getClinicDetail(clinic.id);
-      if (detailedClinic) {
+      const result = await getClinicDetails(clinic.id);
+      if (result.success && result.clinic) {
+        const detailedIsOpen = checkClinicIsOpen(
+          result.clinic.operating_hours || result.clinic.hours
+        );
         setModalClinic({
-          ...clinic,
-          ...detailedClinic,
-          // Ensure compatibility with existing modal structure
-          services: detailedClinic.services || clinic.services,
-          doctors: detailedClinic.doctors || clinic.doctors,
-          hours: detailedClinic.operating_hours || clinic.hours,
-          specialOffers: detailedClinic.special_offers || clinic.specialOffers,
+          ...result.clinic,
+          is_open: detailedIsOpen,
+          isOpen: detailedIsOpen,
+          distance: formatDistance(result.clinic),
         });
       }
     } catch (error) {
       console.error("Error loading clinic details:", error);
-      // Continue with basic clinic info
     }
   };
 
@@ -435,6 +456,38 @@ const MapView = () => {
     return days[new Date().getDay()];
   };
 
+  // ✅ Format operating hours for display (aligned with database schema)
+  const formatOperatingHours = (hours) => {
+    if (
+      !hours ||
+      typeof hours !== "object" ||
+      Object.keys(hours).length === 0
+    ) {
+      return "Hours not available";
+    }
+
+    const currentDay = getCurrentDay();
+    const dayHours = hours[currentDay];
+
+    if (!dayHours) {
+      return "Closed today";
+    }
+
+    if (dayHours.closed === true || dayHours.is_closed === true) {
+      return "Closed";
+    }
+
+    // Database uses "open" and "close" keys
+    const openTime = dayHours.open || dayHours.start;
+    const closeTime = dayHours.close || dayHours.end;
+
+    if (openTime && closeTime) {
+      return `${openTime} - ${closeTime}`;
+    }
+
+    return "Hours not available";
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto p-6">
@@ -451,20 +504,20 @@ const MapView = () => {
             Find Dental Clinics Near You
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Discover the best dental care in your area with smart
-            recommendations and real-time availability.
+            Discover quality dental care in your area with real-time
+            availability.
           </p>
         </motion.div>
 
         {/* Error Message */}
-        {error && (
+        {(error || hookError) && (
           <motion.div
             className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-xl flex items-center gap-3"
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
           >
             <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0" />
-            <p className="text-destructive">{error}</p>
+            <p className="text-destructive">{error || hookError}</p>
             <button
               onClick={() => setError(null)}
               className="ml-auto px-3 py-1 bg-destructive text-destructive-foreground rounded-lg text-sm hover:bg-destructive/90"
@@ -486,7 +539,7 @@ const MapView = () => {
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Search clinics, services, or locations..."
+                placeholder="Search clinics or services..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 border-2 border-border bg-background text-foreground rounded-xl focus:border-primary focus:outline-none transition-colors"
@@ -513,9 +566,9 @@ const MapView = () => {
                 />
                 <span className="hidden sm:inline">
                   {locationPermission === "requesting"
-                    ? "Getting Location..."
+                    ? "Getting..."
                     : locationPermission === "granted"
-                    ? "Location Found"
+                    ? "Location Set"
                     : "Use My Location"}
                 </span>
               </button>
@@ -541,7 +594,7 @@ const MapView = () => {
                 onChange={(e) => setSortBy(e.target.value)}
                 className="px-4 py-2 border border-border bg-background text-foreground rounded-lg focus:border-primary focus:outline-none"
               >
-                <option value="recommended">Smart Recommendations</option>
+                <option value="recommended">Recommended</option>
                 <option value="distance">Nearest First</option>
                 <option value="rating">Highest Rated</option>
               </select>
@@ -550,15 +603,9 @@ const MapView = () => {
                 {filteredClinics.length !== 1 ? "s" : ""} found
               </span>
             </div>
-            <div className="flex items-center gap-6 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 bg-success rounded-full"></div>
-                <span className="text-muted-foreground">Open Now</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Award className="w-4 h-4 text-primary" />
-                <span className="text-muted-foreground">Recommended</span>
-              </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-success rounded-full"></div>
+              <span className="text-sm text-muted-foreground">Open Now</span>
             </div>
           </div>
 
@@ -571,14 +618,21 @@ const MapView = () => {
                 exit={{ opacity: 0, height: 0 }}
                 className="bg-card border border-border rounded-xl p-6 space-y-4"
               >
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {/* Services Filter */}
                   <div>
                     <label className="block text-sm font-semibold text-foreground mb-3">
                       Services
                     </label>
                     <div className="space-y-2 max-h-32 overflow-y-auto">
-                      {availableServices.slice(0, 6).map((service) => (
+                      {[
+                        "Teeth Cleaning",
+                        "Dental Checkup",
+                        "Teeth Whitening",
+                        "Root Canal",
+                        "Dental Implants",
+                        "Orthodontics",
+                      ].map((service) => (
                         <label
                           key={service}
                           className="flex items-center space-x-2"
@@ -641,7 +695,7 @@ const MapView = () => {
                     <input
                       type="range"
                       min="1"
-                      max="25"
+                      max="50"
                       value={filters.distance}
                       onChange={(e) =>
                         setFilters((prev) => ({
@@ -651,39 +705,23 @@ const MapView = () => {
                       }
                       className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer"
                     />
-                  </div>
-
-                  {/* Quick Options */}
-                  <div>
-                    <label className="block text-sm font-semibold text-foreground mb-3">
-                      Quick Options
-                    </label>
-                    <div className="space-y-2">
-                      {[
-                        { key: "openNow", label: "Open Now" },
-                        { key: "emergencyHours", label: "Emergency Hours" },
-                        { key: "acceptsInsurance", label: "Accepts Insurance" },
-                      ].map(({ key, label }) => (
-                        <label
-                          key={key}
-                          className="flex items-center space-x-2"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={filters[key]}
-                            onChange={(e) =>
-                              setFilters((prev) => ({
-                                ...prev,
-                                [key]: e.target.checked,
-                              }))
-                            }
-                            className="w-4 h-4 text-primary rounded border-border focus:ring-2 focus:ring-primary/20"
-                          />
-                          <span className="text-sm text-foreground">
-                            {label}
-                          </span>
-                        </label>
-                      ))}
+                    <div className="mt-2">
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={filters.openNow}
+                          onChange={(e) =>
+                            setFilters((prev) => ({
+                              ...prev,
+                              openNow: e.target.checked,
+                            }))
+                          }
+                          className="w-4 h-4 text-primary rounded border-border focus:ring-2 focus:ring-primary/20"
+                        />
+                        <span className="text-sm text-foreground">
+                          Open Now Only
+                        </span>
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -694,10 +732,8 @@ const MapView = () => {
                       setFilters({
                         services: [],
                         rating: 0,
-                        distance: 25,
+                        distance: 50,
                         openNow: false,
-                        emergencyHours: false,
-                        acceptsInsurance: false,
                       })
                     }
                     className="text-sm text-muted-foreground hover:text-foreground"
@@ -732,7 +768,7 @@ const MapView = () => {
                 <GoogleMap
                   mapContainerStyle={mapContainerStyle}
                   center={mapCenter}
-                  zoom={isLocationAvailable() ? 12 : 10}
+                  zoom={isLocationAvailable() ? 12 : 11}
                   options={mapOptions}
                   onLoad={onLoad}
                   onUnmount={onUnmount}
@@ -756,17 +792,8 @@ const MapView = () => {
                     />
                   )}
 
+                  {/* Clinic Markers */}
                   {filteredClinics.map((clinic, index) => {
-                    console.log(
-                      `🗺️ Rendering marker ${index} for ${clinic.name}:`,
-                      {
-                        position: clinic.position,
-                        coordinates: clinic.coordinates,
-                        distance: clinic.distance,
-                      }
-                    );
-
-                    // Validate position before rendering
                     if (
                       !clinic.position ||
                       typeof clinic.position.lat !== "number" ||
@@ -774,16 +801,12 @@ const MapView = () => {
                       isNaN(clinic.position.lat) ||
                       isNaN(clinic.position.lng)
                     ) {
-                      console.warn(
-                        `⚠️ Invalid position for clinic ${clinic.name}:`,
-                        clinic.position
-                      );
                       return null;
                     }
 
                     return (
                       <Marker
-                        key={`${clinic.id}-${index}`} // Ensure unique keys
+                        key={`${clinic.id}-${index}`}
                         position={clinic.position}
                         onClick={() => setSelectedClinic(clinic)}
                         icon={{
@@ -792,18 +815,17 @@ const MapView = () => {
                             encodeURIComponent(`
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="${
-                clinic.isOpen ? "#059669" : "#DC2626"
+                clinic.is_open ? "#059669" : "#DC2626"
               }" stroke="white" stroke-width="1"/>
               <circle cx="12" cy="9" r="2.5" fill="white"/>
-              <text x="12" y="9" text-anchor="middle" dy="0.3em" font-size="8" fill="${
-                clinic.isOpen ? "#059669" : "#DC2626"
-              }">${index + 1}</text>
             </svg>
           `),
                           scaledSize: new window.google.maps.Size(32, 32),
                           anchor: new window.google.maps.Point(16, 32),
                         }}
-                        title={`${clinic.name} (${clinic.distance}km)`}
+                        title={`${clinic.name} - ${
+                          clinic.is_open ? "Open" : "Closed"
+                        }`}
                       />
                     );
                   })}
@@ -827,8 +849,26 @@ const MapView = () => {
                           </div>
                           <span className="text-sm text-gray-600">
                             {selectedClinic.rating.toFixed(1)} (
-                            {selectedClinic.reviews} reviews)
+                            {selectedClinic.total_reviews ||
+                              selectedClinic.reviews}{" "}
+                            reviews)
                           </span>
+                        </div>
+                        <div className="mb-3 flex items-center gap-2">
+                          <span
+                            className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              selectedClinic.is_open
+                                ? "bg-green-100 text-green-800"
+                                : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {selectedClinic.is_open ? "Open Now" : "Closed"}
+                          </span>
+                          {selectedClinic.distance !== "N/A" && (
+                            <span className="text-sm text-gray-600">
+                              • {selectedClinic.distance}km away
+                            </span>
+                          )}
                         </div>
                         <div className="flex gap-2">
                           <button
@@ -841,7 +881,7 @@ const MapView = () => {
                             onClick={() => openClinicModal(selectedClinic)}
                             className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
                           >
-                            View Details
+                            Details
                           </button>
                         </div>
                       </div>
@@ -859,9 +899,9 @@ const MapView = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
         >
-          {isLoading ? (
+          {loading ? (
             <div className="flex flex-col items-center justify-center py-16">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+              <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
               <p className="text-muted-foreground">Loading nearby clinics...</p>
             </div>
           ) : filteredClinics.length === 0 ? (
@@ -880,10 +920,8 @@ const MapView = () => {
                   setFilters({
                     services: [],
                     rating: 0,
-                    distance: 25,
+                    distance: 50,
                     openNow: false,
-                    emergencyHours: false,
-                    acceptsInsurance: false,
                   });
                 }}
                 className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
@@ -892,7 +930,7 @@ const MapView = () => {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredClinics.map((clinic, index) => (
                 <motion.div
                   key={clinic.id}
@@ -903,7 +941,7 @@ const MapView = () => {
                   }`}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
+                  transition={{ delay: index * 0.05 }}
                   onClick={() => {
                     setSelectedClinic(clinic);
                     if (map) {
@@ -915,7 +953,11 @@ const MapView = () => {
                   {/* Clinic Image */}
                   <div className="relative h-48 overflow-hidden">
                     <img
-                      src={clinic.image}
+                      src={
+                        clinic.image ||
+                        clinic.image_url ||
+                        "/assets/images/dental.png"
+                      }
                       alt={clinic.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       onError={(e) => {
@@ -925,30 +967,21 @@ const MapView = () => {
                     <div className="absolute top-3 left-3 flex items-center gap-2">
                       <span
                         className={`px-2 py-1 text-white text-xs font-medium rounded-full ${
-                          clinic.isOpen ? "bg-success/90" : "bg-destructive/90"
+                          clinic.is_open ? "bg-success/90" : "bg-destructive/90"
                         }`}
                       >
-                        {clinic.isOpen ? "Open" : "Closed"}
+                        {clinic.is_open ? "Open" : "Closed"}
                       </span>
-                      {sortBy === "recommended" && index < 3 && (
-                        <span className="px-2 py-1 bg-primary/90 text-white text-xs font-medium rounded-full flex items-center gap-1">
-                          <Award className="w-3 h-3" />
-                          Top Pick
-                        </span>
-                      )}
                       {clinic.badges?.length > 0 && (
                         <span className="px-2 py-1 bg-yellow-500/90 text-white text-xs font-medium rounded-full">
                           Verified
                         </span>
                       )}
                     </div>
-                    <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
-                      <span className="px-2 py-1 bg-black/70 text-white text-xs font-medium rounded-full">
-                        {clinic.distance}km
-                      </span>
-                      {parseFloat(clinic.distance) <= 2 && (
-                        <span className="px-2 py-1 bg-green-600/90 text-white text-xs font-medium rounded-full">
-                          Very Close
+                    <div className="absolute top-3 right-3">
+                      {clinic.distance !== "N/A" && (
+                        <span className="px-2 py-1 bg-black/70 text-white text-xs font-medium rounded-full">
+                          {clinic.distance}km
                         </span>
                       )}
                     </div>
@@ -961,9 +994,12 @@ const MapView = () => {
                         {clinic.name}
                       </h3>
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="flex">{renderStars(clinic.rating)}</div>
+                        <div className="flex">
+                          {renderStars(clinic.rating || 0)}
+                        </div>
                         <span className="text-sm text-muted-foreground">
-                          {clinic.rating.toFixed(1)} ({clinic.reviews})
+                          {(clinic.rating || 0).toFixed(1)} (
+                          {clinic.total_reviews || clinic.reviews || 0})
                         </span>
                       </div>
                       <div className="flex items-center text-sm text-muted-foreground">
@@ -973,51 +1009,32 @@ const MapView = () => {
                     </div>
 
                     {/* Services Preview */}
-                    <div className="flex flex-wrap gap-1">
-                      {clinic.services?.slice(0, 2).map((service, i) => (
-                        <span
-                          key={i}
-                          className="px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full"
-                        >
-                          {service.name || service}
-                        </span>
-                      )) || []}
-                      {clinic.services?.length > 2 && (
-                        <span className="px-2 py-1 bg-muted text-muted-foreground text-xs rounded-full">
-                          +{clinic.services.length - 2} more
-                        </span>
-                      )}
-                    </div>
+                    {clinic.services && clinic.services.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {clinic.services.slice(0, 2).map((service, i) => (
+                          <span
+                            key={i}
+                            className="px-2 py-1 bg-primary/10 text-primary text-xs font-medium rounded-full"
+                          >
+                            {service.name || service}
+                          </span>
+                        ))}
+                        {clinic.services.length > 2 && (
+                          <span className="px-2 py-1 bg-muted text-muted-foreground text-xs rounded-full">
+                            +{clinic.services.length - 2} more
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {/* Quick Info */}
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center text-muted-foreground">
-                        <Clock className="w-4 h-4 mr-1" />
-                        <span>
-                          {typeof clinic.hours === "object" &&
-                          clinic.hours._currentHours
-                            ? clinic.hours._currentHours
-                            : clinic.hours || "Hours not available"}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {clinic.acceptsInsurance && (
-                          <span
-                            className="text-success"
-                            title="Accepts Insurance"
-                          >
-                            <ThumbsUp className="w-4 h-4" />
-                          </span>
+                    <div className="flex items-center text-sm text-muted-foreground">
+                      <Clock className="w-4 h-4 mr-1" />
+                      <span>
+                        {formatOperatingHours(
+                          clinic.hours || clinic.operating_hours
                         )}
-                        {clinic.emergencyHours && (
-                          <span
-                            className="text-warning"
-                            title="Emergency Hours Available"
-                          >
-                            <Clock className="w-4 h-4" />
-                          </span>
-                        )}
-                      </div>
+                      </span>
                     </div>
 
                     {/* Action Buttons */}
@@ -1071,7 +1088,11 @@ const MapView = () => {
               {/* Modal Header */}
               <div className="relative h-48 overflow-hidden">
                 <img
-                  src={modalClinic.image}
+                  src={
+                    modalClinic.image ||
+                    modalClinic.image_url ||
+                    "/assets/images/dental.png"
+                  }
                   alt={modalClinic.name}
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -1091,10 +1112,11 @@ const MapView = () => {
                   </h2>
                   <div className="flex items-center gap-2">
                     <div className="flex">
-                      {renderStars(modalClinic.rating)}
+                      {renderStars(modalClinic.rating || 0)}
                     </div>
                     <span className="text-sm">
-                      {modalClinic.rating.toFixed(1)} ({modalClinic.reviews}{" "}
+                      {(modalClinic.rating || 0).toFixed(1)} (
+                      {modalClinic.total_reviews || modalClinic.reviews || 0}{" "}
                       reviews)
                     </span>
                   </div>
@@ -1122,90 +1144,62 @@ const MapView = () => {
                       <Clock className="w-4 h-4 text-primary flex-shrink-0" />
                       <span
                         className={
-                          modalClinic.isOpen
-                            ? "text-success"
-                            : "text-destructive"
+                          modalClinic.is_open
+                            ? "text-success font-medium"
+                            : "text-destructive font-medium"
                         }
                       >
-                        {modalClinic.isOpen ? "Open Now" : "Closed"} •{" "}
-                        {typeof modalClinic.hours === "object" &&
-                        modalClinic.hours._currentHours
-                          ? modalClinic.hours._currentHours
-                          : modalClinic.hours || "Hours vary"}
+                        {modalClinic.is_open ? "Open Now" : "Closed"}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
-                      <Users className="w-4 h-4 text-primary flex-shrink-0" />
+                      <Navigation className="w-4 h-4 text-primary flex-shrink-0" />
                       <span className="text-muted-foreground">
-                        Next: {modalClinic.nextAvailable}
+                        {modalClinic.distance !== "N/A"
+                          ? `${modalClinic.distance}km away`
+                          : "Distance unavailable"}
                       </span>
                     </div>
                   </div>
 
-                  {/* Special Offers */}
-                  {modalClinic.specialOffers?.length > 0 && (
+                  {/* Services */}
+                  {modalClinic.services && modalClinic.services.length > 0 && (
                     <div>
                       <h3 className="font-semibold text-foreground mb-3">
-                        Special Offers
+                        Services & Pricing
                       </h3>
-                      <div className="space-y-2">
-                        {modalClinic.specialOffers.map((offer, index) => (
-                          <div
-                            key={index}
-                            className="flex items-start gap-2 p-3 bg-primary/5 border border-primary/10 rounded-lg"
-                          >
-                            <Award className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
-                            <span className="text-sm text-foreground">
-                              {offer}
-                            </span>
-                          </div>
-                        ))}
+                      <div className="space-y-3">
+                        {modalClinic.services
+                          .slice(0, 6)
+                          .map((service, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
+                            >
+                              <div className="flex items-center gap-3">
+                                <Stethoscope className="w-4 h-4 text-primary" />
+                                <div>
+                                  <div className="font-medium text-foreground">
+                                    {service.name || service}
+                                  </div>
+                                  {service.duration && (
+                                    <div className="text-xs text-muted-foreground">
+                                      {service.duration}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-sm font-medium text-primary">
+                                {service.price || "Call for pricing"}
+                              </div>
+                            </div>
+                          ))}
                       </div>
                     </div>
                   )}
 
-                  {/* Services */}
-                  <div>
-                    <h3 className="font-semibold text-foreground mb-3">
-                      Services & Pricing
-                    </h3>
-                    <div className="space-y-3">
-                      {modalClinic.services
-                        ?.slice(0, 4)
-                        .map((service, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
-                          >
-                            <div className="flex items-center gap-3">
-                              <Stethoscope className="w-4 h-4 text-primary" />
-                              <div>
-                                <div className="font-medium text-foreground">
-                                  {service.name || service}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {service.duration || "Duration varies"}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="text-sm font-medium text-primary">
-                              {service.price || "Call for pricing"}
-                            </div>
-                          </div>
-                        )) || []}
-                      {modalClinic.services?.length > 4 && (
-                        <div className="text-center">
-                          <span className="text-sm text-muted-foreground">
-                            +{modalClinic.services.length - 4} more services
-                            available
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
                   {/* Doctors */}
-                  {modalClinic.doctors?.length > 0 && (
+                  {modalClinic.doctors && modalClinic.doctors.length > 0 && (
                     <div>
                       <h3 className="font-semibold text-foreground mb-3">
                         Our Doctors
@@ -1220,6 +1214,7 @@ const MapView = () => {
                               src={
                                 doctor.image ||
                                 doctor.profile_image_url ||
+                                doctor.image_url ||
                                 "/assets/images/dental.png"
                               }
                               alt={doctor.name || doctor.full_name}
@@ -1235,53 +1230,66 @@ const MapView = () => {
                               <div className="text-sm text-primary">
                                 {doctor.specialty || doctor.specialization}
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                {doctor.experience ||
-                                  `${doctor.years_experience} years`}{" "}
-                                • {doctor.availability || "Available"}
+                              {doctor.experience && (
+                                <div className="text-xs text-muted-foreground">
+                                  {doctor.experience}
+                                </div>
+                              )}
+                            </div>
+                            {(doctor.rating || doctor.average_rating) && (
+                              <div className="flex items-center gap-1">
+                                <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
+                                <span className="text-sm font-medium">
+                                  {doctor.rating || doctor.average_rating}
+                                </span>
                               </div>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Star className="w-4 h-4 text-yellow-400 fill-yellow-400" />
-                              <span className="text-sm font-medium">
-                                {doctor.rating ||
-                                  doctor.average_rating ||
-                                  "N/A"}
-                              </span>
-                            </div>
+                            )}
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  {/* Schedule */}
-                  {modalClinic.hours && (
-                    <div>
-                      <h3 className="font-semibold text-foreground mb-3">
-                        Opening Hours
-                      </h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {Object.entries(modalClinic.hours).map(
-                          ([day, hours]) => (
-                            <div
-                              key={day}
-                              className={`flex justify-between p-2 rounded ${
-                                day === getCurrentDay()
-                                  ? "bg-primary/10 text-primary"
-                                  : "text-muted-foreground"
-                              }`}
-                            >
-                              <span className="capitalize font-medium">
-                                {day}
-                              </span>
-                              <span>{hours}</span>
-                            </div>
-                          )
-                        )}
+                  {/* Opening Hours */}
+                  {modalClinic.hours &&
+                    Object.keys(modalClinic.hours).length > 0 && (
+                      <div>
+                        <h3 className="font-semibold text-foreground mb-3">
+                          Opening Hours
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {Object.entries(modalClinic.hours)
+                            .filter(([day]) => !day.startsWith("_"))
+                            .map(([day, hours]) => {
+                              const isToday = day === getCurrentDay();
+                              const isClosed =
+                                hours.closed === true ||
+                                hours.is_closed === true;
+                              const openTime = hours.open || hours.start;
+                              const closeTime = hours.close || hours.end;
+                              const displayTime = isClosed
+                                ? "Closed"
+                                : openTime && closeTime
+                                ? `${openTime} - ${closeTime}`
+                                : "Hours vary";
+
+                              return (
+                                <div
+                                  key={day}
+                                  className={`flex justify-between p-2 rounded ${
+                                    isToday
+                                      ? "bg-primary/10 text-primary font-medium"
+                                      : "text-muted-foreground"
+                                  }`}
+                                >
+                                  <span className="capitalize">{day}</span>
+                                  <span>{displayTime}</span>
+                                </div>
+                              );
+                            })}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
                 </div>
               </div>
 
@@ -1311,92 +1319,6 @@ const MapView = () => {
     </div>
   );
 };
-
-// Dark theme map styles
-const darkMapStyles = [
-  { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
-  {
-    featureType: "administrative.locality",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#d59563" }],
-  },
-  {
-    featureType: "poi",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#d59563" }],
-  },
-  {
-    featureType: "poi.business",
-    stylers: [{ visibility: "off" }],
-  },
-  {
-    featureType: "poi.park",
-    elementType: "geometry",
-    stylers: [{ color: "#263c3f" }],
-  },
-  {
-    featureType: "poi.park",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#6b9a76" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry",
-    stylers: [{ color: "#38414e" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry.stroke",
-    stylers: [{ color: "#212a37" }],
-  },
-  {
-    featureType: "road",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#9ca5b3" }],
-  },
-  {
-    featureType: "road.highway",
-    elementType: "geometry",
-    stylers: [{ color: "#746855" }],
-  },
-  {
-    featureType: "road.highway",
-    elementType: "geometry.stroke",
-    stylers: [{ color: "#1f2835" }],
-  },
-  {
-    featureType: "road.highway",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#f3d19c" }],
-  },
-  {
-    featureType: "transit",
-    elementType: "geometry",
-    stylers: [{ color: "#2f3948" }],
-  },
-  {
-    featureType: "transit.station",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#d59563" }],
-  },
-  {
-    featureType: "water",
-    elementType: "geometry",
-    stylers: [{ color: "#17263c" }],
-  },
-  {
-    featureType: "water",
-    elementType: "labels.text.fill",
-    stylers: [{ color: "#515c6d" }],
-  },
-  {
-    featureType: "water",
-    elementType: "labels.text.stroke",
-    stylers: [{ color: "#17263c" }],
-  },
-];
 
 // Light theme map styles
 const lightMapStyles = [

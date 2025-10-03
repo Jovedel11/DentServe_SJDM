@@ -8,7 +8,14 @@ import {
   Info,
   AlertTriangle,
   Shield,
-  Clock,
+  Hospital,
+  Users,
+  CalendarClock,
+  CalendarCheck,
+  XCircle,
+  Activity,
+  Badge,
+  TrendingUp,
 } from "lucide-react";
 
 // UI Components
@@ -28,15 +35,15 @@ import ConfirmationStep from "../components/booking/confirmation-step";
 
 // Logic Hook
 import { useBookingFlow } from "../hook/useBookingFlow";
-import { Navigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { FaTeeth } from "react-icons/fa";
 
 const BOOKING_STEPS = [
-  { key: "clinic", label: "Clinic", icon: "🏥" },
-  { key: "services", label: "Services", icon: "🦷" },
-  { key: "doctor", label: "Doctor", icon: "👨‍⚕️" },
-  { key: "datetime", label: "Date & Time", icon: "📅" },
-  { key: "confirm", label: "Confirm", icon: "✅" },
+  { key: "clinic", label: "Clinic", icon: Hospital },
+  { key: "services", label: "Services", icon: FaTeeth },
+  { key: "doctor", label: "Doctor", icon: Users },
+  { key: "datetime", label: "Date & Time", icon: CalendarClock },
+  { key: "confirm", label: "Confirm", icon: CalendarCheck },
 ];
 
 const BookAppointment = () => {
@@ -61,10 +68,12 @@ const BookAppointment = () => {
     toastMessage,
     bookingSuccess,
 
-    // Enhanced validation state
-    appointmentLimitInfo,
+    // ✅ NEW: Enhanced validation state
+    appointmentLimitCheck,
+    bookingLimitsInfo,
+    sameDayConflictDetails,
+    sameDayConflict,
     crossClinicWarnings,
-    bookingWarnings,
     validationLoading,
     patientReliability,
 
@@ -89,32 +98,140 @@ const BookAppointment = () => {
     getCancellationInfo,
   } = useBookingFlow();
 
-  // Enhanced validation message
-  const getStepValidationMessage = () => {
-    switch (bookingStep) {
-      case "clinic":
-        return !bookingData.clinic
-          ? "Please select a clinic to continue"
-          : null;
-      case "services":
-        return !bookingData.services?.length
-          ? "Please select at least one service"
-          : null;
-      case "doctor":
-        return !bookingData.doctor ? "Please select a doctor" : null;
-      case "datetime":
-        if (!bookingData.date) return "Please select a date";
-        if (!bookingData.time) return "Please select a time";
-        return null;
-      default:
-        return null;
-    }
+  // ✅ NEW: Get same-day conflict details
+  const getSameDayConflictWarning = () => {
+    if (!sameDayConflict) return null;
+
+    const conflictDate = bookingData.date
+      ? new Date(bookingData.date).toLocaleDateString("en-US", {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+        })
+      : "this date";
+
+    return {
+      type: "destructive",
+      title: "Cannot Book: Existing Appointment",
+      message: `You already have an appointment scheduled for ${conflictDate} at ${sameDayConflict.time}. To book another appointment on the same day, you must first cancel your existing appointment.`,
+      action: "go_to_appointments",
+    };
   };
 
-  // Get current step info
+  // ✅ Simplified: Only show critical blocking issues
+  const getCriticalBlocker = () => {
+    // Same-day conflict is the highest priority blocker
+    if (sameDayConflict) {
+      return getSameDayConflictWarning();
+    }
+
+    if (!appointmentLimitCheck) return null;
+
+    // Daily limit exceeded
+    if (
+      !appointmentLimitCheck.allowed &&
+      appointmentLimitCheck.reason === "daily_limit_exceeded"
+    ) {
+      return {
+        type: "destructive",
+        title: "Daily Appointment Limit Reached",
+        message: appointmentLimitCheck.message,
+      };
+    }
+
+    // Future appointments limit
+    if (
+      !appointmentLimitCheck.allowed &&
+      appointmentLimitCheck.reason === "future_appointments_limit_exceeded"
+    ) {
+      return {
+        type: "warning",
+        title: "Future Appointments Limit",
+        message: appointmentLimitCheck.message,
+      };
+    }
+
+    // Other blocking reasons
+    if (!appointmentLimitCheck.allowed) {
+      return {
+        type: "destructive",
+        title: "Booking Not Allowed",
+        message: appointmentLimitCheck.message,
+      };
+    }
+
+    return null;
+  };
+
+  const getBookingStatusInfo = () => {
+    if (!bookingLimitsInfo) return null;
+
+    const warnings = [];
+
+    // Check if approaching total pending limit
+    if (
+      bookingLimitsInfo.totalPending >=
+      bookingLimitsInfo.maxTotalPending - 1
+    ) {
+      warnings.push({
+        type: "warning",
+        title: "Approaching Pending Limit",
+        message: `You have ${bookingLimitsInfo.totalPending} of ${
+          bookingLimitsInfo.maxTotalPending
+        } allowed pending appointments. ${
+          bookingLimitsInfo.totalRemaining > 0
+            ? `You have ${bookingLimitsInfo.totalRemaining} slot(s) remaining.`
+            : "Please wait for confirmations before booking more."
+        }`,
+      });
+    }
+
+    // Check if approaching clinic-specific limit
+    if (
+      bookingLimitsInfo.clinicPending >=
+      bookingLimitsInfo.maxClinicPending - 1
+    ) {
+      warnings.push({
+        type: "warning",
+        title: "Approaching Clinic Limit",
+        message: `You have ${bookingLimitsInfo.clinicPending} of ${bookingLimitsInfo.maxClinicPending} allowed pending appointments at this clinic.`,
+      });
+    }
+
+    return warnings;
+  };
+
+  const getBookingStatus = () => {
+    if (!bookingLimitsInfo) return null;
+
+    return {
+      totalSlots: `${bookingLimitsInfo.totalPending}/${bookingLimitsInfo.maxTotalPending}`,
+      clinicSlots: `${bookingLimitsInfo.clinicPending}/${bookingLimitsInfo.maxClinicPending}`,
+      totalRemaining: bookingLimitsInfo.totalRemaining,
+      clinicRemaining: bookingLimitsInfo.clinicRemaining,
+    };
+  };
+
+  // ✅ Simplified: Only show essential attendance reminder on confirmation step
+  const getAttendanceReminder = () => {
+    if (
+      bookingStep === "confirm" &&
+      patientReliability?.risk_level === "high_risk"
+    ) {
+      return {
+        type: "warning",
+        message:
+          "Please ensure you attend this appointment. Multiple no-shows may restrict future bookings.",
+      };
+    }
+    return null;
+  };
+
   const currentStep = BOOKING_STEPS[currentStepIndex] || BOOKING_STEPS[0];
-  const stepValidationMessage = getStepValidationMessage();
-  const cancellationInfo = getCancellationInfo();
+  const criticalBlocker = getCriticalBlocker();
+  const attendanceReminder = getAttendanceReminder();
+  const bookingStatus = getBookingStatus();
+  const bookingWarnings = getBookingStatusInfo();
 
   // Access control
   if (!isPatient) {
@@ -151,6 +268,7 @@ const BookAppointment = () => {
             <h1 className="text-2xl font-bold text-foreground mb-4">
               Appointment Booked Successfully!
             </h1>
+
             <div className="space-y-4 text-left">
               <div className="bg-card border rounded-lg p-4">
                 <h3 className="font-semibold text-foreground mb-2">
@@ -166,8 +284,7 @@ const BookAppointment = () => {
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Doctor:</span>
                     <span className="font-medium">
-                      Dr. {bookingData.doctor?.first_name}{" "}
-                      {bookingData.doctor?.last_name}
+                      {bookingData.doctor?.name}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -183,40 +300,28 @@ const BookAppointment = () => {
                 </div>
               </div>
 
+              {/* ✅ Only show if symptoms were provided */}
               {bookingData.symptoms && (
                 <Alert>
                   <Info className="h-4 w-4" />
                   <div className="text-sm">
-                    Your symptoms have been shared with the clinic staff for
-                    better preparation.
+                    Your notes have been shared with the clinic staff.
                   </div>
                 </Alert>
               )}
 
-              {crossClinicWarnings.length > 0 && (
-                <Alert>
-                  <Info className="h-4 w-4" />
+              {/* ✅ Only show attendance reminder if high risk */}
+              {patientReliability?.risk_level === "high_risk" && (
+                <Alert variant="warning">
+                  <AlertTriangle className="h-4 w-4" />
                   <div className="text-sm">
-                    <strong>Care Coordination Notice:</strong>
+                    <strong>Attendance Reminder:</strong>
                     <br />
-                    You have appointments at other clinics. Please inform your
-                    healthcare providers for better care coordination.
+                    Please attend this appointment or cancel with adequate
+                    notice.
                   </div>
                 </Alert>
               )}
-
-              {patientReliability?.risk_level &&
-                patientReliability.risk_level !== "low_risk" && (
-                  <Alert variant="warning">
-                    <AlertTriangle className="h-4 w-4" />
-                    <div className="text-sm">
-                      <strong>Attendance Reminder:</strong>
-                      <br />
-                      Please ensure you attend this appointment or cancel with
-                      adequate notice to maintain your booking privileges.
-                    </div>
-                  </Alert>
-                )}
             </div>
 
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mt-6">
@@ -281,26 +386,116 @@ const BookAppointment = () => {
           />
         </div>
 
-        {/* System Status Alerts */}
+        {/* Alerts */}
         <div className="space-y-4 mb-8">
-          {/* Error Display */}
-          {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <div>
-                <strong>Booking Error</strong>
-                <p className="text-sm mt-1">{error}</p>
+          {/* 1. CRITICAL: Same-Day Conflict */}
+          {criticalBlocker?.action === "go_to_appointments" && (
+            <Alert variant="destructive" className="border-2">
+              <XCircle className="h-5 w-5" />
+              <div className="flex-1">
+                <strong className="text-lg">{criticalBlocker.title}</strong>
+                <p className="text-sm mt-2">{criticalBlocker.message}</p>
+
+                {/* ✅ Enhanced conflict details */}
+                {sameDayConflictDetails && (
+                  <div className="mt-3 bg-destructive/10 border border-destructive/20 rounded-lg p-3">
+                    <p className="text-sm font-semibold mb-2">
+                      📋 Existing Appointment Details:
+                    </p>
+                    <ul className="text-sm space-y-1">
+                      <li>
+                        • <strong>Clinic:</strong>{" "}
+                        {sameDayConflictDetails.clinicName}
+                      </li>
+                      <li>
+                        • <strong>Doctor:</strong>{" "}
+                        {sameDayConflictDetails.doctorName}
+                      </li>
+                      <li>
+                        • <strong>Time:</strong> {sameDayConflictDetails.time}
+                      </li>
+                      <li>
+                        • <strong>Status:</strong>{" "}
+                        {sameDayConflictDetails.status}
+                      </li>
+                    </ul>
+                    <p className="text-xs mt-2 italic">
+                      {sameDayConflictDetails.status === "confirmed"
+                        ? "⚠️ This appointment is confirmed. If it's part of ongoing treatment, consult your dentist before canceling."
+                        : "✓ This appointment is pending and can be canceled if needed."}
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-4 flex gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      (window.location.href = "/patient/appointments/upcoming")
+                    }
+                  >
+                    View My Appointments
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      updateBookingData({ date: null, time: null })
+                    }
+                  >
+                    Choose Different Date
+                  </Button>
+                </div>
               </div>
             </Alert>
           )}
 
-          {/* Validation Message */}
-          {stepValidationMessage && (
-            <Alert variant="warning">
-              <AlertTriangle className="h-4 w-4" />
+          {/* Other Critical Blockers */}
+          {criticalBlocker &&
+            criticalBlocker.action !== "go_to_appointments" && (
+              <Alert variant={criticalBlocker.type}>
+                <AlertCircle className="h-4 w-4" />
+                <div>
+                  <strong>{criticalBlocker.title}</strong>
+                  <p className="text-sm mt-1">{criticalBlocker.message}</p>
+                </div>
+              </Alert>
+            )}
+
+          {!criticalBlocker &&
+            bookingWarnings &&
+            bookingWarnings.length > 0 && (
+              <>
+                {bookingWarnings.map((warning, idx) => (
+                  <Alert key={idx} variant={warning.type}>
+                    <TrendingUp className="h-4 w-4" />
+                    <div>
+                      <strong>{warning.title}</strong>
+                      <p className="text-sm mt-1">{warning.message}</p>
+                    </div>
+                  </Alert>
+                ))}
+              </>
+            )}
+
+          {/* General Error */}
+          {error && !criticalBlocker && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
               <div>
-                <strong>Required Selection</strong>
-                <p className="text-sm mt-1">{stepValidationMessage}</p>
+                <strong>Error</strong>
+                <p className="text-sm mt-1">{error}</p>
+              </div>
+            </Alert>
+          )}
+          {/* Attendance Reminder (only on confirmation step) */}
+          {attendanceReminder && !criticalBlocker && (
+            <Alert variant="warning">
+              <Shield className="h-4 w-4" />
+              <div>
+                <strong>Attendance Reminder</strong>
+                <p className="text-sm mt-1">{attendanceReminder.message}</p>
               </div>
             </Alert>
           )}
@@ -312,76 +507,7 @@ const BookAppointment = () => {
               <div>
                 <strong>Checking Availability</strong>
                 <p className="text-sm mt-1">
-                  Validating appointment limits and availability...
-                </p>
-              </div>
-            </Alert>
-          )}
-
-          {/* Booking Warnings */}
-          {bookingWarnings.map((warning, index) => (
-            <Alert
-              key={index}
-              variant={
-                warning.type === "error"
-                  ? "destructive"
-                  : warning.type === "warning"
-                  ? "warning"
-                  : "default"
-              }
-            >
-              {warning.type === "error" ? (
-                <AlertCircle className="h-4 w-4" />
-              ) : warning.type === "warning" ? (
-                <AlertTriangle className="h-4 w-4" />
-              ) : (
-                <Info className="h-4 w-4" />
-              )}
-              <div>
-                <strong>
-                  {warning.type === "error"
-                    ? "Booking Restriction"
-                    : warning.type === "warning"
-                    ? "Important Notice"
-                    : "Information"}
-                </strong>
-                <p className="text-sm mt-1">{warning.message}</p>
-              </div>
-            </Alert>
-          ))}
-
-          {/* Patient Reliability Warning */}
-          {patientReliability &&
-            patientReliability.risk_level !== "low_risk" && (
-              <Alert variant="warning">
-                <Shield className="h-4 w-4" />
-                <div>
-                  <strong>Attendance Notice</strong>
-                  <p className="text-sm mt-1">
-                    {patientReliability.risk_level === "high_risk"
-                      ? "Your appointment history shows several missed appointments. Continued no-shows may affect your booking privileges."
-                      : "Please remember to attend your appointment or cancel with adequate notice."}
-                  </p>
-                  {patientReliability.statistics && (
-                    <div className="text-xs mt-2 text-muted-foreground">
-                      Completion rate:{" "}
-                      {patientReliability.statistics.completion_rate}%
-                    </div>
-                  )}
-                </div>
-              </Alert>
-            )}
-
-          {/* Cancellation Policy Info */}
-          {cancellationInfo && bookingStep === "confirm" && (
-            <Alert>
-              <Clock className="h-4 w-4" />
-              <div>
-                <strong>Cancellation Policy</strong>
-                <p className="text-sm mt-1">
-                  You can cancel this appointment until{" "}
-                  {cancellationInfo.cancellationDeadline.toLocaleString()}. (
-                  {cancellationInfo.policyHours} hours notice required)
+                  Validating appointment availability...
                 </p>
               </div>
             </Alert>
@@ -423,6 +549,9 @@ const BookAppointment = () => {
                 checkingAvailability={checkingAvailability}
                 onUpdateBookingData={updateBookingData}
                 onDateSelect={handleDateSelect}
+                sameDayConflict={sameDayConflict}
+                sameDayConflictDetails={sameDayConflictDetails}
+                bookingLimitsInfo={bookingLimitsInfo}
               />
             )}
 
@@ -431,16 +560,16 @@ const BookAppointment = () => {
                 bookingData={bookingData}
                 services={services}
                 profile={profile}
-                appointmentLimitInfo={appointmentLimitInfo}
+                appointmentLimitCheck={appointmentLimitCheck}
                 crossClinicWarnings={crossClinicWarnings}
                 patientReliability={patientReliability}
-                cancellationInfo={cancellationInfo}
+                cancellationInfo={getCancellationInfo()}
               />
             )}
           </CardContent>
         </Card>
 
-        {/* Enhanced Navigation */}
+        {/* Navigation */}
         <div className="flex justify-between items-center">
           <Button
             variant="outline"
@@ -464,8 +593,10 @@ const BookAppointment = () => {
                 disabled={
                   !canProceed ||
                   loading ||
-                  !appointmentLimitInfo?.allowed ||
-                  validationLoading
+                  !!sameDayConflict ||
+                  !appointmentLimitCheck?.allowed ||
+                  validationLoading ||
+                  !!criticalBlocker
                 }
                 className="flex items-center gap-2 bg-success hover:bg-success/90"
                 size="lg"
@@ -485,7 +616,7 @@ const BookAppointment = () => {
             ) : (
               <Button
                 onClick={nextStep}
-                disabled={!canProceed || validationLoading}
+                disabled={!canProceed || validationLoading || !!sameDayConflict}
                 className="flex items-center gap-2"
                 size="lg"
               >

@@ -10,15 +10,14 @@ export const uploadLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// 🔥 **IMPROVED: Dynamic multer configuration based on upload type**
+
 export const upload = multer({
   storage: multer.memoryStorage(),
   limits: { 
-    fileSize: 50 * 1024 * 1024, // 🔥 Increased to 50MB for clinic images
-    fieldSize: 10 * 1024 * 1024, // 10MB for field data
+    fileSize: 10 * 1024 * 1024, // 🔥 10MB max (Cloudinary free tier)
+    fieldSize: 10 * 1024 * 1024,
   },
   fileFilter: (req, file, cb) => {
-    // only image file
     if (file.mimetype.startsWith('image/')) {
       cb(null, true);
     } else {
@@ -27,7 +26,6 @@ export const upload = multer({
   }
 });
 
-// 🔥 **NEW: Upload configuration based on type**
 export const getUploadConfig = (uploadType) => {
   const configs = {
     profile: {
@@ -35,7 +33,7 @@ export const getUploadConfig = (uploadType) => {
       compression: { quality: 0.8, maxWidth: 400, maxHeight: 400 }
     },
     clinic: {
-      maxSize: 50 * 1024 * 1024, // 50MB for high-res clinic images
+      maxSize: 10 * 1024 * 1024, // 10MB (free tier limit)
       compression: { quality: 0.85, maxWidth: 1200, maxHeight: 800 }
     },
     doctor: {

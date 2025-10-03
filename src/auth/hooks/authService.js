@@ -96,59 +96,22 @@ export const authService = {
   },
 
   // Complete staff profile (v2 - creates services in services table)
-  async updateStaffCompleteProfileV2(profileData, clinicData, servicesData = []) {
+  async updateStaffCompleteProfileV2(profileData, clinicData, servicesData = [], doctorsData = []) {
     try {
-      // Transform services from array of names to array of objects
-      const formattedServices = Array.isArray(servicesData) 
-        ? servicesData.map(service => {
-            if (typeof service === 'string') {
-              // If it's just a service name string, create default object
-              return {
-                name: service,
-                description: `${service} service`,
-                category: 'General',
-                duration_minutes: 30,
-                min_price: null,
-                max_price: null,
-                priority: 10,
-                is_active: true
-              };
-            }
-            // If it's already an object, return as is
-            return service;
-          })
-        : [];
-
       const { data, error } = await supabase.rpc('update_staff_complete_profile_v2', {
-        p_profile_data: {
-          first_name: profileData.first_name || profileData.firstName,
-          last_name: profileData.last_name || profileData.lastName,
-          phone: profileData.phone
-        },
-        p_clinic_data: {
-          name: clinicData.name || clinicData.clinic_name,
-          address: clinicData.address || clinicData.clinic_address,
-          city: clinicData.city || clinicData.clinic_city,
-          province: clinicData.province || clinicData.clinic_province,
-          zip_code: clinicData.zip_code || clinicData.clinic_zip_code,
-          phone: clinicData.phone || clinicData.clinic_phone,
-          email: clinicData.email || clinicData.clinic_email,
-          operating_hours: clinicData.operating_hours
-        },
-        p_services_data: formattedServices
+        p_profile_data: profileData,
+        p_clinic_data: clinicData,
+        p_services_data: servicesData,
+        p_doctors_data: doctorsData  // 🆕 ADD BACK
       });
 
       if (error) throw new Error(error.message);
-      if (data && !data.success) throw new Error(data.error);
+      if (!data?.success) throw new Error(data?.error || 'Failed to update staff profile');
 
-      return { 
-        success: true, 
-        data,
-        message: 'Profile completed successfully. You can now access the system.'
-      };
+      return data;
     } catch (error) {
       console.error('Update staff complete profile v2 error:', error);
-      return { success: false, error: error.message || 'Failed to complete profile' };
+      throw error;
     }
   },
 

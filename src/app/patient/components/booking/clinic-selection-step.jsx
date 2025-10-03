@@ -6,17 +6,10 @@ import {
   Clock,
   Users,
   AlertCircle,
-  Wifi,
-  Car,
+  CheckCircle,
 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/core/components/ui/card";
+import { Card, CardContent } from "@/core/components/ui/card";
 import { Badge } from "@/core/components/ui/badge";
-import { Button } from "@/core/components/ui/button";
 import {
   Avatar,
   AvatarFallback,
@@ -103,7 +96,8 @@ const ClinicSelectionStep = ({
         {clinics.map((clinic) => {
           const isSelected = selectedClinic?.id === clinic.id;
           const operatingHours = clinic.operating_hours || {};
-          const servicesOffered = clinic.services_offered || {};
+          const servicesCount = clinic.services?.length || 0;
+          const doctorsCount = clinic.doctors?.length || 0;
 
           return (
             <Card
@@ -184,24 +178,27 @@ const ClinicSelectionStep = ({
                     </div>
                   )}
 
-                  {/* Amenities */}
+                  {/* ✅ Show services and doctors count instead of amenities */}
                   <div className="flex flex-wrap gap-1 pt-2">
-                    {servicesOffered.wifi && (
+                    {servicesCount > 0 && (
                       <Badge variant="outline" className="text-xs">
-                        <Wifi className="w-3 h-3 mr-1" />
-                        WiFi
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        {servicesCount} Services
                       </Badge>
                     )}
-                    {servicesOffered.parking && (
-                      <Badge variant="outline" className="text-xs">
-                        <Car className="w-3 h-3 mr-1" />
-                        Parking
-                      </Badge>
-                    )}
-                    {clinic.appointment_limit_per_patient > 1000 && (
+                    {doctorsCount > 0 && (
                       <Badge variant="outline" className="text-xs">
                         <Users className="w-3 h-3 mr-1" />
-                        High Capacity
+                        {doctorsCount} Doctors
+                      </Badge>
+                    )}
+                    {clinic.is_active && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs text-green-600 border-green-600"
+                      >
+                        <CheckCircle className="w-3 h-3 mr-1" />
+                        Active
                       </Badge>
                     )}
                   </div>

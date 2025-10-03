@@ -252,164 +252,151 @@ export const useClinicDiscovery = () => {
 
       console.log("📊 Clinics data:", clinicsData);
 
-      // Transform clinic data with better coordinate and distance handling
-      const transformedClinics = await Promise.all(
-        clinicsData.map(async (clinic) => {
-          // Get proper coordinates with fallback
-          const coordinates = await getClinicCoordinates(clinic);
-          
-          // Calculate distance manually if not provided or if user location available
-          let distance = 0;
-          let distanceText = "0";
-          
-          if (searchLocation && coordinates.latitude && coordinates.longitude) {
-            const calculatedDistance = calculateDistance(
-              searchLocation, 
-              coordinates.latitude, 
-              coordinates.longitude
-            );
-            distance = calculatedDistance;
-            distanceText = calculatedDistance > 0 ? calculatedDistance.toFixed(1) : "0";
-          } else if (clinic.distance_km !== undefined && clinic.distance_km !== null) {
-            distance = parseFloat(clinic.distance_km) || 0;
-            distanceText = distance > 0 ? distance.toFixed(1) : "0";
-          }
-          
-          console.log(`📏 Distance for ${clinic.name}: ${distanceText}km`, {
-            dbDistance: clinic.distance_km,
-            calculatedDistance: distance,
-            coordinates,
-            searchLocation
-          });
-          
-          // Parse operating hours
-          const parsedHours = parseOperatingHours(clinic.operating_hours);
-          const isOpen = isClinicOpen(clinic.operating_hours);
-          
-          // Fetch services for this clinic
-          let clinicServices = [];
-          try {
-            const { data: servicesData, error: servicesError } = await supabase
-              .from('services')
-              .select('id, name, min_price, max_price, category, duration_minutes')
-              .eq('clinic_id', clinic.id)
-              .eq('is_active', true)
-              .order('priority', { ascending: false })
-              .limit(10);
-
-            if (!servicesError && servicesData) {
-              clinicServices = servicesData.map(service => ({
-                id: service.id,
-                name: service.name,
-                price: `₱${service.min_price} - ₱${service.max_price}`,
-                category: service.category,
-                duration: service.duration_minutes ? `${service.duration_minutes} min` : 'Duration varies'
-              }));
-            }
-          } catch (err) {
-            console.warn(`⚠️ Failed to fetch services for clinic ${clinic.id}:`, err);
-          }
-
-          // Fetch doctors for this clinic
-          let clinicDoctors = [];
-          try {
-            const { data: doctorsData, error: doctorsError } = await supabase
-              .from('doctor_clinics')
-              .select(`
-                doctors (
-                  id,
-                  first_name,
-                  last_name,
-                  specialization,
-                  experience_years,
-                  rating,
-                  image_url
-                )
-              `)
-              .eq('clinic_id', clinic.id)
-              .eq('is_active', true)
-              .limit(5);
-
-            if (!doctorsError && doctorsData) {
-              clinicDoctors = doctorsData
-                .map(item => item.doctors)
-                .filter(Boolean)
-                .map(doctor => ({
-                  id: doctor.id,
-                  name: `Dr. ${doctor.first_name} ${doctor.last_name}`.trim(),
-                  full_name: `${doctor.first_name} ${doctor.last_name}`.trim(),
-                  specialization: doctor.specialization,
-                  specialty: doctor.specialization,
-                  experience: doctor.experience_years ? `${doctor.experience_years} years` : 'Experience varies',
-                  years_experience: doctor.experience_years,
-                  rating: doctor.rating || 0,
-                  average_rating: doctor.rating || 0,
-                  image: doctor.image_url,
-                  profile_image_url: doctor.image_url,
-                  availability: 'Available'
-                }));
-            }
-          } catch (err) {
-            console.warn(`⚠️ Failed to fetch doctors for clinic ${clinic.id}:`, err);
-          }
-
-          return {
-            id: clinic.id,
-            name: clinic.name,
-            address: clinic.address,
-            city: clinic.city,
-            phone: clinic.phone,
-            email: clinic.email,
-            website_url: clinic.website_url,
-            image_url: clinic.image_url,
-            image: clinic.image_url || "/assets/images/dental.png",
-            rating: parseFloat(clinic.rating || 0),
-            total_reviews: clinic.total_reviews || 0,
-            reviews: clinic.total_reviews || 0,
-            
-            // Distance handling
-            distance: distanceText,
-            distance_km: distance,
-            distance_numeric: distance, // For sorting
-            
-            // Coordinates with proper validation
-            position: {
-              lat: coordinates.latitude,
-              lng: coordinates.longitude
-            },
-            coordinates: coordinates,
-            
-            // Services from separate table
-            services: clinicServices,
-            services_offered: clinicServices, // For compatibility
-            
-            // Operating hours - properly parsed
-            hours: parsedHours,
-            operating_hours: parsedHours,
-            
-            // Business status
-            is_open: isOpen,
-            isOpen: isOpen,
-            
-            // Doctors from separate table
-            doctors: clinicDoctors,
-            
-            // Additional data
-            badges: clinic.badges || [],
-            stats: clinic.stats || {},
-            is_available: true,
-            emergency_hours: false,
-            emergencyHours: false,
-            accepts_insurance: false,
-            acceptsInsurance: false,
-            
-            // MapView specific fields
-            nextAvailable: "Call for availability",
-            specialOffers: [],
-            helpful_feedback: 0
-          };
-        })
+const transformedClinics = await Promise.all(
+  clinicsData.map(async (clinic) => {
+    // Get proper coordinates
+    const coordinates = await getClinicCoordinates(clinic);
+    
+    // ✅ Calculate distance as NUMBER, not string
+    let distanceKm = 0;
+    
+    if (searchLocation && coordinates.latitude && coordinates.longitude) {
+      // Calculate using Haversine if we have user location
+      distanceKm = calculateDistance(
+        searchLocation, 
+        coordinates.latitude, 
+        coordinates.longitude
       );
+    } else if (clinic.distance_km !== undefined && clinic.distance_km !== null) {
+      // Use database-provided distance
+      distanceKm = parseFloat(clinic.distance_km) || 0;
+    }
+    
+    console.log(`📏 Distance for ${clinic.name}: ${distanceKm}km`);
+    
+    // ✅ Services are already in the response as array of objects
+    const clinicServices = clinic.services_offered || [];
+    
+    // Format services for display
+    const formattedServices = clinicServices.map(service => ({
+      id: service.id,
+      name: service.name,
+      price: service.min_price && service.max_price 
+        ? `₱${service.min_price} - ₱${service.max_price}`
+        : 'Call for pricing',
+      category: service.category,
+      duration: service.duration_minutes ? `${service.duration_minutes} min` : 'Duration varies',
+      description: service.description
+    }));
+
+    // Fetch doctors for this clinic
+    let clinicDoctors = [];
+    try {
+      const { data: doctorsData, error: doctorsError } = await supabase
+        .from('doctor_clinics')
+        .select(`
+          doctors (
+            id,
+            first_name,
+            last_name,
+            specialization,
+            experience_years,
+            rating,
+            image_url
+          )
+        `)
+        .eq('clinic_id', clinic.id)
+        .eq('is_active', true)
+        .limit(5);
+
+      if (!doctorsError && doctorsData) {
+        clinicDoctors = doctorsData
+          .map(item => item.doctors)
+          .filter(Boolean)
+          .map(doctor => ({
+            id: doctor.id,
+            name: `Dr. ${doctor.first_name} ${doctor.last_name}`.trim(),
+            full_name: `${doctor.first_name} ${doctor.last_name}`.trim(),
+            specialization: doctor.specialization,
+            specialty: doctor.specialization,
+            experience: doctor.experience_years ? `${doctor.experience_years} years` : 'Experience varies',
+            years_experience: doctor.experience_years,
+            rating: doctor.rating || 0,
+            average_rating: doctor.rating || 0,
+            image: doctor.image_url,
+            profile_image_url: doctor.image_url,
+            availability: 'Available'
+          }));
+      }
+    } catch (err) {
+      console.warn(`⚠️ Failed to fetch doctors for clinic ${clinic.id}:`, err);
+    }
+
+    // ✅ CRITICAL: Keep raw operating_hours from database, DON'T transform it
+    // The database returns: { "monday": { "open": "08:00", "close": "17:00" }, ... }
+    const rawOperatingHours = clinic.operating_hours || {};
+    
+    console.log(`🕐 Raw operating hours for ${clinic.name}:`, rawOperatingHours);
+
+    return {
+      id: clinic.id,
+      name: clinic.name,
+      address: clinic.address,
+      city: clinic.city,
+      phone: clinic.phone,
+      email: clinic.email,
+      website_url: clinic.website_url,
+      image_url: clinic.image_url,
+      image: clinic.image_url || "/assets/images/dental.png",
+      rating: parseFloat(clinic.rating || 0),
+      total_reviews: clinic.total_reviews || 0,
+      reviews: clinic.total_reviews || 0,
+      
+      // ✅ Distance as NUMBER (kilometers)
+      distance_km: distanceKm,
+      distance_numeric: distanceKm,
+      distance: distanceKm, // Also as number for consistency
+      
+      // Coordinates
+      position: {
+        lat: coordinates.latitude,
+        lng: coordinates.longitude
+      },
+      coordinates: coordinates,
+      
+      // ✅ Services - formatted for display
+      services: formattedServices,
+      services_offered: formattedServices,
+      
+      // ✅ CRITICAL: Store RAW operating hours from database
+      // This is the JSONB data in format: { "dayname": { "open": "HH:MM", "close": "HH:MM" } }
+      operating_hours: rawOperatingHours,
+      hours: rawOperatingHours, // Keep both for compatibility
+      
+      // Doctors
+      doctors: clinicDoctors,
+      
+      // Additional data
+      badges: clinic.badges || [],
+      stats: clinic.stats || {},
+      is_available: true,
+      is_active: clinic.is_active !== false,
+      appointment_limit_per_patient: clinic.appointment_limit_per_patient,
+      cancellation_policy_hours: clinic.cancellation_policy_hours,
+      timezone: clinic.timezone || 'Asia/Manila',
+      emergency_hours: false,
+      emergencyHours: false,
+      accepts_insurance: false,
+      acceptsInsurance: false,
+      
+      // MapView specific fields
+      nextAvailable: "Call for availability",
+      specialOffers: [],
+      helpful_feedback: 0
+    };
+  })
+);
+
 
       // Sort by distance if user location is available
       if (searchLocation) {
@@ -473,13 +460,13 @@ export const useClinicDiscovery = () => {
 
       if (clinicError) throw clinicError;
 
-      // Get services
+      // ✅ Get services from services table
       const { data: services, error: servicesError } = await supabase
         .from('services')
         .select('*')
         .eq('clinic_id', clinicId)
         .eq('is_active', true)
-        .order('priority', { ascending: false });
+        .order('priority', { ascending: false});
 
       // Get doctors
       const { data: doctors, error: doctorsError } = await supabase
@@ -499,13 +486,16 @@ export const useClinicDiscovery = () => {
         .eq('is_active', true);
 
       const coordinates = await getClinicCoordinates(clinic);
-      const parsedHours = parseOperatingHours(clinic.operating_hours);
-      const isOpen = isClinicOpen(clinic.operating_hours);
+      const rawOperatingHours = clinic.operating_hours || {};
+      const isOpen = isClinicOpen(rawOperatingHours);
 
+      // ✅ Format services properly
       const formattedServices = services?.map(service => ({
         id: service.id,
         name: service.name,
-        price: `₱${service.min_price} - ₱${service.max_price}`,
+        price: service.min_price && service.max_price 
+          ? `₱${service.min_price} - ₱${service.max_price}`
+          : 'Call for pricing',
         category: service.category,
         duration: service.duration_minutes ? `${service.duration_minutes} min` : 'Duration varies'
       })) || [];
@@ -526,24 +516,28 @@ export const useClinicDiscovery = () => {
       })) || [];
 
       return {
-        ...clinic,
-        position: {
-          lat: coordinates.latitude,
-          lng: coordinates.longitude
-        },
-        hours: parsedHours,
-        operating_hours: parsedHours,
-        is_open: isOpen,
-        isOpen: isOpen,
-        services: formattedServices,
-        doctors: formattedDoctors,
-        coordinates,
-        image: clinic.image_url || "/assets/images/dental.png"
+        success: true,
+        clinic: {
+          ...clinic,
+          position: {
+            lat: coordinates.latitude,
+            lng: coordinates.longitude
+          },
+          hours: rawOperatingHours,
+          operating_hours: rawOperatingHours,
+          is_open: isOpen,
+          isOpen: isOpen,
+          services: formattedServices,
+          services_offered: formattedServices,
+          doctors: formattedDoctors,
+          coordinates,
+          image: clinic.image_url || "/assets/images/dental.png"
+        }
       };
 
     } catch (error) {
       console.error("Error fetching clinic details:", error);
-      return null;
+      return { success: false, error: error.message, clinic: null };
     } finally {
       setLoading(false);
     }

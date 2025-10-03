@@ -88,14 +88,14 @@ const createUploadHandler = (config) => {
 
       // 🔥 **DYNAMIC FILE SIZE LIMITS**
       const maxSizes = {
-        clinic: 50 * 1024 * 1024, // 50MB for clinic images
-        profile: 5 * 1024 * 1024,  // 5MB for profile images
-        doctor: 5 * 1024 * 1024,   // 5MB for doctor images
-        general: 10 * 1024 * 1024  // 10MB for general images
+        clinic: 10 * 1024 * 1024,    // 10MB for clinic images (Cloudinary free tier)
+        profile: 5 * 1024 * 1024,    // 5MB for profile images
+        doctor: 5 * 1024 * 1024,     // 5MB for doctor images
+        general: 10 * 1024 * 1024    // 10MB for general images
       };
 
       const maxSize = maxSizes[config.type] || maxSizes.general;
-      
+
       if (req.file.size > maxSize) {
         cleanup();
         return res.status(400).json({

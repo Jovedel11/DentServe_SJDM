@@ -18,6 +18,7 @@ import { ProfileAvatar } from "@/app/shared/profile/profile-avatar";
 import { ClinicAvatar } from "@/app/shared/profile/clinic-avatar";
 import { DoctorAvatar } from "@/app/shared/profile/doctor-avatar";
 import { AlertMessage } from "@/core/components/ui/alert-message";
+import { FileSizeWarning } from "@/utils/file-size-warning";
 import Loader from "@/core/components/Loader";
 import { FaBuilding } from "react-icons/fa";
 
@@ -320,6 +321,7 @@ const StaffProfile = () => {
                   onImageUpdate={handleImageUpdate}
                   size="xl"
                 />
+                <FileSizeWarning />
 
                 <div className="flex-1 min-w-0">
                   <h2 className="text-2xl font-bold text-foreground mb-2">
@@ -426,47 +428,6 @@ const StaffProfile = () => {
                 />
               </div>
             </ProfileCard>
-
-            {/* Staff Information */}
-            <ProfileCard
-              title="Staff Information"
-              icon={FiSettings}
-              delay={0.5}
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <ProfileField
-                  label="Position"
-                  type="select"
-                  value={currentData?.role_specific_data?.position}
-                  isEditing={isEditing}
-                  onChange={(e) =>
-                    handleInputChange(
-                      "role_specific_data",
-                      "position",
-                      e.target.value
-                    )
-                  }
-                  options={positionOptions}
-                  placeholder="Select Position"
-                />
-
-                <ProfileField
-                  label="Department"
-                  type="select"
-                  value={currentData?.role_specific_data?.department}
-                  isEditing={isEditing}
-                  onChange={(e) =>
-                    handleInputChange(
-                      "role_specific_data",
-                      "department",
-                      e.target.value
-                    )
-                  }
-                  options={departmentOptions}
-                  placeholder="Select Department"
-                />
-              </div>
-            </ProfileCard>
           </>
         )}
 
@@ -504,6 +465,7 @@ const StaffProfile = () => {
                   size="xxl"
                   editable={true}
                 />
+                <FileSizeWarning />
               </div>
 
               <ProfileField
@@ -826,6 +788,7 @@ const StaffProfile = () => {
                           size="lg"
                           editable={true}
                         />
+                        <FileSizeWarning />
 
                         <div className="flex-1">
                           <h4 className="font-semibold text-foreground">

@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { useDoctorDiscovery } from "./useDoctorDiscover";
+import { useDoctorDiscovery } from "./useDoctorDiscovery";
 import { useLocationService } from "./useLocationService";
 
 export const useDoctorSystem = () => {

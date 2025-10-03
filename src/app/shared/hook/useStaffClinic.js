@@ -19,6 +19,7 @@ export const useStaffClinic = (staffProfileId, options = {}) => {
       setLoading(true);
       setError(null);
 
+      // ✅ UPDATED: Remove services_offered from clinic select
       const { data, error } = await supabase
         .from("staff_profiles")
         .select(`
@@ -39,7 +40,6 @@ export const useStaffClinic = (staffProfileId, options = {}) => {
             website_url,
             image_url,
             operating_hours,
-            services_offered,
             appointment_limit_per_patient,
             cancellation_policy_hours,
             is_active,
@@ -54,9 +54,26 @@ export const useStaffClinic = (staffProfileId, options = {}) => {
 
       if (error) throw error;
 
-      // Return clinic data with permissions
+      // ✅ Fetch services from services table
+      let clinicServices = [];
+      if (data?.clinics?.id) {
+        const { data: servicesData, error: servicesError } = await supabase
+          .from('services')
+          .select('*')
+          .eq('clinic_id', data.clinics.id)
+          .eq('is_active', true)
+          .order('priority', { ascending: false })
+          .order('name');
+
+        if (!servicesError && servicesData) {
+          clinicServices = servicesData;
+        }
+      }
+
+      // ✅ Return clinic data with services and permissions
       setClinic({
         ...data?.clinics,
+        services: clinicServices, // ✅ From services table
         staff_permissions: data?.permissions,
         can_manage_clinic: data?.permissions?.manage_clinic || false,
         can_manage_services: data?.permissions?.manage_services || false,

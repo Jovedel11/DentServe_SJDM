@@ -117,14 +117,13 @@ const DoctorSelectionStep = ({ doctors, selectedDoctor, onDoctorSelect }) => {
                     <Avatar className="w-20 h-20 border-2 border-muted">
                       <AvatarImage src={doctor.image_url} alt={fullName} />
                       <AvatarFallback className="bg-primary/10 text-primary font-semibold text-lg">
-                        {doctor.first_name?.charAt(0)}
-                        {doctor.last_name?.charAt(0)}
+                        {doctor.display_name}
                       </AvatarFallback>
                     </Avatar>
 
                     <div className="flex-1 min-w-0">
                       <h3 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors mb-1">
-                        {doctor.first_name || "."} {doctor.last_name}
+                        {doctor.display_name}
                       </h3>
 
                       <p className="text-primary font-semibold mb-2">

@@ -9,6 +9,18 @@ export const useBookingFlow = () => {
   // Hook integration
   const appointmentHook = useAppointmentBooking();
   
+  // ✅ FIX: Extract stable references to prevent infinite loops
+  const {
+    bookingData,
+    updateBookingData,
+    getAvailableDoctors,
+    getServices,
+    bookAppointment,
+    checkAppointmentLimits,
+    appointmentLimitCheck,
+    sameDayConflict,
+  } = appointmentHook;
+  
   // Local state
   const [clinics, setClinics] = useState([]);
   const [clinicsLoading, setClinicsLoading] = useState(false);
@@ -16,17 +28,19 @@ export const useBookingFlow = () => {
   const [services, setServices] = useState([]);
   const [toastMessage, setToastMessage] = useState("");
   const [bookingSuccess, setBookingSuccess] = useState(false);
+
+  const [bookingLimitsInfo, setBookingLimitsInfo] = useState(null);
+  const [sameDayConflictDetails, setSameDayConflictDetails] = useState(null);
   
   // Enhanced booking validation state
-  const [appointmentLimitInfo, setAppointmentLimitInfo] = useState(null);
   const [crossClinicWarnings, setCrossClinicWarnings] = useState([]);
-  const [bookingWarnings, setBookingWarnings] = useState([]);
   const [validationLoading, setValidationLoading] = useState(false);
   const [patientReliability, setPatientReliability] = useState(null);
 
   // Use refs to prevent infinite loops
   const lastValidationRef = useRef({ clinicId: null, date: null });
   const isInitializedRef = useRef(false);
+  const clinicIdRef = useRef(null);
 
   // Toast helpers
   const showToast = useCallback((message, type = "info") => {
@@ -63,37 +77,55 @@ export const useBookingFlow = () => {
     }
   }, [isPatient, showToast]);
 
-  // Fetch doctors with availability info
+  // ✅ FIX: Fetch doctors with stable dependencies
   const fetchDoctors = useCallback(async (clinicId) => {
-    if (clinicId) {
-      const result = await appointmentHook.getAvailableDoctors(clinicId);
+    if (!clinicId) {
+      setDoctors([]);
+      return;
+    }
+
+    try {
+      const result = await getAvailableDoctors(clinicId);
       if (result.success) {
         setDoctors(result.doctors);
       } else {
         showToast(result.error, "error");
+        setDoctors([]);
       }
-    } else {
+    } catch (err) {
+      console.error("Error fetching doctors:", err);
+      showToast("Failed to load doctors", "error");
       setDoctors([]);
     }
-  }, [appointmentHook.getAvailableDoctors, showToast]);
+  }, [getAvailableDoctors, showToast]);
 
-  // Fetch services with pricing info
+  // ✅ FIX: Fetch services with stable dependencies
   const fetchServices = useCallback(async (clinicId) => {
-    if (clinicId) {
-      const result = await appointmentHook.getServices(clinicId);
+    if (!clinicId) {
+      setServices([]);
+      return;
+    }
+
+    try {
+      const result = await getServices(clinicId);
       if (result.success) {
         setServices(result.services);
       } else {
         showToast(result.error, "error");
+        setServices([]);
       }
-    } else {
+    } catch (err) {
+      console.error("Error fetching services:", err);
+      showToast("Failed to load services", "error");
       setServices([]);
     }
-  }, [appointmentHook.getServices, showToast]);
+  }, [getServices, showToast]);
 
-  // Enhanced appointment limit checking
-  const checkAppointmentLimits = useCallback(async (clinicId, appointmentDate = null) => {
-    if (!clinicId || !isPatient || !profile?.user_id) return;
+  // ✅ Check booking eligibility with same-day conflict detection
+  const checkBookingEligibility = useCallback(async (clinicId, appointmentDate = null) => {
+    if (!clinicId || !isPatient || !profile?.user_id) {
+      return;
+    }
 
     const validationKey = `${clinicId}-${appointmentDate || 'null'}`;
     if (lastValidationRef.current.key === validationKey && lastValidationRef.current.loading) {
@@ -104,17 +136,57 @@ export const useBookingFlow = () => {
     setValidationLoading(true);
     
     try {
-      // Check appointment limits
-      const { data: limitData, error: limitError } = await supabase.rpc('check_appointment_limit', {
-        p_patient_id: profile.user_id,
-        p_clinic_id: clinicId,
-        p_appointment_date: appointmentDate
-      });
+      // ✅ Check appointment limits (includes same-day check)
+      const limitData = await checkAppointmentLimits(clinicId, appointmentDate);
 
-      if (limitError) throw limitError;
-      setAppointmentLimitInfo(limitData);
+      if (limitData?.data) {
+        setBookingLimitsInfo({
+          // Total pending limits
+          totalPending: limitData.data.total_pending_appointments || 0,
+          maxTotalPending: limitData.data.max_total_pending || 3,
+          totalRemaining: limitData.data.total_remaining_slots || 0,
+          
+          // Per-clinic pending limits
+          clinicPending: limitData.data.clinic_pending_count || 0,
+          maxClinicPending: limitData.data.max_pending_per_clinic || 2,
+          clinicRemaining: limitData.data.clinic_remaining_slots || 0,
+          
+          // Booking window
+          maxAdvanceDays: limitData.data.max_advance_days || 60,
+          latestBookableDate: limitData.data.latest_bookable_date,
+          
+          // Historical limits
+          clinicHistoricalCount: limitData.data.clinic_current_count || 0,
+          clinicHistoricalLimit: limitData.data.clinic_limit || 0,
+          clinicHistoricalRemaining: limitData.data.clinic_remaining || 0,
+        });
+      }
+
+      if (!limitData.allowed && limitData.reason === 'daily_appointment_exists') {
+        const conflictInfo = limitData.data?.existing_appointment || null;
+        if (conflictInfo) {
+          setSameDayConflictDetails({
+            id: conflictInfo.id,
+            time: conflictInfo.time,
+            status: conflictInfo.status,
+            clinicName: conflictInfo.clinic_name,
+            doctorName: conflictInfo.doctor_name,
+            canCancel: conflictInfo.can_cancel,
+            isSameClinic: conflictInfo.is_same_clinic,
+            date: appointmentDate,
+          });
+        }
+      } else {
+        setSameDayConflictDetails(null);
+      }
       
-      // Check patient reliability
+      // Extract cross-clinic data (role-based)
+      const crossClinicData = limitData?.data?.cross_clinic_appointments || [];
+      const crossClinicMinimal = limitData?.data?.cross_clinic_minimal || [];
+      const crossClinicInfo = crossClinicData.length > 0 ? crossClinicData : crossClinicMinimal;
+      setCrossClinicWarnings(Array.isArray(crossClinicInfo) ? crossClinicInfo : []);
+      
+      // ✅ Check patient reliability
       const { data: reliabilityData, error: reliabilityError } = await supabase.rpc('check_patient_reliability', {
         p_patient_id: profile.user_id,
         p_clinic_id: clinicId
@@ -124,55 +196,18 @@ export const useBookingFlow = () => {
         setPatientReliability(reliabilityData);
       }
       
-      // Extract cross-clinic warnings
-      const crossClinicAppts = limitData?.data?.cross_clinic_appointments || [];
-      setCrossClinicWarnings(crossClinicAppts);
-      
-      // Set booking warnings based on limits and reliability
-      const warnings = [];
-      if (!limitData.allowed) {
-        warnings.push({
-          type: 'error',
-          message: limitData.message,
-          reason: limitData.reason
-        });
-      } else {
-        // Cross-clinic coordination warnings
-        if (crossClinicAppts.length > 0) {
-          warnings.push({
-            type: 'info',
-            message: `You have ${crossClinicAppts.length} appointment(s) at other clinics. Please inform your healthcare providers for better care coordination.`
-          });
-        }
-
-        // Reliability warnings
-        if (reliabilityData?.risk_level === 'high_risk') {
-          warnings.push({
-            type: 'warning',
-            message: 'Your appointment history shows some missed appointments. Please ensure you can attend this appointment.'
-          });
-        } else if (reliabilityData?.risk_level === 'moderate_risk') {
-          warnings.push({
-            type: 'info',
-            message: 'Please remember to attend your appointment or cancel with adequate notice.'
-          });
-        }
-      }
-      
-      setBookingWarnings(warnings);
-      
     } catch (err) {
-      console.error("Error checking appointment limits:", err);
+      console.error("Error checking booking eligibility:", err);
       showToast("Failed to check appointment availability", "error");
     } finally {
       setValidationLoading(false);
       lastValidationRef.current.loading = false;
     }
-  }, [isPatient, profile?.user_id, showToast]);
+  }, [isPatient, profile?.user_id, checkAppointmentLimits, showToast]);
 
-  // Enhanced event handlers
+  // ✅ FIX: Event handlers with stable dependencies
   const handleClinicSelect = useCallback((clinic) => {
-    appointmentHook.updateBookingData({
+    updateBookingData({
       clinic,
       doctor: null,
       services: [],
@@ -180,55 +215,75 @@ export const useBookingFlow = () => {
       time: null,
     });
     
-    checkAppointmentLimits(clinic.id);
-  }, [appointmentHook.updateBookingData, checkAppointmentLimits]);
+    checkBookingEligibility(clinic.id);
+  }, [updateBookingData, checkBookingEligibility]);
 
   const handleServiceToggle = useCallback((serviceId) => {
-    const currentServices = appointmentHook.bookingData.services || [];
+    const currentServices = bookingData.services || [];
+    const service = services.find(s => s.id === serviceId);
 
     if (currentServices.includes(serviceId)) {
-      appointmentHook.updateBookingData({
+      updateBookingData({
         services: currentServices.filter((id) => id !== serviceId),
       });
     } else if (currentServices.length < 3) {
-      appointmentHook.updateBookingData({
+      updateBookingData({
         services: [...currentServices, serviceId],
       });
+
+      // Show treatment plan info if needed
+      if (service && (service.requires_multiple_visits || service.typical_visit_count > 1)) {
+        showToast(
+          `${service.name} requires approximately ${service.typical_visit_count || 2} visits.`,
+          'info'
+        );
+      }
     } else {
-      showToast("Maximum 3 services allowed per appointment", "warning");
+      showToast("Maximum 3 services allowed", "warning");
     }
-  }, [appointmentHook.bookingData.services, appointmentHook.updateBookingData, showToast]);
+  }, [bookingData.services, services, updateBookingData, showToast]);
 
   const handleDoctorSelect = useCallback((doctor) => {
-    appointmentHook.updateBookingData({
+    updateBookingData({
       doctor,
       date: null,
       time: null,
     });
-  }, [appointmentHook.updateBookingData]);
+  }, [updateBookingData]);
 
   const handleDateSelect = useCallback((date) => {
-    appointmentHook.updateBookingData({ date, time: null });
+    updateBookingData({ date, time: null });
     
-    if (appointmentHook.bookingData.clinic?.id) {
-      checkAppointmentLimits(appointmentHook.bookingData.clinic.id, date);
+    if (bookingData.clinic?.id) {
+      // ✅ This will trigger same-day conflict check
+      checkBookingEligibility(bookingData.clinic.id, date);
     }
-  }, [appointmentHook.updateBookingData, appointmentHook.bookingData.clinic?.id, checkAppointmentLimits]);
+  }, [bookingData.clinic?.id, updateBookingData, checkBookingEligibility]);
 
-  // Enhanced submit handler with comprehensive validation
+  // ✅ FIX: Submit handler with same-day conflict handling
   const handleSubmit = useCallback(async () => {
     if (!isPatient) {
       showToast("Only patients can book appointments", "error");
       return;
     }
 
-    // Pre-booking validation
-    if (!appointmentLimitInfo?.allowed) {
-      showToast(`Cannot book appointment: ${appointmentLimitInfo?.message}`, "error");
+    // ✅ Check for same-day conflict
+    if (sameDayConflict) {
+      showToast(
+        "You already have an appointment on this date. Please cancel it first or choose another date.",
+        "error"
+      );
       return;
     }
 
-    // Reliability check
+    // ✅ Check appointment limits
+    if (!appointmentLimitCheck?.allowed) {
+      const message = appointmentLimitCheck?.message || "Booking not allowed";
+      showToast(`Cannot book appointment: ${message}`, "error");
+      return;
+    }
+
+    // ✅ High-risk reliability confirmation
     if (patientReliability?.risk_level === 'high_risk') {
       const confirmed = window.confirm(
         "Your appointment history shows some missed appointments. Are you sure you can attend this appointment? Continued no-shows may affect your booking privileges."
@@ -236,44 +291,52 @@ export const useBookingFlow = () => {
       if (!confirmed) return;
     }
 
-    const result = await appointmentHook.bookAppointment();
+    try {
+      const result = await bookAppointment();
 
-    if (result.success) {
-      setBookingSuccess(true);
-      
-      // Enhanced success message
-      let successMessage = "Appointment booked successfully! ";
-      
-      if (result.appointment.details?.requires_approval) {
-        successMessage += "Your appointment is pending clinic approval. ";
-      }
-      
-      if (result.appointment.symptoms_sent) {
-        successMessage += "Your symptoms have been sent to the staff. ";
-      }
-      
-      if (crossClinicWarnings.length > 0) {
-        successMessage += "Please inform your healthcare providers about your other appointments for better care coordination.";
-      }
-      
-      showToast(successMessage, "success");
+      if (result.success) {
+        setBookingSuccess(true);
+        
+        // ✅ Enhanced success message
+        let successMessage = "Appointment booked successfully! ";
+        
+        const appointmentData = result.appointment;
+        
+        if (appointmentData?.details?.requires_approval) {
+          successMessage += "Pending clinic approval. ";
+        }
+        
+        if (appointmentData?.cross_clinic_context?.has_other_appointments) {
+          successMessage += `You have ${appointmentData.cross_clinic_context.count} other appointment(s). `;
+        }
+        
+        showToast(successMessage, "success");
 
-      // Redirect after success
-      setTimeout(() => {
-        window.location.href = "/patient/appointments";
-      }, 3000);
-    } else {
-      showToast(`Booking failed: ${result.error}`, "error");
+        // Redirect after success
+        setTimeout(() => {
+          window.location.href = "/patient/appointments/upcoming";
+        }, 3000);
+      } else {
+        // ✅ Handle specific error reasons
+        if (result.reason === 'daily_limit_exceeded') {
+          showToast("You already have an appointment scheduled for this date. Please cancel it first or choose another date.", "error");
+        } else {
+          showToast(`Booking failed: ${result.error}`, "error");
+        }
+      }
+    } catch (err) {
+      console.error("Booking error:", err);
+      showToast(`Booking failed: ${err.message}`, "error");
     }
-  }, [isPatient, appointmentHook.bookAppointment, appointmentLimitInfo, patientReliability, crossClinicWarnings, showToast]);
+  }, [isPatient, bookAppointment, appointmentLimitCheck, patientReliability, sameDayConflict, showToast]);
 
   // Enhanced cancellation policy info
   const getCancellationInfo = useCallback(() => {
-    if (!appointmentHook.bookingData.clinic) return null;
+    if (!bookingData.clinic) return null;
     
-    const policyHours = appointmentHook.bookingData.clinic.cancellation_policy_hours || 24;
-    const appointmentDateTime = appointmentHook.bookingData.date && appointmentHook.bookingData.time 
-      ? new Date(`${appointmentHook.bookingData.date}T${appointmentHook.bookingData.time}`)
+    const policyHours = bookingData.clinic.cancellation_policy_hours || 24;
+    const appointmentDateTime = bookingData.date && bookingData.time 
+      ? new Date(`${bookingData.date}T${bookingData.time}`)
       : null;
     
     if (!appointmentDateTime) return null;
@@ -285,30 +348,36 @@ export const useBookingFlow = () => {
       cancellationDeadline,
       canStillCancel: new Date() < cancellationDeadline
     };
-  }, [appointmentHook.bookingData.clinic, appointmentHook.bookingData.date, appointmentHook.bookingData.time]);
+  }, [bookingData.clinic, bookingData.date, bookingData.time]);
 
-  // Effects
+  // ✅ FIX: Initial clinic fetch - only once
   useEffect(() => {
-    if (!isInitializedRef.current) {
+    if (!isInitializedRef.current && isPatient) {
       isInitializedRef.current = true;
       fetchClinics();
     }
-  }, [fetchClinics]);
+  }, [isPatient, fetchClinics]);
 
+  // ✅ FIX: Fetch doctors only when clinic changes
   useEffect(() => {
-    if (isInitializedRef.current) {
-      fetchDoctors(appointmentHook.bookingData.clinic?.id);
+    const clinicId = bookingData.clinic?.id;
+    
+    // Only fetch if clinic has changed
+    if (clinicIdRef.current !== clinicId) {
+      clinicIdRef.current = clinicId;
+      
+      if (clinicId) {
+        fetchDoctors(clinicId);
+        fetchServices(clinicId);
+      } else {
+        setDoctors([]);
+        setServices([]);
+      }
     }
-  }, [appointmentHook.bookingData.clinic?.id, fetchDoctors]);
-
-  useEffect(() => {
-    if (isInitializedRef.current) {
-      fetchServices(appointmentHook.bookingData.clinic?.id);
-    }
-  }, [appointmentHook.bookingData.clinic?.id, fetchServices]);
+  }, [bookingData.clinic?.id, fetchDoctors, fetchServices]);
 
   return {
-    // Hook data
+    // Hook data - spread the entire hook
     ...appointmentHook,
     profile,
     isPatient,
@@ -322,9 +391,11 @@ export const useBookingFlow = () => {
     bookingSuccess,
     
     // Enhanced validation state
-    appointmentLimitInfo,
+    appointmentLimitCheck,
+    sameDayConflict,
+    sameDayConflictDetails,
+    bookingLimitsInfo,
     crossClinicWarnings,
-    bookingWarnings,
     validationLoading,
     patientReliability,
     
@@ -338,7 +409,7 @@ export const useBookingFlow = () => {
     handleSubmit,
     
     // Enhanced methods
-    checkAppointmentLimits,
+    checkBookingEligibility,
     getCancellationInfo,
   };
 };
