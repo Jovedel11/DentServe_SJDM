@@ -3,30 +3,43 @@ import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 
 /**
- * Treatment Plans Management Hook
- * Handles multi-visit treatment plans for ongoing care
- * Aligned with database functions: create_treatment_plan, get_ongoing_treatments
+ * ✅ ENHANCED Treatment Plans Management Hook
+ * Fully aligned with database schema and functions
+ * 
+ * Database Functions Used:
+ * - get_ongoing_treatments(p_patient_id, p_include_paused)
+ * - create_treatment_plan(...)
+ * - update_treatment_plan_progress(p_appointment_id) [Auto-triggered]
+ * 
+ * Key Features:
+ * - Automatic progress tracking via database triggers
+ * - Rich treatment data with progress, timeline, and appointments
+ * - Alert system for overdue treatments
+ * - Summary statistics
  */
 export const useTreatmentPlans = () => {
-  const { user, profile, isPatient, isStaff } = useAuth();
+  const { user, profile, isPatient, isStaff, isAdmin } = useAuth();
 
   const [state, setState] = useState({
     loading: false,
     error: null,
-    treatmentPlans: [],
     ongoingTreatments: [],
-    selectedPlan: null
+    summary: null,
+    selectedPlan: null,
+    // Legacy compatibility
+    treatmentPlans: []
   });
 
-  // =====================================================
-  // PATIENT: Get Ongoing Treatments
-  // =====================================================
-  const getOngoingTreatments = useCallback(async (patientId = null) => {
+  // ====================================================================
+  // ✅ PATIENT & STAFF: Get Ongoing Treatments (Database-Aligned)
+  // ====================================================================
+  const getOngoingTreatments = useCallback(async (patientId = null, includePaused = false) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
 
       const { data, error } = await supabase.rpc('get_ongoing_treatments', {
-        p_patient_id: patientId || (isPatient ? profile?.user_id : null)
+        p_patient_id: patientId || (isPatient ? profile?.user_id : null),
+        p_include_paused: includePaused
       });
 
       if (error) throw error;
@@ -35,16 +48,30 @@ export const useTreatmentPlans = () => {
         throw new Error(data?.error || 'Failed to fetch ongoing treatments');
       }
 
-      const treatments = data.data?.treatments || [];
+      // ✅ CRITICAL FIX: Database returns 'ongoing_treatments' not 'treatments'
+      const treatments = data.data?.ongoing_treatments || [];
+      const summary = data.data?.summary || {
+        total_active: 0,
+        overdue_count: 0,
+        scheduled_count: 0,
+        needs_scheduling: 0,
+        completion_avg: 0
+      };
 
       setState(prev => ({
         ...prev,
         loading: false,
         ongoingTreatments: treatments,
+        summary,
+        // Legacy compatibility
         treatmentPlans: treatments
       }));
 
-      return { success: true, treatments };
+      return { 
+        success: true, 
+        treatments,
+        summary
+      };
 
     } catch (err) {
       const errorMsg = err.message || 'Failed to fetch ongoing treatments';
@@ -53,11 +80,11 @@ export const useTreatmentPlans = () => {
     }
   }, [isPatient, profile?.user_id]);
 
-  // =====================================================
-  // STAFF: Create Treatment Plan
-  // =====================================================
+  // ====================================================================
+  // ✅ STAFF ONLY: Create Treatment Plan
+  // ====================================================================
   const createTreatmentPlan = useCallback(async (planData) => {
-    if (!isStaff) {
+    if (!isStaff && !isAdmin) {
       return { success: false, error: 'Only staff can create treatment plans' };
     }
 
@@ -75,7 +102,7 @@ export const useTreatmentPlans = () => {
         initialAppointmentId
       } = planData;
 
-      // Validation
+      // ✅ Validation
       if (!patientId || !clinicId || !treatmentName) {
         throw new Error('Patient ID, Clinic ID, and Treatment Name are required');
       }
@@ -97,12 +124,12 @@ export const useTreatmentPlans = () => {
         throw new Error(data?.error || 'Failed to create treatment plan');
       }
 
-      // Optimistic update
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        treatmentPlans: [...prev.treatmentPlans, data.data]
-      }));
+      setState(prev => ({ ...prev, loading: false }));
+
+      // ✅ Refresh treatments after creation
+      if (isPatient) {
+        await getOngoingTreatments();
+      }
 
       return {
         success: true,
@@ -115,11 +142,11 @@ export const useTreatmentPlans = () => {
       setState(prev => ({ ...prev, loading: false, error: errorMsg }));
       return { success: false, error: errorMsg };
     }
-  }, [isStaff]);
+  }, [isStaff, isAdmin, isPatient, getOngoingTreatments]);
 
-  // =====================================================
-  // Get Treatment Plan Details
-  // =====================================================
+  // ====================================================================
+  // ✅ Get Detailed Treatment Plan (Direct Query)
+  // ====================================================================
   const getTreatmentPlanDetails = useCallback(async (treatmentPlanId) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
@@ -143,12 +170,13 @@ export const useTreatmentPlans = () => {
             id,
             user_profiles (first_name, last_name)
           ),
-          appointments:treatment_plan_appointments (
+          visits:treatment_plan_appointments (
             id,
             visit_number,
             visit_purpose,
             is_completed,
             completion_notes,
+            recommended_next_visit_days,
             appointment:appointments (
               id,
               appointment_date,
@@ -178,11 +206,11 @@ export const useTreatmentPlans = () => {
     }
   }, []);
 
-  // =====================================================
-  // Update Treatment Plan Status
-  // =====================================================
+  // ====================================================================
+  // ✅ STAFF: Update Treatment Plan Status
+  // ====================================================================
   const updateTreatmentPlanStatus = useCallback(async (treatmentPlanId, status, notes = null) => {
-    if (!isStaff) {
+    if (!isStaff && !isAdmin) {
       return { success: false, error: 'Only staff can update treatment plans' };
     }
 
@@ -198,6 +226,7 @@ export const useTreatmentPlans = () => {
         updateData.treatment_notes = notes;
       }
 
+      // ✅ Auto-complete handling
       if (status === 'completed') {
         updateData.actual_end_date = new Date().toISOString().split('T')[0];
         updateData.progress_percentage = 100;
@@ -214,17 +243,10 @@ export const useTreatmentPlans = () => {
 
       if (error) throw error;
 
-      // Optimistic update
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        treatmentPlans: prev.treatmentPlans.map(plan =>
-          plan.id === treatmentPlanId ? { ...plan, ...data } : plan
-        ),
-        ongoingTreatments: prev.ongoingTreatments.filter(plan => 
-          plan.id !== treatmentPlanId || status === 'active'
-        )
-      }));
+      setState(prev => ({ ...prev, loading: false }));
+
+      // ✅ Refresh treatments list
+      await getOngoingTreatments();
 
       return {
         success: true,
@@ -237,20 +259,21 @@ export const useTreatmentPlans = () => {
       setState(prev => ({ ...prev, loading: false, error: errorMsg }));
       return { success: false, error: errorMsg };
     }
-  }, [isStaff]);
+  }, [isStaff, isAdmin, getOngoingTreatments]);
 
-  // =====================================================
-  // Link Appointment to Treatment Plan
-  // =====================================================
+  // ====================================================================
+  // ✅ STAFF: Link Appointment to Treatment Plan
+  // ====================================================================
   const linkAppointmentToPlan = useCallback(async (treatmentPlanId, appointmentId, visitNumber, visitPurpose = null) => {
-    if (!isStaff) {
+    if (!isStaff && !isAdmin) {
       return { success: false, error: 'Only staff can link appointments' };
     }
 
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
 
-      const { data, error } = await supabase
+      // ✅ First, insert into treatment_plan_appointments
+      const { data: tpaData, error: tpaError } = await supabase
         .from('treatment_plan_appointments')
         .insert({
           treatment_plan_id: treatmentPlanId,
@@ -261,19 +284,43 @@ export const useTreatmentPlans = () => {
         .select()
         .single();
 
-      if (error) throw error;
+      if (tpaError) throw tpaError;
 
-      // Also update appointment_services to link to treatment plan
-      await supabase
+      // ✅ Then, link appointment_services to treatment plan
+      const { error: servicesError } = await supabase
         .from('appointment_services')
         .update({ treatment_plan_id: treatmentPlanId })
         .eq('appointment_id', appointmentId);
 
+      if (servicesError) {
+        console.warn('Failed to link appointment_services:', servicesError);
+      }
+
+      // ✅ Update treatment_plans.next_visit_appointment_id if needed
+      const { data: appointment } = await supabase
+        .from('appointments')
+        .select('appointment_date, status')
+        .eq('id', appointmentId)
+        .single();
+
+      if (appointment && appointment.status === 'confirmed') {
+        await supabase
+          .from('treatment_plans')
+          .update({
+            next_visit_appointment_id: appointmentId,
+            next_visit_date: appointment.appointment_date
+          })
+          .eq('id', treatmentPlanId);
+      }
+
       setState(prev => ({ ...prev, loading: false }));
+
+      // ✅ Refresh treatments
+      await getOngoingTreatments();
 
       return {
         success: true,
-        data,
+        data: tpaData,
         message: 'Appointment linked to treatment plan successfully'
       };
 
@@ -282,39 +329,56 @@ export const useTreatmentPlans = () => {
       setState(prev => ({ ...prev, loading: false, error: errorMsg }));
       return { success: false, error: errorMsg };
     }
-  }, [isStaff]);
+  }, [isStaff, isAdmin, getOngoingTreatments]);
 
-  // =====================================================
-  // Computed Values
-  // =====================================================
+  // ====================================================================
+  // ✅ Computed Values (Based on Database Response)
+  // ====================================================================
   const computed = useMemo(() => {
-    const activePlans = state.treatmentPlans.filter(p => p.status === 'active');
-    const completedPlans = state.treatmentPlans.filter(p => p.status === 'completed');
+    const { ongoingTreatments, summary } = state;
+
+    // Alert-based filtering
+    const urgentTreatments = ongoingTreatments.filter(t => t.alert_level === 'urgent');
+    const soonTreatments = ongoingTreatments.filter(t => t.alert_level === 'soon');
+    const upcomingTreatments = ongoingTreatments.filter(t => t.alert_level === 'upcoming');
+
+    // Status-based filtering
+    const activeTreatments = ongoingTreatments.filter(t => t.status === 'active');
+    const pausedTreatments = ongoingTreatments.filter(t => t.status === 'paused');
 
     return {
-      activePlans,
-      completedPlans,
-      hasActiveTreatments: activePlans.length > 0,
-      totalActivePlans: activePlans.length,
-      totalCompletedPlans: completedPlans.length,
+      // Counts
+      totalTreatments: ongoingTreatments.length,
+      activeTreatments: activeTreatments.length,
+      pausedTreatments: pausedTreatments.length,
       
-      // Treatment completion stats
-      overallProgress: activePlans.length > 0
-        ? Math.round(
-            activePlans.reduce((sum, p) => sum + (p.progress_percentage || 0), 0) / activePlans.length
-          )
-        : 0
+      // Alert-based
+      urgentTreatments,
+      soonTreatments,
+      upcomingTreatments,
+      hasUrgentTreatments: urgentTreatments.length > 0,
+      
+      // Database summary
+      totalActive: summary?.total_active || 0,
+      overdueCount: summary?.overdue_count || 0,
+      scheduledCount: summary?.scheduled_count || 0,
+      needsSchedulingCount: summary?.needs_scheduling || 0,
+      completionAverage: summary?.completion_avg || 0,
+      
+      // Helpers
+      hasActiveTreatments: activeTreatments.length > 0,
+      isEmpty: ongoingTreatments.length === 0
     };
-  }, [state.treatmentPlans]);
+  }, [state.ongoingTreatments, state.summary]);
 
-  // =====================================================
-  // Auto-fetch on mount for patients
-  // =====================================================
+  // ====================================================================
+  // ✅ Auto-fetch on mount for patients
+  // ====================================================================
   useEffect(() => {
     if (user && isPatient) {
       getOngoingTreatments();
     }
-  }, [user, isPatient, getOngoingTreatments]);
+  }, [user, isPatient]);
 
   return {
     // State
@@ -329,7 +393,11 @@ export const useTreatmentPlans = () => {
     linkAppointmentToPlan,
 
     // Utilities
-    refreshTreatments: getOngoingTreatments,
-    clearError: () => setState(prev => ({ ...prev, error: null }))
+    refreshTreatments: () => getOngoingTreatments(),
+    clearError: () => setState(prev => ({ ...prev, error: null })),
+    
+    // Helper methods
+    getTreatmentById: (id) => state.ongoingTreatments.find(t => t.id === id),
+    getTreatmentsByAlert: (alertLevel) => state.ongoingTreatments.filter(t => t.alert_level === alertLevel)
   };
 };

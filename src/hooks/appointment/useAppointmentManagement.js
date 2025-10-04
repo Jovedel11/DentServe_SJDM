@@ -211,7 +211,7 @@ export const useAppointmentManagement = (options = {}) => {
     }
   }, [isStaff, isAdmin]);
 
-  // ✅ STAFF ACTIONS - Mark no-show
+  // STAFF ACTIONS - Mark no-show
   const markNoShow = useCallback(async (appointmentId, staffNotes = '') => {
     if (!isStaff && !isAdmin) return { success: false, error: 'Access denied' };
 

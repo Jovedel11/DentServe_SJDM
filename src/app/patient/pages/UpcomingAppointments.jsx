@@ -23,6 +23,8 @@ import UrgentReminders from "../components/upcomming/urgent-reminders";
 import OngoingTreatments from "../components/upcomming/ongoing-treatments";
 import AppointmentCard from "../components/upcomming/appointment-card";
 
+import TreatmentAlertBanner from "@/app/shared/components/treatment-alert-banner";
+
 // Modals
 import CancelModal from "../components/upcomming/cancel-modal";
 import DetailsModal from "../components/upcomming/details-modal";
@@ -160,6 +162,18 @@ Email: ${appointment.clinic?.email || "N/A"}
     },
     [formatDate, formatTime]
   );
+
+  const urgentTreatments = React.useMemo(() => {
+    return ongoingTreatments.filter((t) => {
+      if (!t.next_visit_date) return false;
+      const today = new Date();
+      const nextVisit = new Date(t.next_visit_date);
+      const daysDiff = Math.floor((today - nextVisit) / (1000 * 60 * 60 * 24));
+      return daysDiff > 0; // Overdue
+    });
+  }, [ongoingTreatments]);
+
+  const hasUrgentTreatments = urgentTreatments.length > 0;
 
   // Access control
   if (!user || !isPatient) {
@@ -347,6 +361,19 @@ Email: ${appointment.clinic?.email || "N/A"}
             placeholder="Search appointments, doctors, or clinics..."
           />
         </div>
+
+        {/* Urgent Treatment Alerts */}
+        {hasUrgentTreatments && (
+          <div className="mb-6">
+            <TreatmentAlertBanner
+              treatments={urgentTreatments}
+              summary={{
+                total_active: ongoingTreatments.length,
+                total_overdue: urgentTreatments.length,
+              }}
+            />
+          </div>
+        )}
 
         {/* Urgent Reminders */}
         <UrgentReminders

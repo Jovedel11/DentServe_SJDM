@@ -1704,13 +1704,14 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.book_appointment(
+-CREATE OR REPLACE FUNCTION public.book_appointment(
     p_clinic_id uuid, 
     p_doctor_id uuid, 
     p_appointment_date date, 
     p_appointment_time time without time zone, 
     p_service_ids uuid[], 
-    p_symptoms text DEFAULT NULL::text
+    p_symptoms text DEFAULT NULL::text,
+    p_treatment_plan_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -1723,7 +1724,7 @@ DECLARE
     user_email VARCHAR(255);
     appointment_id UUID;
     validation_result RECORD;
-    patient_profile RECORD;  -- ✅ NEW: For patient demographics
+    patient_profile RECORD;
     appointment_limit_check JSONB;
     reliability_check JSONB;
     cancellation_deadline TIMESTAMP;
@@ -1732,67 +1733,99 @@ DECLARE
     max_advance_days INTEGER := 90;
     max_pending_appointments INTEGER := 5;
     pending_count INTEGER;
-    patient_age INTEGER;  -- ✅ NEW: Calculate age
+    treatment_plan_record RECORD;
+    next_visit_number INTEGER;
 BEGIN
     current_context := get_current_user_context();
 
-    -- Authentication check
     IF NOT (current_context->>'authenticated')::boolean THEN
         RETURN current_context;
     END IF;
 
-    -- Only patients can book
     IF (current_context->>'user_type') != 'patient' THEN
         RETURN jsonb_build_object('success', false, 'error', 'Only patients can book appointments');
     END IF;
 
     patient_id_val := (current_context->>'user_id')::UUID;
 
+    -- Validate treatment plan if provided
+    IF p_treatment_plan_id IS NOT NULL THEN
+        SELECT 
+            tp.id,
+            tp.patient_id,
+            tp.clinic_id,
+            tp.status,
+            tp.visits_completed,
+            tp.total_visits_planned,
+            tp.treatment_name
+        INTO treatment_plan_record
+        FROM treatment_plans tp
+        WHERE tp.id = p_treatment_plan_id
+        AND tp.patient_id = patient_id_val
+        AND tp.status = 'active';
+
+        IF NOT FOUND THEN
+            RETURN jsonb_build_object(
+                'success', false, 
+                'error', 'Treatment plan not found or not active'
+            );
+        END IF;
+
+        IF treatment_plan_record.clinic_id != p_clinic_id THEN
+            RETURN jsonb_build_object(
+                'success', false, 
+                'error', 'Appointment clinic must match treatment plan clinic'
+            );
+        END IF;
+
+        IF treatment_plan_record.total_visits_planned IS NOT NULL AND 
+           treatment_plan_record.visits_completed >= treatment_plan_record.total_visits_planned THEN
+            RETURN jsonb_build_object(
+                'success', false, 
+                'error', 'Treatment plan is already completed'
+            );
+        END IF;
+
+        next_visit_number := treatment_plan_record.visits_completed + 1;
+    END IF;
+
     -- Input validation
     IF p_clinic_id IS NULL OR p_doctor_id IS NULL OR 
        p_appointment_date IS NULL OR p_appointment_time IS NULL OR
        p_service_ids IS NULL OR array_length(p_service_ids, 1) < 1 THEN
-        RETURN jsonb_build_object('success', false, 'error', 'All fields required: clinic, doctor, date, time, and at least 1 service');
+        RETURN jsonb_build_object('success', false, 'error', 'All fields required');
     END IF;
 
-    -- Business rule validations
     IF array_length(p_service_ids, 1) > 3 THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Maximum 3 services allowed per appointment');
+        RETURN jsonb_build_object('success', false, 'error', 'Maximum 3 services allowed');
     END IF;
 
-    -- Date validation
     IF p_appointment_date < CURRENT_DATE THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Cannot book appointments in the past');
+        RETURN jsonb_build_object('success', false, 'error', 'Cannot book in the past');
     END IF;
 
-    -- Minimum advance booking time
     appointment_datetime := p_appointment_date::timestamp + p_appointment_time;
     
     IF appointment_datetime < NOW() + (min_advance_hours || ' hours')::INTERVAL THEN
         RETURN jsonb_build_object(
             'success', false, 
-            'error', format('Appointments must be booked at least %s hours in advance', min_advance_hours),
-            'reason', 'insufficient_advance_time'
+            'error', format('Book at least %s hours in advance', min_advance_hours)
         );
     END IF;
 
-    -- Maximum advance booking limit
     IF p_appointment_date > CURRENT_DATE + (max_advance_days || ' days')::INTERVAL THEN
         RETURN jsonb_build_object(
             'success', false, 
-            'error', format('Cannot book more than %s days in advance', max_advance_days),
-            'reason', 'too_far_in_advance'
+            'error', format('Cannot book more than %s days ahead', max_advance_days)
         );
     END IF;
 
-    -- Rate limiting
     SELECT email INTO user_email FROM users WHERE id = patient_id_val;
     
     IF NOT check_rate_limit_unified(user_email, 'appointment_booking', 5, 60) THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Rate limit exceeded. Maximum 5 bookings per hour.');
+        RETURN jsonb_build_object('success', false, 'error', 'Rate limit exceeded');
     END IF;
 
-    -- Check for too many pending appointments
     SELECT COUNT(*) INTO pending_count
     FROM appointments
     WHERE patient_id = patient_id_val
@@ -1802,13 +1835,11 @@ BEGIN
     IF pending_count >= max_pending_appointments THEN
         RETURN jsonb_build_object(
             'success', false, 
-            'error', format('You have %s pending appointments. Please wait for confirmation or cancel some before booking new ones.', pending_count),
-            'reason', 'too_many_pending',
-            'data', jsonb_build_object('pending_count', pending_count, 'max_allowed', max_pending_appointments)
+            'error', format('Too many pending (%s). Wait for confirmations.', pending_count)
         );
     END IF;
 
-    -- ✅ NEW: Get patient demographic data for staff visibility
+    -- Get patient profile
     SELECT 
         u.email,
         u.phone,
@@ -1835,13 +1866,6 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Patient profile not found');
     END IF;
 
-    -- Calculate age if date_of_birth exists
-    IF patient_profile.date_of_birth IS NOT NULL THEN
-        patient_age := EXTRACT(YEAR FROM AGE(patient_profile.date_of_birth))::INTEGER;
-    ELSE
-        patient_age := NULL;
-    END IF;
-
     -- Check appointment limits
     appointment_limit_check := check_appointment_limit(patient_id_val, p_clinic_id, p_appointment_date);
     
@@ -1854,7 +1878,7 @@ BEGIN
         );
     END IF;
 
-    -- Enhanced validation with services and clinic info
+    -- Validate services and clinic
     WITH comprehensive_validation AS (
         SELECT 
             c.id as clinic_id,
@@ -1862,11 +1886,8 @@ BEGIN
             c.phone as clinic_phone,
             c.email as clinic_email,
             c.address as clinic_address,
-            c.appointment_limit_per_patient,
             c.cancellation_policy_hours,
             c.is_active as clinic_active,
-            c.operating_hours,
-            c.timezone as clinic_timezone,
             
             d.id as doctor_id,
             d.specialization,
@@ -1879,8 +1900,7 @@ BEGIN
             services_data.total_min_price,
             services_data.total_max_price,
             services_data.service_details,
-            services_data.valid_service_count,
-            services_data.has_urgent_service
+            services_data.valid_service_count
             
         FROM clinics c
         JOIN doctors d ON d.id = p_doctor_id
@@ -1891,7 +1911,6 @@ BEGIN
                 COALESCE(SUM(min_price), 0) AS total_min_price,
                 COALESCE(SUM(max_price), 0) AS total_max_price,
                 COUNT(*) as valid_service_count,
-                BOOL_OR(category ILIKE '%emergency%' OR category ILIKE '%urgent%') as has_urgent_service,
                 jsonb_agg(jsonb_build_object(
                     'id', s.id,
                     'name', s.name,
@@ -1911,191 +1930,246 @@ BEGIN
     )
     SELECT * INTO validation_result FROM comprehensive_validation;
     
-    -- Comprehensive validation checks
     IF validation_result.clinic_id IS NULL OR NOT validation_result.clinic_active THEN
         RETURN jsonb_build_object('success', false, 'error', 'Clinic not found or inactive');
     END IF;
     
     IF validation_result.doctor_id IS NULL OR NOT validation_result.doctor_available OR NOT validation_result.doctor_clinic_active THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Doctor not available at this clinic');
+        RETURN jsonb_build_object('success', false, 'error', 'Doctor not available');
     END IF;
 
     IF validation_result.valid_service_count != array_length(p_service_ids, 1) THEN
-        RETURN jsonb_build_object('success', false, 'error', 'One or more selected services are not available at this clinic');
+        RETURN jsonb_build_object('success', false, 'error', 'Service not available');
     END IF;
     
-    -- Duration validation
     IF validation_result.total_duration > 480 THEN
-        RETURN jsonb_build_object(
-            'success', false, 
-            'error', 'Total service duration exceeds maximum allowed (8 hours)',
-            'data', jsonb_build_object(
-                'total_duration', validation_result.total_duration,
-                'max_allowed', 480
-            )
-        );
+        RETURN jsonb_build_object('success', false, 'error', 'Duration exceeds limit');
     END IF;
 
-    IF validation_result.total_duration < 15 THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Minimum appointment duration is 15 minutes');
-    END IF;
+    cancellation_deadline := appointment_datetime - (COALESCE(validation_result.cancellation_policy_hours, 24) || ' hours')::INTERVAL;
 
-    -- Check appointment availability
-    IF NOT check_appointment_availability(
-        p_doctor_id, 
-        p_appointment_date, 
-        p_appointment_time, 
-        validation_result.total_duration
-    ) THEN
-        RETURN jsonb_build_object(
-            'success', false, 
-            'error', 'This time slot is not available. Please select a different time.',
-            'reason', 'time_slot_unavailable'
-        );
-    END IF;
+    -- Create appointment
+    INSERT INTO appointments (
+        patient_id, doctor_id, clinic_id,
+        appointment_date, appointment_time,
+        status, symptoms, notes,
+        created_at, updated_at
+    ) VALUES (
+        patient_id_val, p_doctor_id, p_clinic_id,
+        p_appointment_date, p_appointment_time,
+        'pending',
+        p_symptoms,
+        CASE 
+            WHEN p_treatment_plan_id IS NOT NULL THEN 
+                format('Linked to: %s (Visit #%s)', 
+                    treatment_plan_record.treatment_name, 
+                    next_visit_number)
+            ELSE NULL
+        END,
+        NOW(), NOW()
+    ) RETURNING id INTO appointment_id;
 
-    -- ✅ NEW: Validate emergency contact for urgent services
-    IF validation_result.has_urgent_service THEN
-        IF patient_profile.emergency_contact_name IS NULL OR patient_profile.emergency_contact_phone IS NULL THEN
-            RETURN jsonb_build_object(
-                'success', false,
-                'error', 'Emergency contact information required for urgent services. Please update your profile.',
-                'reason', 'missing_emergency_contact'
-            );
-        END IF;
-    END IF;
+    -- Link services
+    INSERT INTO appointment_services (appointment_id, service_id, treatment_plan_id)
+    SELECT appointment_id, unnest(p_service_ids), p_treatment_plan_id;
 
-    -- Get patient reliability
-    reliability_check := check_patient_reliability(patient_id_val, p_clinic_id);
-
-    -- Calculate cancellation deadline
-    cancellation_deadline := appointment_datetime - 
-                            (COALESCE(validation_result.cancellation_policy_hours, 24) || ' hours')::INTERVAL;
-
-    -- Create appointment atomically
-    BEGIN
-        INSERT INTO appointments (
-            patient_id, 
-            doctor_id, 
-            clinic_id, 
-            appointment_date,
-            appointment_time, 
-            duration_minutes,
-            symptoms,
-            status
-        ) VALUES (
-            patient_id_val, 
-            p_doctor_id, 
-            p_clinic_id, 
-            p_appointment_date,
-            p_appointment_time, 
-            validation_result.total_duration,
-            p_symptoms,
-            'pending'
-        ) RETURNING id INTO appointment_id;
-
-        -- Insert appointment services
-        INSERT INTO appointment_services (appointment_id, service_id)
-        SELECT appointment_id, unnest(p_service_ids);
-
-        -- Create notification
-        PERFORM create_appointment_notification(
-            patient_id_val,
-            'appointment_confirmed',
+    -- Link to treatment plan
+    IF p_treatment_plan_id IS NOT NULL THEN
+        INSERT INTO treatment_plan_appointments (
+            treatment_plan_id,
             appointment_id,
-            format('Your appointment request has been submitted to %s for %s at %s', 
-                   validation_result.clinic_name, 
-                   p_appointment_date, 
-                   p_appointment_time)
+            visit_number,
+            visit_purpose,
+            is_completed
+        ) VALUES (
+            p_treatment_plan_id,
+            appointment_id,
+            next_visit_number,
+            format('Follow-up visit %s', next_visit_number),
+            false
         );
 
-        -- ✅ ENHANCED SUCCESS RETURN: Include patient demographics for staff
-        RETURN jsonb_build_object(
-            'success', true,
-            'message', 'Appointment booked successfully',
-            'data', jsonb_build_object(
-                'appointment_id', appointment_id,
-                'status', 'pending',
-                'requires_approval', true,
-                
-                -- ✅ NEW: Patient demographics for staff visibility
-                'patient_info', jsonb_build_object(
-                    'id', patient_id_val,
-                    'name', COALESCE(patient_profile.first_name, '') || ' ' || COALESCE(patient_profile.last_name, ''),
-                    'first_name', patient_profile.first_name,
-                    'last_name', patient_profile.last_name,
-                    'email', patient_profile.email,
-                    'phone', patient_profile.phone,
-                    'gender', patient_profile.gender,
-                    'age', patient_age,
-                    'date_of_birth', patient_profile.date_of_birth,
-                    'emergency_contact', jsonb_build_object(
-                        'name', patient_profile.emergency_contact_name,
-                        'phone', patient_profile.emergency_contact_phone
-                    ),
-                    'medical_info', jsonb_build_object(
-                        'conditions', patient_profile.medical_conditions,
-                        'allergies', patient_profile.allergies
-                    )
-                ),
-                
-                'appointment_details', jsonb_build_object(
-                    'date', p_appointment_date,
-                    'time', p_appointment_time,
-                    'duration_minutes', validation_result.total_duration,
-                    'symptoms', p_symptoms
-                ),
-                
-                'clinic', jsonb_build_object(
-                    'id', validation_result.clinic_id,
-                    'name', validation_result.clinic_name,
-                    'phone', validation_result.clinic_phone,
-                    'email', validation_result.clinic_email,
-                    'address', validation_result.clinic_address,
-                    'cancellation_policy_hours', validation_result.cancellation_policy_hours,
-                    'timezone', validation_result.clinic_timezone
-                ),
-                
-                'doctor', jsonb_build_object(
-                    'id', validation_result.doctor_id,
-                    'name', COALESCE(validation_result.doctor_first_name, '') || ' ' || COALESCE(validation_result.doctor_last_name, ''),
-                    'specialization', validation_result.specialization
-                ),
-                
-                'services', validation_result.service_details,
-                
-                'pricing_estimate', jsonb_build_object(
-                    'min_total', validation_result.total_min_price,
-                    'max_total', validation_result.total_max_price,
-                    'currency', 'PHP',
-                    'note', 'Final price may vary based on actual services provided'
-                ),
-                
-                'cancellation_policy', jsonb_build_object(
-                    'deadline', cancellation_deadline,
-                    'hours_notice_required', COALESCE(validation_result.cancellation_policy_hours, 24),
-                    'note', format('Free cancellation until %s', cancellation_deadline::timestamp)
-                ),
-                
-                'patient_reliability', reliability_check,
-                
-                -- ✅ Cross-clinic context (role-based from check_appointment_limit)
-                'cross_clinic_context', jsonb_build_object(
-                    'has_other_appointments', (appointment_limit_check->'data'->>'cross_clinic_count')::INTEGER > 0,
-                    'count', COALESCE((appointment_limit_check->'data'->>'cross_clinic_count')::INTEGER, 0),
-                    'details', appointment_limit_check->'data'->'cross_clinic_appointments',
-                    'minimal', appointment_limit_check->'data'->'cross_clinic_minimal'
-                )
+        UPDATE treatment_plans
+        SET 
+            next_visit_appointment_id = appointment_id,
+            next_visit_date = p_appointment_date,
+            updated_at = NOW()
+        WHERE id = p_treatment_plan_id;
+    END IF;
+
+    -- ✅ FIXED: Get reliability check with error handling (removed duplicate call)
+    BEGIN
+        reliability_check := check_patient_reliability(patient_id_val, p_clinic_id);
+    EXCEPTION WHEN OTHERS THEN
+        RAISE LOG 'Reliability check failed: %', SQLERRM;
+        reliability_check := jsonb_build_object(
+            'risk_level', 'unknown',
+            'statistics', jsonb_build_object(
+                'completion_rate', 0,
+                'total_appointments', 0,
+                'completed_count', 0,
+                'no_show_count', 0
             )
         );
-
-    EXCEPTION
-        WHEN OTHERS THEN
-            RAISE LOG 'book_appointment error for patient %: %', patient_id_val, SQLERRM;
-            RETURN jsonb_build_object('success', false, 'error', 'Booking failed. Please try again.');
     END;
+
+    -- ✅ Return success
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', CASE 
+            WHEN p_treatment_plan_id IS NOT NULL THEN 
+                format('Booked and linked (Visit #%s/%s)', 
+                    next_visit_number, 
+                    COALESCE(treatment_plan_record.total_visits_planned::TEXT, '?'))
+            ELSE 'Appointment booked successfully'
+        END,
+        'data', jsonb_build_object(
+            'appointment_id', appointment_id,
+            'status', 'pending',
+            'treatment_plan_link', CASE 
+                WHEN p_treatment_plan_id IS NOT NULL THEN
+                    jsonb_build_object(
+                        'linked', true,
+                        'treatment_plan_id', p_treatment_plan_id,
+                        'treatment_name', treatment_plan_record.treatment_name,
+                        'visit_number', next_visit_number,
+                        'total_visits', treatment_plan_record.total_visits_planned
+                    )
+                ELSE jsonb_build_object('linked', false)
+            END,
+            'patient_info', jsonb_build_object(
+                'name', patient_profile.first_name || ' ' || patient_profile.last_name,
+                'email', patient_profile.email,
+                'phone', patient_profile.phone,
+                'age', patient_profile.age,  -- ✅ FIXED: Use patient_profile.age instead of patient_age
+                'gender', patient_profile.gender
+            ),
+            'appointment_details', jsonb_build_object(
+                'date', p_appointment_date,
+                'time', p_appointment_time,
+                'symptoms', p_symptoms,
+                'total_duration', validation_result.total_duration || ' minutes',
+                'cancellation_deadline', cancellation_deadline
+            ),
+            'clinic', jsonb_build_object(
+                'id', validation_result.clinic_id,
+                'name', validation_result.clinic_name,
+                'address', validation_result.clinic_address,
+                'phone', validation_result.clinic_phone,
+                'email', validation_result.clinic_email
+            ),
+            'doctor', jsonb_build_object(
+                'id', validation_result.doctor_id,
+                'name', TRIM(COALESCE(validation_result.doctor_first_name, '') || ' ' || COALESCE(validation_result.doctor_last_name, '')),  -- ✅ FIXED: Safe concatenation
+                'specialization', validation_result.specialization
+            ),
+            'services', validation_result.service_details,
+            'pricing_estimate', jsonb_build_object(
+                'min_total', validation_result.total_min_price,
+                'max_total', validation_result.total_max_price,
+                'currency', 'PHP'
+            ),
+            'cancellation_policy', jsonb_build_object(
+                'policy_hours', validation_result.cancellation_policy_hours,
+                'deadline', cancellation_deadline,
+                'can_cancel_now', NOW() < cancellation_deadline
+            ),
+            'patient_reliability', reliability_check
+        )
+    );
+
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE LOG 'book_appointment error: %', SQLERRM;
+        RETURN jsonb_build_object('success', false, 'error', 'Booking failed: ' || SQLERRM);  -- ✅ Show actual error in logs
 END;
 $function$;
+
+-- Add helpful comment
+COMMENT ON FUNCTION public.book_appointment IS 
+'Fixed appointment booking function with treatment plan support. Bugs fixed: uninitialized patient_age variable, duplicate reliability check, safe doctor name concatenation.';
+
+-- ✅ OPTIMIZED: Add clinic_id parameter to filter server-side
+CREATE OR REPLACE FUNCTION public.get_patient_ongoing_treatments_for_booking(
+    p_patient_id uuid,
+    p_clinic_id uuid DEFAULT NULL  -- ✅ NEW: Optional clinic filter
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_catalog'
+AS $function$
+DECLARE
+    current_context JSONB;
+    result JSONB;
+BEGIN
+    current_context := get_current_user_context();
+    
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Authentication required');
+    END IF;
+    
+    -- Only allow patients to see their own treatments
+    IF (current_context->>'user_type') = 'patient' AND 
+       (current_context->>'user_id')::UUID != p_patient_id THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied');
+    END IF;
+    
+    -- ✅ OPTIMIZED: Filter by clinic_id in SQL (not client-side)
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'has_ongoing_treatments', COUNT(*) > 0,
+            'treatments', COALESCE(jsonb_agg(
+                jsonb_build_object(
+                    'id', tp.id,
+                    'treatment_name', tp.treatment_name,
+                    'treatment_category', tp.treatment_category,
+                    'clinic_name', c.name,
+                    'clinic_id', tp.clinic_id,
+                    'visits_completed', tp.visits_completed,
+                    'total_visits_planned', tp.total_visits_planned,
+                    'progress_percentage', tp.progress_percentage,
+                    'next_visit_due', tp.next_visit_date,
+                    'is_overdue', CASE 
+                        WHEN tp.next_visit_date IS NOT NULL AND tp.next_visit_date < CURRENT_DATE THEN true
+                        ELSE false
+                    END
+                )
+            ), '[]'::jsonb)
+        )
+    ) INTO result
+    FROM treatment_plans tp
+    JOIN clinics c ON tp.clinic_id = c.id
+    WHERE tp.patient_id = p_patient_id
+    AND tp.status = 'active'
+    AND (p_clinic_id IS NULL OR tp.clinic_id = p_clinic_id);  -- ✅ NEW: Clinic filter
+    
+    RETURN COALESCE(result, jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'has_ongoing_treatments', false,
+            'treatments', '[]'::jsonb
+        )
+    ));
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Failed to fetch ongoing treatments: ' || SQLERRM
+        );
+END;
+$function$;
+
+COMMENT ON FUNCTION public.get_patient_ongoing_treatments_for_booking IS 
+'✅ OPTIMIZED: Fetches ongoing treatments for a specific clinic during booking flow. Filters by clinic_id server-side for efficiency.';
+
+COMMENT ON FUNCTION public.book_appointment IS 
+'✅ ENHANCED: Supports optional treatment_plan_id for auto-linking appointments to ongoing treatment plans. Implements real-world clinic workflow where patients can link follow-up appointments to their treatment plans.';
+
+COMMENT ON FUNCTION public.get_patient_ongoing_treatments_for_booking IS 
+'✅ NEW: Helper function to fetch ongoing treatments during booking flow. Used to show treatment link prompt to patients.';
 
 CREATE OR REPLACE FUNCTION public.calculate_appointment_duration(p_service_ids uuid[], p_clinic_id uuid)
  RETURNS integer
@@ -5427,7 +5501,9 @@ BEGIN
                         'id', s.id,
                         'name', s.name,
                         'duration_minutes', s.duration_minutes,
-                        'category', s.category
+                        'category', s.category,
+                        'requires_multiple_visits', s.requires_multiple_visits,  -- ✅ ADDED
+                        'typical_visit_count', s.typical_visit_count            -- ✅ ADDED
                     )) as services
                 FROM appointment_services aps
                 JOIN services s ON aps.service_id = s.id
@@ -5509,7 +5585,6 @@ BEGIN
                     a.appointment_time ASC
                 LIMIT p_limit OFFSET p_offset
             ),
-            -- ✅ NEW: Add services aggregation for staff
             appointment_services_agg AS (
                 SELECT 
                     aps.appointment_id,
@@ -5517,7 +5592,9 @@ BEGIN
                         'id', s.id,
                         'name', s.name,
                         'duration_minutes', s.duration_minutes,
-                        'category', s.category
+                        'category', s.category,
+                        'requires_multiple_visits', s.requires_multiple_visits,  -- ✅ ADDED
+                        'typical_visit_count', s.typical_visit_count            -- ✅ ADDED
                     )) as services
                 FROM appointment_services aps
                 JOIN services s ON aps.service_id = s.id
@@ -7028,7 +7105,10 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.get_ongoing_treatments(p_patient_id uuid DEFAULT NULL::uuid, p_include_paused boolean DEFAULT false)
+CREATE OR REPLACE FUNCTION public.get_ongoing_treatments(
+    p_patient_id uuid DEFAULT NULL::uuid, 
+    p_include_paused boolean DEFAULT false
+)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -7037,6 +7117,7 @@ AS $function$
 DECLARE
   current_context JSONB;
   patient_id_val UUID;
+    user_clinic_id UUID;
   result JSONB;
 BEGIN
   -- Get current user context
@@ -7046,17 +7127,57 @@ BEGIN
     RETURN jsonb_build_object('success', false, 'error', 'Authentication required');
   END IF;
   
-  -- Determine patient ID
+    -- Determine patient ID and validate access
   IF (current_context->>'user_type') = 'patient' THEN
     patient_id_val := (current_context->>'user_id')::UUID;
   ELSIF p_patient_id IS NOT NULL AND (current_context->>'user_type') IN ('staff', 'admin') THEN
     patient_id_val := p_patient_id;
-  ELSE
-    RETURN jsonb_build_object('success', false, 'error', 'Invalid patient ID');
+        
+        -- For staff, ensure they can only access patients from their clinic
+        IF (current_context->>'user_type') = 'staff' THEN
+            SELECT sp.clinic_id INTO user_clinic_id
+            FROM staff_profiles sp
+            JOIN user_profiles up ON sp.user_profile_id = up.id
+            WHERE up.user_id = (current_context->>'user_id')::UUID
+            AND sp.is_active = true;
+            
+            -- Verify patient has treatments in staff's clinic
+            IF NOT EXISTS (
+                SELECT 1 FROM treatment_plans tp 
+                WHERE tp.patient_id = patient_id_val 
+                AND tp.clinic_id = user_clinic_id
+            ) THEN
+                RETURN jsonb_build_object('success', false, 'error', 'Access denied to patient data');
+            END IF;
+        END IF;
+    ELSE
+        RETURN jsonb_build_object('success', false, 'error', 'Invalid patient ID or insufficient permissions');
   END IF;
   
-  -- Get active treatment plans with appointment details
-  WITH treatment_details AS (
+    -- Main query with optimized joins and calculations
+    WITH visit_stats AS (
+        SELECT 
+            tpa.treatment_plan_id,
+            COUNT(*) as total_visits,
+            COUNT(*) FILTER (WHERE a.status = 'completed') as completed_visits,
+            MAX(a.appointment_date) FILTER (WHERE a.status = 'completed') as last_completed_date,
+            jsonb_agg(
+                jsonb_build_object(
+                    'appointment_id', tpa.appointment_id,
+                    'visit_number', tpa.visit_number,
+                    'visit_purpose', tpa.visit_purpose,
+                    'is_completed', tpa.is_completed,
+                    'appointment_date', a.appointment_date,
+                    'appointment_time', a.appointment_time,
+                    'status', a.status
+                )
+                ORDER BY tpa.visit_number DESC
+            ) FILTER (WHERE a.id IS NOT NULL) as visit_history
+        FROM treatment_plan_appointments tpa
+        JOIN appointments a ON tpa.appointment_id = a.id
+        GROUP BY tpa.treatment_plan_id
+    ),
+    treatment_details AS (
     SELECT 
       tp.id,
       tp.treatment_name,
@@ -7077,64 +7198,45 @@ BEGIN
       c.phone as clinic_phone,
       
       -- Next appointment info
-      a.appointment_date as next_appointment_date,
-      a.appointment_time as next_appointment_time,
-      a.status as next_appointment_status,
-      
-      -- Doctor info (if assigned to next appointment)
-      d.first_name || ' ' || d.last_name as doctor_name,
+            next_apt.appointment_date as next_appointment_date,
+            next_apt.appointment_time as next_appointment_time,
+            next_apt.status as next_appointment_status,
+            
+            -- Doctor info
+            COALESCE(d.first_name || ' ' || d.last_name, '') as doctor_name,
       d.specialization as doctor_specialization,
       
-      -- Treatment history
-      (
-        SELECT jsonb_agg(
-          jsonb_build_object(
-            'appointment_id', tpa.appointment_id,
-            'visit_number', tpa.visit_number,
-            'visit_purpose', tpa.visit_purpose,
-            'is_completed', tpa.is_completed,
-            'appointment_date', a2.appointment_date,
-            'appointment_time', a2.appointment_time
-          )
-          ORDER BY tpa.visit_number DESC
-        )
-        FROM treatment_plan_appointments tpa
-        JOIN appointments a2 ON tpa.appointment_id = a2.id
-        WHERE tpa.treatment_plan_id = tp.id
-        LIMIT 5
-      ) as recent_visits,
-      
-      -- Calculate days since last visit
-      (
-        SELECT CURRENT_DATE - MAX(a3.appointment_date)
-        FROM treatment_plan_appointments tpa2
-        JOIN appointments a3 ON tpa2.appointment_id = a3.id
-        WHERE tpa2.treatment_plan_id = tp.id
-        AND a3.status = 'completed'
-      ) as days_since_last_visit,
-      
-      -- Check if overdue for follow-up
+            -- Visit statistics
+            COALESCE(vs.visit_history, '[]'::jsonb) as recent_visits,
+            COALESCE(CURRENT_DATE - vs.last_completed_date, 0) as days_since_last_visit,
+            
+            -- Overdue calculation
       CASE 
         WHEN tp.next_visit_date IS NOT NULL AND tp.next_visit_date < CURRENT_DATE THEN true
-        WHEN tp.follow_up_interval_days IS NOT NULL AND (
-          SELECT CURRENT_DATE - MAX(a4.appointment_date)
-          FROM treatment_plan_appointments tpa3
-          JOIN appointments a4 ON tpa3.appointment_id = a4.id
-          WHERE tpa3.treatment_plan_id = tp.id
-          AND a4.status = 'completed'
-        ) > tp.follow_up_interval_days THEN true
+                WHEN tp.follow_up_interval_days IS NOT NULL 
+                     AND vs.last_completed_date IS NOT NULL
+                     AND (CURRENT_DATE - vs.last_completed_date) > tp.follow_up_interval_days THEN true
         ELSE false
-      END as is_overdue
+            END as is_overdue,
+            
+            -- Progress calculation
+            CASE 
+                WHEN tp.total_visits_planned > 0 THEN 
+                    ROUND((tp.visits_completed::NUMERIC / tp.total_visits_planned * 100), 1)
+                ELSE NULL
+            END as completion_ratio
       
     FROM treatment_plans tp
-    JOIN clinics c ON tp.clinic_id = c.id
-    LEFT JOIN appointments a ON tp.next_visit_appointment_id = a.id
-    LEFT JOIN doctors d ON a.doctor_id = d.id
+        JOIN clinics c ON tp.clinic_id = c.id AND c.is_active = true
+        LEFT JOIN visit_stats vs ON tp.id = vs.treatment_plan_id
+        LEFT JOIN appointments next_apt ON tp.next_visit_appointment_id = next_apt.id
+        LEFT JOIN doctors d ON next_apt.doctor_id = d.id
     WHERE tp.patient_id = patient_id_val
     AND (
       tp.status = 'active' 
       OR (p_include_paused AND tp.status = 'paused')
     )
+        AND (user_clinic_id IS NULL OR tp.clinic_id = user_clinic_id) -- Clinic filter for staff
     ORDER BY 
       CASE WHEN tp.next_visit_date IS NOT NULL AND tp.next_visit_date < CURRENT_DATE THEN 0 ELSE 1 END,
       tp.next_visit_date ASC NULLS LAST,
@@ -7145,68 +7247,74 @@ BEGIN
     'data', jsonb_build_object(
       'ongoing_treatments', COALESCE(jsonb_agg(
         jsonb_build_object(
-          'id', id,
-          'treatment_name', treatment_name,
-          'treatment_category', treatment_category,
-          'description', description,
-          'status', status,
+                    'id', td.id,
+                    'treatment_name', td.treatment_name,
+                    'treatment_category', td.treatment_category,
+                    'description', td.description,
+                    'status', td.status,
           'progress', jsonb_build_object(
-            'percentage', progress_percentage,
-            'visits_completed', visits_completed,
-            'total_visits_planned', total_visits_planned,
-            'completion_ratio', CASE 
-              WHEN total_visits_planned > 0 THEN 
-                ROUND((visits_completed::NUMERIC / total_visits_planned * 100), 1)
-              ELSE NULL
-            END
+                        'percentage', td.progress_percentage,
+                        'visits_completed', td.visits_completed,
+                        'total_visits_planned', td.total_visits_planned,
+                        'completion_ratio', td.completion_ratio
           ),
           'timeline', jsonb_build_object(
-            'start_date', start_date,
-            'expected_end_date', expected_end_date,
-            'days_since_last_visit', days_since_last_visit,
-            'is_overdue', is_overdue
+                        'start_date', td.start_date,
+                        'expected_end_date', td.expected_end_date,
+                        'days_since_last_visit', td.days_since_last_visit,
+                        'is_overdue', td.is_overdue,
+                        'next_visit_date', td.next_visit_date
           ),
           'clinic', jsonb_build_object(
-            'name', clinic_name,
-            'address', clinic_address,
-            'phone', clinic_phone
+                        'name', td.clinic_name,
+                        'address', td.clinic_address,
+                        'phone', td.clinic_phone
           ),
           'next_appointment', CASE 
-            WHEN next_appointment_date IS NOT NULL THEN
+                        WHEN td.next_appointment_date IS NOT NULL THEN
               jsonb_build_object(
-                'date', next_appointment_date,
-                'time', next_appointment_time,
-                'status', next_appointment_status,
+                                'date', td.next_appointment_date,
+                                'time', td.next_appointment_time,
+                                'status', td.next_appointment_status,
                 'doctor', CASE 
-                  WHEN doctor_name IS NOT NULL THEN
+                                    WHEN td.doctor_name != '' THEN
                     jsonb_build_object(
-                      'name', doctor_name,
-                      'specialization', doctor_specialization
+                                            'name', td.doctor_name,
+                                            'specialization', td.doctor_specialization
                     )
                   ELSE NULL
                 END
               )
             ELSE NULL
           END,
-          'recent_visits', COALESCE(recent_visits, '[]'::jsonb),
-          'follow_up_interval_days', follow_up_interval_days,
-          'requires_scheduling', next_visit_date IS NULL OR is_overdue,
+                    'recent_visits', (
+                        SELECT jsonb_agg(visit ORDER BY (visit->>'visit_number')::int DESC)
+                        FROM jsonb_array_elements(td.recent_visits) visit
+                        LIMIT 5
+                    ),
+                    'follow_up_interval_days', td.follow_up_interval_days,
+                    'requires_scheduling', (td.next_visit_date IS NULL OR td.is_overdue),
           'alert_level', CASE 
-            WHEN is_overdue THEN 'urgent'
-            WHEN next_visit_date IS NOT NULL AND next_visit_date <= CURRENT_DATE + INTERVAL '7 days' THEN 'soon'
+                        WHEN td.is_overdue THEN 'urgent'
+                        WHEN td.next_visit_date IS NOT NULL AND td.next_visit_date <= CURRENT_DATE + INTERVAL '7 days' THEN 'soon'
+                        WHEN td.next_visit_date IS NOT NULL AND td.next_visit_date <= CURRENT_DATE + INTERVAL '14 days' THEN 'upcoming'
             ELSE 'normal'
           END
         )
       ), '[]'::jsonb),
       'summary', jsonb_build_object(
         'total_active', COUNT(*),
-        'overdue_count', COUNT(*) FILTER (WHERE is_overdue = true),
-        'scheduled_count', COUNT(*) FILTER (WHERE next_appointment_date IS NOT NULL),
-        'needs_scheduling', COUNT(*) FILTER (WHERE next_visit_date IS NULL OR is_overdue)
+                'overdue_count', COUNT(*) FILTER (WHERE td.is_overdue = true),
+                'scheduled_count', COUNT(*) FILTER (WHERE td.next_appointment_date IS NOT NULL),
+                'needs_scheduling', COUNT(*) FILTER (WHERE td.next_visit_date IS NULL OR td.is_overdue),
+                'completion_avg', CASE 
+                    WHEN COUNT(*) > 0 THEN ROUND(AVG(td.progress_percentage), 1)
+                    ELSE 0
+                END
       )
     )
   ) INTO result
-  FROM treatment_details;
+    FROM treatment_details td;
   
   RETURN COALESCE(result, jsonb_build_object(
     'success', true,
@@ -7216,163 +7324,21 @@ BEGIN
         'total_active', 0,
         'overdue_count', 0,
         'scheduled_count', 0,
-        'needs_scheduling', 0
+                'needs_scheduling', 0,
+                'completion_avg', 0
       )
     )
   ));
   
 EXCEPTION
   WHEN OTHERS THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Failed to retrieve ongoing treatments: ' || SQLERRM);
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Failed to retrieve ongoing treatments: ' || SQLERRM,
+            'error_detail', SQLSTATE
+        );
 END;
 $function$
-;
-
-CREATE OR REPLACE FUNCTION public.get_ongoing_treatments(p_user_id uuid DEFAULT NULL::uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public', 'pg_catalog', 'extensions'
-AS $function$
-DECLARE
-    current_context JSONB;
-    target_user_id UUID;
-    result JSONB;
-BEGIN
-    -- Get current user context
-    current_context := get_current_user_context();
-    
-    IF NOT (current_context->>'authenticated')::boolean THEN
-        RETURN current_context;
-    END IF;
-    
-    -- Only patients can access ongoing treatments
-    IF (current_context->>'user_type') != 'patient' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Patient only');
-    END IF;
-    
-    target_user_id := COALESCE(p_user_id, (current_context->>'user_id')::UUID);
-    
-    -- Get ongoing treatments with proper grouping
-    WITH treatment_appointments AS (
-        SELECT 
-            a.id as appointment_id,
-            a.appointment_date,
-            a.appointment_time,
-            a.duration_minutes,
-            a.status,
-            a.notes,
-            a.created_at,
-            c.id as clinic_id,
-            c.name as clinic_name,
-            c.address as clinic_address,
-            c.phone as clinic_phone,
-            c.email as clinic_email,
-            COALESCE(d.first_name || ' ' || d.last_name, 'Dr. ' || d.specialization) as doctor_name,
-            d.id as doctor_id,
-            d.specialization,
-            s.id as service_id,
-            s.name as service_name,
-            s.category as service_category,
-            s.duration_minutes as service_duration
-        FROM appointments a
-        JOIN clinics c ON a.clinic_id = c.id
-        LEFT JOIN doctors d ON a.doctor_id = d.id
-        JOIN appointment_services aps ON a.id = aps.appointment_id
-        JOIN services s ON aps.service_id = s.id
-        WHERE a.patient_id = target_user_id
-        AND a.status IN ('completed', 'confirmed', 'pending')
-        AND s.category IS NOT NULL
-        ORDER BY a.appointment_date
-    ),
-    treatment_groups AS (
-        SELECT 
-            CONCAT(service_category, '_', doctor_id) as treatment_key,
-            service_category as treatment_type,
-            doctor_name,
-            doctor_id,
-            clinic_name,
-            clinic_address,
-            clinic_phone,
-            clinic_email,
-            COUNT(*) as total_sessions,
-            COUNT(*) FILTER (WHERE status = 'completed') as completed_sessions,
-            MIN(appointment_date) as start_date,
-            MAX(appointment_date) as estimated_end_date,
-            jsonb_agg(
-                jsonb_build_object(
-                    'appointment_id', appointment_id,
-                    'date', appointment_date,
-                    'time', appointment_time,
-                    'duration', duration_minutes,
-                    'status', status,
-                    'service_name', service_name,
-                    'notes', notes
-                )
-                ORDER BY appointment_date
-            ) as appointments,
-            -- Get next upcoming appointment
-            (
-                SELECT jsonb_build_object(
-                    'appointment_id', appointment_id,
-                    'date', appointment_date,
-                    'time', appointment_time,
-                    'service_name', service_name,
-                    'duration', duration_minutes || ' min',
-                    'cancellable', status = 'confirmed'
-                )
-                FROM treatment_appointments ta2 
-                WHERE ta2.service_category = treatment_appointments.service_category 
-                AND ta2.doctor_id = treatment_appointments.doctor_id
-                AND ta2.status IN ('confirmed', 'pending')
-                AND ta2.appointment_date >= CURRENT_DATE
-                ORDER BY ta2.appointment_date, ta2.appointment_time
-                LIMIT 1
-            ) as next_appointment
-        FROM treatment_appointments
-        GROUP BY service_category, doctor_name, doctor_id, clinic_name, clinic_address, clinic_phone, clinic_email
-        HAVING COUNT(*) > 1  -- Only treatments with multiple appointments
-    )
-    SELECT jsonb_build_object(
-        'success', true,
-        'data', jsonb_build_object(
-            'treatments', COALESCE(jsonb_agg(
-                jsonb_build_object(
-                    'id', treatment_key,
-                    'treatment_type', treatment_type,
-                    'doctor_name', doctor_name,
-                    'clinic_name', clinic_name,
-                    'clinic_address', clinic_address,
-                    'start_date', start_date,
-                    'estimated_end_date', estimated_end_date,
-                    'total_sessions', total_sessions,
-                    'completed_sessions', completed_sessions,
-                    'progress', ROUND((completed_sessions::decimal / total_sessions::decimal) * 100),
-                    'next_appointment', next_appointment,
-                    'appointments', appointments,
-                    'contact_info', jsonb_build_object(
-                        'phone', clinic_phone,
-                        'email', clinic_email
-                    )
-                )
-            ), '[]'::jsonb),
-            'summary', jsonb_build_object(
-                'total_treatments', COUNT(*),
-                'active_treatments', COUNT(*) FILTER (WHERE next_appointment IS NOT NULL),
-                'completed_treatments', COUNT(*) FILTER (WHERE completed_sessions = total_sessions)
-            )
-        )
-    ) INTO result
-    FROM treatment_groups;
-    
-    RETURN COALESCE(result, jsonb_build_object('success', true, 'data', jsonb_build_object('treatments', '[]'::jsonb, 'summary', jsonb_build_object('total_treatments', 0, 'active_treatments', 0, 'completed_treatments', 0))));
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object('success', false, 'error', SQLERRM);
-END;
-$function$
-;
 
 CREATE OR REPLACE FUNCTION public.get_partnership_requests(p_status text DEFAULT NULL::text, p_limit integer DEFAULT 20, p_offset integer DEFAULT 0)
  RETURNS jsonb

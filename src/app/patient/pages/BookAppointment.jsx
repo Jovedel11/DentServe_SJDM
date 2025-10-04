@@ -5,7 +5,6 @@ import {
   ChevronRight,
   AlertCircle,
   CheckCircle2,
-  Info,
   AlertTriangle,
   Shield,
   Hospital,
@@ -13,12 +12,8 @@ import {
   CalendarClock,
   CalendarCheck,
   XCircle,
-  Activity,
-  Badge,
-  TrendingUp,
 } from "lucide-react";
 
-// UI Components
 import { Card, CardContent } from "@/core/components/ui/card";
 import { Button } from "@/core/components/ui/button";
 import { Alert } from "@/core/components/ui/alert";
@@ -26,16 +21,14 @@ import { Progress } from "@/core/components/ui/progress";
 import Toast from "@/core/components/ui/toast";
 import ProgressIndicator from "@/core/components/ui/process-indicator";
 
-// Step Components
 import ClinicSelectionStep from "../components/booking/clinic-selection-step";
 import ServicesSelectionStep from "../components/booking/service-selection-step";
 import DoctorSelectionStep from "../components/booking/doctor-selection-step";
 import DateTimeSelectionStep from "../components/booking/date-time-selection-step";
 import ConfirmationStep from "../components/booking/confirmation-step";
+import TreatmentLinkPrompt from "@/app/shared/components/treatment-link-prompt";
 
-// Logic Hook
 import { useBookingFlow } from "../hook/useBookingFlow";
-import { cn } from "@/lib/utils";
 import { FaTeeth } from "react-icons/fa";
 
 const BOOKING_STEPS = [
@@ -48,7 +41,6 @@ const BOOKING_STEPS = [
 
 const BookAppointment = () => {
   const {
-    // Booking flow state
     bookingStep,
     bookingData,
     currentStepIndex,
@@ -57,31 +49,27 @@ const BookAppointment = () => {
     canProceed,
     loading,
     error,
-
-    // Data
     clinics,
     clinicsLoading,
     doctors,
     services,
-
-    // UI state
     toastMessage,
     bookingSuccess,
-
-    // ✅ NEW: Enhanced validation state
     appointmentLimitCheck,
     bookingLimitsInfo,
     sameDayConflictDetails,
     sameDayConflict,
-    crossClinicWarnings,
-    validationLoading,
     patientReliability,
-
-    // Auth
+    ongoingTreatments,
+    showTreatmentLinkPrompt,
+    hasOngoingTreatments,
+    isLinkedToTreatment,
+    selectedTreatment,
     isPatient,
     profile,
-
-    // Handlers
+    selectTreatmentPlan,
+    clearTreatmentPlanLink,
+    dismissTreatmentPrompt,
     closeToast,
     handleClinicSelect,
     handleServiceToggle,
@@ -91,163 +79,47 @@ const BookAppointment = () => {
     nextStep,
     previousStep,
     updateBookingData,
-
-    // Other
     availableTimes,
     checkingAvailability,
     getCancellationInfo,
   } = useBookingFlow();
 
-  // ✅ NEW: Get same-day conflict details
-  const getSameDayConflictWarning = () => {
-    if (!sameDayConflict) return null;
-
-    const conflictDate = bookingData.date
-      ? new Date(bookingData.date).toLocaleDateString("en-US", {
-          weekday: "long",
-          month: "long",
-          day: "numeric",
-        })
-      : "this date";
-
-    return {
-      type: "destructive",
-      title: "Cannot Book: Existing Appointment",
-      message: `You already have an appointment scheduled for ${conflictDate} at ${sameDayConflict.time}. To book another appointment on the same day, you must first cancel your existing appointment.`,
-      action: "go_to_appointments",
-    };
-  };
-
-  // ✅ Simplified: Only show critical blocking issues
+  // ✅ FIXED: Only show critical blockers
   const getCriticalBlocker = () => {
-    // Same-day conflict is the highest priority blocker
+    // Same-day conflict - highest priority
     if (sameDayConflict) {
-      return getSameDayConflictWarning();
-    }
-
-    if (!appointmentLimitCheck) return null;
-
-    // Daily limit exceeded
-    if (
-      !appointmentLimitCheck.allowed &&
-      appointmentLimitCheck.reason === "daily_limit_exceeded"
-    ) {
       return {
         type: "destructive",
-        title: "Daily Appointment Limit Reached",
-        message: appointmentLimitCheck.message,
+        title: "Existing Appointment on This Date",
+        message: `You already have an appointment scheduled for this date. Please cancel it first or choose another date.`,
       };
     }
 
-    // Future appointments limit
-    if (
-      !appointmentLimitCheck.allowed &&
-      appointmentLimitCheck.reason === "future_appointments_limit_exceeded"
-    ) {
-      return {
-        type: "warning",
-        title: "Future Appointments Limit",
-        message: appointmentLimitCheck.message,
-      };
-    }
-
-    // Other blocking reasons
-    if (!appointmentLimitCheck.allowed) {
+    // Appointment limit exceeded
+    if (appointmentLimitCheck && !appointmentLimitCheck.allowed) {
       return {
         type: "destructive",
-        title: "Booking Not Allowed",
+        title: "Booking Limit Reached",
         message: appointmentLimitCheck.message,
       };
     }
 
-    return null;
-  };
-
-  const getBookingStatusInfo = () => {
-    if (!bookingLimitsInfo) return null;
-
-    const warnings = [];
-
-    // Check if approaching total pending limit
-    if (
-      bookingLimitsInfo.totalPending >=
-      bookingLimitsInfo.maxTotalPending - 1
-    ) {
-      warnings.push({
-        type: "warning",
-        title: "Approaching Pending Limit",
-        message: `You have ${bookingLimitsInfo.totalPending} of ${
-          bookingLimitsInfo.maxTotalPending
-        } allowed pending appointments. ${
-          bookingLimitsInfo.totalRemaining > 0
-            ? `You have ${bookingLimitsInfo.totalRemaining} slot(s) remaining.`
-            : "Please wait for confirmations before booking more."
-        }`,
-      });
-    }
-
-    // Check if approaching clinic-specific limit
-    if (
-      bookingLimitsInfo.clinicPending >=
-      bookingLimitsInfo.maxClinicPending - 1
-    ) {
-      warnings.push({
-        type: "warning",
-        title: "Approaching Clinic Limit",
-        message: `You have ${bookingLimitsInfo.clinicPending} of ${bookingLimitsInfo.maxClinicPending} allowed pending appointments at this clinic.`,
-      });
-    }
-
-    return warnings;
-  };
-
-  const getBookingStatus = () => {
-    if (!bookingLimitsInfo) return null;
-
-    return {
-      totalSlots: `${bookingLimitsInfo.totalPending}/${bookingLimitsInfo.maxTotalPending}`,
-      clinicSlots: `${bookingLimitsInfo.clinicPending}/${bookingLimitsInfo.maxClinicPending}`,
-      totalRemaining: bookingLimitsInfo.totalRemaining,
-      clinicRemaining: bookingLimitsInfo.clinicRemaining,
-    };
-  };
-
-  // ✅ Simplified: Only show essential attendance reminder on confirmation step
-  const getAttendanceReminder = () => {
-    if (
-      bookingStep === "confirm" &&
-      patientReliability?.risk_level === "high_risk"
-    ) {
-      return {
-        type: "warning",
-        message:
-          "Please ensure you attend this appointment. Multiple no-shows may restrict future bookings.",
-      };
-    }
     return null;
   };
 
   const currentStep = BOOKING_STEPS[currentStepIndex] || BOOKING_STEPS[0];
   const criticalBlocker = getCriticalBlocker();
-  const attendanceReminder = getAttendanceReminder();
-  const bookingStatus = getBookingStatus();
-  const bookingWarnings = getBookingStatusInfo();
 
   // Access control
   if (!isPatient) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-md mx-auto border-destructive/20">
+        <Card className="max-w-md mx-auto">
           <CardContent className="text-center p-8">
-            <div className="w-16 h-16 mx-auto mb-6 bg-destructive/10 rounded-full flex items-center justify-center">
-              <AlertCircle className="w-8 h-8 text-destructive" />
-            </div>
-            <h1 className="text-2xl font-bold text-foreground mb-4">
-              Access Denied
-            </h1>
+            <AlertCircle className="w-16 h-16 mx-auto mb-4 text-destructive" />
+            <h1 className="text-2xl font-bold mb-4">Access Denied</h1>
             <p className="text-muted-foreground mb-6">
-              Only patients can book appointments. Please log in with a patient
-              account.
+              Only patients can book appointments.
             </p>
             <Button onClick={() => window.history.back()}>Go Back</Button>
           </CardContent>
@@ -260,20 +132,13 @@ const BookAppointment = () => {
   if (bookingSuccess) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-lg mx-auto border-success/20 bg-success/5">
+        <Card className="max-w-lg mx-auto">
           <CardContent className="text-center p-8">
-            <div className="w-20 h-20 mx-auto mb-6 bg-success/10 rounded-full flex items-center justify-center animate-fadeIn">
-              <CheckCircle2 className="w-10 h-10 text-success" />
-            </div>
-            <h1 className="text-2xl font-bold text-foreground mb-4">
-              Appointment Booked Successfully!
-            </h1>
-
+            <CheckCircle2 className="w-20 h-20 mx-auto mb-6 text-success" />
+            <h1 className="text-2xl font-bold mb-4">Appointment Booked!</h1>
             <div className="space-y-4 text-left">
               <div className="bg-card border rounded-lg p-4">
-                <h3 className="font-semibold text-foreground mb-2">
-                  Appointment Details
-                </h3>
+                <h3 className="font-semibold mb-2">Details</h3>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Clinic:</span>
@@ -300,34 +165,23 @@ const BookAppointment = () => {
                 </div>
               </div>
 
-              {/* ✅ Only show if symptoms were provided */}
-              {bookingData.symptoms && (
-                <Alert>
-                  <Info className="h-4 w-4" />
+              {isLinkedToTreatment && selectedTreatment && (
+                <Alert className="bg-purple-50 border-purple-200">
+                  <CheckCircle2 className="h-4 w-4 text-purple-600" />
                   <div className="text-sm">
-                    Your notes have been shared with the clinic staff.
-                  </div>
-                </Alert>
-              )}
-
-              {/* ✅ Only show attendance reminder if high risk */}
-              {patientReliability?.risk_level === "high_risk" && (
-                <Alert variant="warning">
-                  <AlertTriangle className="h-4 w-4" />
-                  <div className="text-sm">
-                    <strong>Attendance Reminder:</strong>
+                    <strong>Linked to Treatment:</strong>{" "}
+                    {selectedTreatment.treatment_name}
                     <br />
-                    Please attend this appointment or cancel with adequate
-                    notice.
+                    <span className="text-xs">
+                      Visit #{selectedTreatment.visits_completed + 1}
+                    </span>
                   </div>
                 </Alert>
               )}
             </div>
-
-            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground mt-6">
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-muted border-t-primary" />
-              <span>Redirecting to your appointments...</span>
-            </div>
+            <p className="text-sm text-muted-foreground mt-4">
+              Redirecting to your appointments...
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -336,7 +190,6 @@ const BookAppointment = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Toast */}
       {toastMessage && (
         <Toast
           message={toastMessage.message}
@@ -346,140 +199,59 @@ const BookAppointment = () => {
       )}
 
       {/* Header */}
-      <div className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+      <div className="border-b bg-card/50 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                <Calendar className="w-6 h-6 text-primary" />
-              </div>
+              <Calendar className="w-10 h-10 text-primary" />
               <div>
-                <h1 className="text-2xl font-bold text-foreground">
-                  Book Your Appointment
-                </h1>
+                <h1 className="text-2xl font-bold">Book Appointment</h1>
                 <p className="text-muted-foreground">
                   Step {currentStepIndex + 1} of {totalSteps}:{" "}
                   {currentStep.label}
                 </p>
               </div>
             </div>
-
-            {/* Quick Progress */}
-            <div className="hidden md:flex items-center gap-4">
-              <div className="text-sm text-muted-foreground">
-                {Math.round(stepProgress)}% Complete
-              </div>
-              <Progress value={stepProgress} className="w-32" />
-            </div>
+            <Progress value={stepProgress} className="w-32" />
           </div>
         </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Enhanced Progress */}
+        {/* Progress */}
         <div className="mb-8">
           <ProgressIndicator
             currentStep={currentStepIndex}
             totalSteps={totalSteps}
             progress={stepProgress}
-            steps={BOOKING_STEPS.map((step) => step.label)}
+            steps={BOOKING_STEPS.map((s) => s.label)}
           />
         </div>
 
-        {/* Alerts */}
+        {/* Alerts - Only Critical */}
         <div className="space-y-4 mb-8">
-          {/* 1. CRITICAL: Same-Day Conflict */}
-          {criticalBlocker?.action === "go_to_appointments" && (
-            <Alert variant="destructive" className="border-2">
+          {criticalBlocker && (
+            <Alert variant={criticalBlocker.type}>
               <XCircle className="h-5 w-5" />
               <div className="flex-1">
-                <strong className="text-lg">{criticalBlocker.title}</strong>
-                <p className="text-sm mt-2">{criticalBlocker.message}</p>
-
-                {/* ✅ Enhanced conflict details */}
-                {sameDayConflictDetails && (
-                  <div className="mt-3 bg-destructive/10 border border-destructive/20 rounded-lg p-3">
-                    <p className="text-sm font-semibold mb-2">
-                      📋 Existing Appointment Details:
-                    </p>
-                    <ul className="text-sm space-y-1">
-                      <li>
-                        • <strong>Clinic:</strong>{" "}
-                        {sameDayConflictDetails.clinicName}
-                      </li>
-                      <li>
-                        • <strong>Doctor:</strong>{" "}
-                        {sameDayConflictDetails.doctorName}
-                      </li>
-                      <li>
-                        • <strong>Time:</strong> {sameDayConflictDetails.time}
-                      </li>
-                      <li>
-                        • <strong>Status:</strong>{" "}
-                        {sameDayConflictDetails.status}
-                      </li>
-                    </ul>
-                    <p className="text-xs mt-2 italic">
-                      {sameDayConflictDetails.status === "confirmed"
-                        ? "⚠️ This appointment is confirmed. If it's part of ongoing treatment, consult your dentist before canceling."
-                        : "✓ This appointment is pending and can be canceled if needed."}
-                    </p>
-                  </div>
-                )}
-
-                <div className="mt-4 flex gap-3">
+                <strong>{criticalBlocker.title}</strong>
+                <p className="text-sm mt-1">{criticalBlocker.message}</p>
+                {sameDayConflict && (
                   <Button
                     variant="outline"
                     size="sm"
+                    className="mt-3"
                     onClick={() =>
                       (window.location.href = "/patient/appointments/upcoming")
                     }
                   >
                     View My Appointments
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      updateBookingData({ date: null, time: null })
-                    }
-                  >
-                    Choose Different Date
-                  </Button>
-                </div>
+                )}
               </div>
             </Alert>
           )}
 
-          {/* Other Critical Blockers */}
-          {criticalBlocker &&
-            criticalBlocker.action !== "go_to_appointments" && (
-              <Alert variant={criticalBlocker.type}>
-                <AlertCircle className="h-4 w-4" />
-                <div>
-                  <strong>{criticalBlocker.title}</strong>
-                  <p className="text-sm mt-1">{criticalBlocker.message}</p>
-                </div>
-              </Alert>
-            )}
-
-          {!criticalBlocker &&
-            bookingWarnings &&
-            bookingWarnings.length > 0 && (
-              <>
-                {bookingWarnings.map((warning, idx) => (
-                  <Alert key={idx} variant={warning.type}>
-                    <TrendingUp className="h-4 w-4" />
-                    <div>
-                      <strong>{warning.title}</strong>
-                      <p className="text-sm mt-1">{warning.message}</p>
-                    </div>
-                  </Alert>
-                ))}
-              </>
-            )}
-
-          {/* General Error */}
           {error && !criticalBlocker && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
@@ -489,29 +261,64 @@ const BookAppointment = () => {
               </div>
             </Alert>
           )}
-          {/* Attendance Reminder (only on confirmation step) */}
-          {attendanceReminder && !criticalBlocker && (
-            <Alert variant="warning">
-              <Shield className="h-4 w-4" />
-              <div>
-                <strong>Attendance Reminder</strong>
-                <p className="text-sm mt-1">{attendanceReminder.message}</p>
-              </div>
-            </Alert>
-          )}
 
-          {/* Validation Loading */}
-          {validationLoading && (
-            <Alert>
-              <div className="animate-spin rounded-full h-4 w-4 border-2 border-info border-t-transparent" />
-              <div>
-                <strong>Checking Availability</strong>
-                <p className="text-sm mt-1">
-                  Validating appointment availability...
-                </p>
-              </div>
-            </Alert>
-          )}
+          {/* High risk warning - only on confirm step */}
+          {bookingStep === "confirm" &&
+            patientReliability?.risk_level === "high_risk" && (
+              <Alert variant="warning">
+                <Shield className="h-4 w-4" />
+                <div>
+                  <strong>Attendance Reminder</strong>
+                  <p className="text-sm mt-1">
+                    Please ensure you attend this appointment. Multiple no-shows
+                    may restrict future bookings.
+                  </p>
+                </div>
+              </Alert>
+            )}
+
+          {/* Treatment Link Prompt - Show on services step ONLY if treatments exist */}
+          {bookingStep === "services" &&
+            showTreatmentLinkPrompt &&
+            hasOngoingTreatments &&
+            ongoingTreatments.length > 0 && (
+              <TreatmentLinkPrompt
+                treatments={ongoingTreatments}
+                selectedTreatmentId={bookingData.treatmentPlanId}
+                onSelectTreatment={selectTreatmentPlan}
+                onDismiss={dismissTreatmentPrompt}
+              />
+            )}
+
+          {/* Treatment Linked Badge - Show after services step */}
+          {isLinkedToTreatment &&
+            selectedTreatment &&
+            bookingStep !== "clinic" && (
+              <Alert className="bg-purple-50 border-purple-200">
+                <CheckCircle2 className="h-4 w-4 text-purple-600" />
+                <div className="flex-1">
+                  <h4 className="font-semibold text-purple-900">
+                    Treatment Plan Linked
+                  </h4>
+                  <p className="text-sm text-purple-800 mt-1">
+                    Linked to:{" "}
+                    <strong>{selectedTreatment.treatment_name}</strong>
+                    <span className="text-xs block mt-1">
+                      Visit #{selectedTreatment.visits_completed + 1} of{" "}
+                      {selectedTreatment.total_visits_planned || "?"}
+                    </span>
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={clearTreatmentPlanLink}
+                    className="mt-2 text-purple-700"
+                  >
+                    Unlink
+                  </Button>
+                </div>
+              </Alert>
+            )}
         </div>
 
         {/* Step Content */}
@@ -561,70 +368,54 @@ const BookAppointment = () => {
                 services={services}
                 profile={profile}
                 appointmentLimitCheck={appointmentLimitCheck}
-                crossClinicWarnings={crossClinicWarnings}
                 patientReliability={patientReliability}
                 cancellationInfo={getCancellationInfo()}
+                selectedTreatment={selectedTreatment}
+                bookingLimitsInfo={bookingLimitsInfo}
               />
             )}
           </CardContent>
         </Card>
 
         {/* Navigation */}
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between">
           <Button
             variant="outline"
             onClick={previousStep}
             disabled={currentStepIndex === 0}
-            className="flex items-center gap-2"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-4 h-4 mr-2" />
             Previous
           </Button>
 
-          <div className="flex items-center gap-4">
-            {/* Step indicator for mobile */}
-            <div className="md:hidden text-sm text-muted-foreground">
-              Step {currentStepIndex + 1} of {totalSteps}
-            </div>
-
-            {bookingStep === "confirm" ? (
-              <Button
-                onClick={handleSubmit}
-                disabled={
-                  !canProceed ||
-                  loading ||
-                  !!sameDayConflict ||
-                  !appointmentLimitCheck?.allowed ||
-                  validationLoading ||
-                  !!criticalBlocker
-                }
-                className="flex items-center gap-2 bg-success hover:bg-success/90"
-                size="lg"
-              >
-                {loading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
-                    Booking...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    Confirm Appointment
-                  </>
-                )}
-              </Button>
-            ) : (
-              <Button
-                onClick={nextStep}
-                disabled={!canProceed || validationLoading || !!sameDayConflict}
-                className="flex items-center gap-2"
-                size="lg"
-              >
-                Next
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-            )}
-          </div>
+          {bookingStep === "confirm" ? (
+            <Button
+              onClick={handleSubmit}
+              disabled={!canProceed || loading || !!criticalBlocker}
+              size="lg"
+            >
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+                  Booking...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                  Confirm Booking
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              onClick={nextStep}
+              disabled={!canProceed || !!criticalBlocker}
+              size="lg"
+            >
+              Next
+              <ChevronRight className="w-4 h-4 ml-2" />
+            </Button>
+          )}
         </div>
       </div>
     </div>

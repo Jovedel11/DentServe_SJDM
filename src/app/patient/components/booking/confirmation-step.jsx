@@ -114,57 +114,57 @@ const ConfirmationStep = ({
 
       {/* Treatment Plan Notice */}
       {requiresTreatmentPlan && (
-        <Alert className="mb-6">
-          <Repeat className="h-4 w-4" />
+        <Alert className="mb-6 border-purple-200 bg-purple-50">
+          <Repeat className="h-4 w-4 text-purple-600" />
           <div>
-            <strong>Treatment Plan Will Be Created</strong>
-            <p className="text-sm mt-1">
-              Your selected service{multiVisitServices.length > 1 ? "s" : ""}{" "}
-              will require a treatment plan. Your dentist will assess and create
-              a personalized plan during your first visit, covering
-              approximately <strong>{estimatedTotalVisits} appointments</strong>{" "}
-              over {estimatedCompletionWeeks} weeks.
+            <strong className="text-purple-900">
+              Multi-Visit Service Selected
+            </strong>
+            <p className="text-sm mt-1 text-purple-800">
+              The service{multiVisitServices.length > 1 ? "s" : ""} you selected
+              ({multiVisitServices.map((s) => s.name).join(", ")}) typically
+              require{multiVisitServices.length > 1 ? "" : "s"} multiple
+              appointments.
             </p>
             <p className="text-xs mt-2 text-muted-foreground">
-              💡 This booking is for your initial consultation. Follow-up
-              appointments will be scheduled as part of your treatment plan.
+              <strong>What happens next:</strong>
+              <br />
+              1. This booking is for your initial consultation
+              <br />
+              2. Your dentist will create a personalized treatment plan
+              <br />
+              3. Follow-up appointments will be scheduled based on your plan
             </p>
           </div>
         </Alert>
       )}
 
-      {bookingLimitsInfo && (
+      {bookingLimitsInfo && bookingLimitsInfo.totalPending > 0 && (
         <Alert className="mb-6">
-          <Activity className="h-4 w-4" />
+          <Info className="h-4 w-4" />
           <div>
-            <strong>Your Booking Summary</strong>
+            <strong>Booking Status</strong>
             <div className="grid grid-cols-2 gap-2 mt-2 text-sm">
               <div>
-                <span className="text-muted-foreground">Total Pending:</span>
+                <span className="text-muted-foreground">Current Pending:</span>
+                <strong className="ml-2">
+                  {bookingLimitsInfo.totalPending}/
+                  {bookingLimitsInfo.maxTotalPending}
+                </strong>
+              </div>
+              <div>
+                <span className="text-muted-foreground">After This:</span>
                 <strong className="ml-2">
                   {bookingLimitsInfo.totalPending + 1}/
                   {bookingLimitsInfo.maxTotalPending}
                 </strong>
               </div>
-              <div>
-                <span className="text-muted-foreground">
-                  After This Booking:
-                </span>
-                <Badge
-                  variant={
-                    bookingLimitsInfo.totalRemaining - 1 === 0
-                      ? "warning"
-                      : "default"
-                  }
-                >
-                  {bookingLimitsInfo.totalRemaining - 1} slot(s) remaining
-                </Badge>
-              </div>
             </div>
-            {bookingLimitsInfo.totalRemaining - 1 === 0 && (
+            {bookingLimitsInfo.totalPending + 1 >=
+              bookingLimitsInfo.maxTotalPending && (
               <p className="text-xs text-warning mt-2">
-                ⚠️ After this booking, you'll reach your pending appointment
-                limit. Wait for confirmations before booking more.
+                ⚠️ You're reaching your pending appointment limit. Wait for
+                confirmations before booking more.
               </p>
             )}
           </div>

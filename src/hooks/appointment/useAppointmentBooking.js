@@ -2,6 +2,14 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 
+/**
+ * ✅ ENHANCED Appointment Booking Hook
+ * Implements real-world treatment plan workflow:
+ * - Detects ongoing treatments during booking
+ * - Shows smart link prompt
+ * - Auto-links to treatment plans
+ * - Provides treatment context
+ */
 export const useAppointmentBooking = () => {
   const { user, profile, isPatient } = useAuth();
   
@@ -16,15 +24,186 @@ export const useAppointmentBooking = () => {
     date: null,
     time: null,
     services: [],
-    symptoms: '', // ✅ Notes/symptoms field
+    symptoms: '',
+    treatmentPlanId: null,  // ✅ NEW: Selected treatment plan to link
   });
 
-  // ✅ NEW: Validation state for real-world rules
+  // ✅ NEW: Ongoing treatments state
+  const [ongoingTreatments, setOngoingTreatments] = useState([]);
+  const [showTreatmentLinkPrompt, setShowTreatmentLinkPrompt] = useState(false);
+  const [checkingTreatments, setCheckingTreatments] = useState(false);
+
+  // Existing state
   const [appointmentLimitCheck, setAppointmentLimitCheck] = useState(null);
   const [sameDayConflict, setSameDayConflict] = useState(null);
 
   const previousBookingDataRef = useRef();
   const isInitializedRef = useRef(false);
+
+  const checkOngoingTreatments = useCallback(async (clinicId = null) => {
+    if (!user || !isPatient || !profile?.user_id) {
+      return { success: false, treatments: [] };
+    }
+
+    try {
+      setCheckingTreatments(true);
+
+      const { data, error } = await supabase.rpc('get_patient_ongoing_treatments_for_booking', {
+        p_patient_id: profile.user_id,
+        p_clinic_id: clinicId  
+      });
+
+      if (error) throw error;
+
+      const treatments = data?.data?.treatments || [];
+
+      if (treatments.length > 0) {
+        setShowTreatmentLinkPrompt(true);
+      }
+
+      setOngoingTreatments(treatments);
+
+      return {
+        success: true,
+        treatments: treatments, 
+        hasOngoing: treatments.length > 0
+      };
+
+    } catch (err) {
+      console.error('Error checking ongoing treatments:', err);
+      return { success: false, treatments: [] };
+    } finally {
+      setCheckingTreatments(false);
+    }
+  }, [user, isPatient, profile?.user_id]);
+
+  // ====================================================================
+  // ✅ NEW: Link/unlink treatment plan
+  // ====================================================================
+  const selectTreatmentPlan = useCallback((treatmentPlanId) => {
+    setBookingData(prev => ({
+      ...prev,
+      treatmentPlanId
+    }));
+    setShowTreatmentLinkPrompt(false);
+  }, []);
+
+  const clearTreatmentPlanLink = useCallback(() => {
+    setBookingData(prev => ({
+      ...prev,
+      treatmentPlanId: null
+    }));
+  }, []);
+
+  // ====================================================================
+  // ✅ ENHANCED: Book appointment with treatment plan support
+  // ====================================================================
+  const bookAppointment = useCallback(async () => {
+    if (!isPatient) {
+      setError('Only patients can book appointments');
+      return { success: false, error: 'Access denied' };
+    }
+
+    const { clinic, doctor, date, time, services, symptoms, treatmentPlanId } = bookingData;
+
+    const requiredFields = [
+      { field: clinic?.id, name: 'clinic' },
+      { field: doctor?.id, name: 'doctor' },
+      { field: date, name: 'date' },
+      { field: time, name: 'time' },
+      { field: services?.length > 0, name: 'services' }
+    ];
+
+    const missingField = requiredFields.find(({ field }) => !field);
+    if (missingField) {
+      setError(`Please select ${missingField.name}`);
+      return { success: false, error: 'Missing required fields' };
+    }
+
+    if (services.length > 3) {
+      setError('Maximum 3 services can be selected');
+      return { success: false, error: 'Too many services' };
+    }
+
+    if (sameDayConflict) {
+      setError('You already have an appointment on this date. Please cancel it first or choose another date.');
+      return { 
+        success: false, 
+        error: 'Same-day appointment exists',
+        conflict: sameDayConflict
+      };
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // ✅ ENHANCED: Include treatment_plan_id parameter
+      const { data, error } = await supabase.rpc('book_appointment', {
+        p_clinic_id: clinic.id,
+        p_doctor_id: doctor.id,
+        p_appointment_date: date,
+        p_appointment_time: time,
+        p_service_ids: services,
+        p_symptoms: symptoms || null,
+        p_treatment_plan_id: treatmentPlanId || null  // ✅ NEW
+      });
+
+      if (error) throw new Error(error.message);
+
+      if (data?.authenticated === false) {
+        setError('Please log in to continue');
+        return { success: false, error: 'Authentication required' };
+      }
+
+      if (!data?.success) {
+        if (data?.reason === 'daily_limit_exceeded' || data?.reason === 'same_day_conflict') {
+          setSameDayConflict(data?.data?.existing_appointment || null);
+          setError('You already have an appointment scheduled for this date. Please cancel it first or choose another date.');
+        } else {
+          setError(data?.error || 'Booking failed');
+        }
+        return { success: false, error: data?.error, reason: data?.reason };
+      }
+
+      const appointmentData = data.data;
+
+      resetBooking();
+      
+      return {
+        success: true,
+        appointment: {
+          id: appointmentData.appointment_id,
+          status: appointmentData.status,
+          
+          // ✅ NEW: Treatment plan link info
+          treatmentPlanLink: appointmentData.treatment_plan_link,
+          
+          // Existing fields
+          patient_info: appointmentData.patient_info,
+          details: appointmentData.appointment_details,
+          clinic: appointmentData.clinic,
+          doctor: appointmentData.doctor,
+          services: appointmentData.services,
+          pricing: appointmentData.pricing_estimate,
+          cancellation_policy: appointmentData.cancellation_policy,
+          reliability: appointmentData.patient_reliability,
+          cross_clinic_context: appointmentData.cross_clinic_context,
+        },
+        message: data.message
+      };
+
+    } catch (err) {
+      const errorMsg = err?.message || 'Failed to book appointment';
+      setError(errorMsg);
+      return { 
+        success: false, 
+        error: errorMsg 
+      };
+    } finally {
+      setLoading(false);
+    }
+  }, [bookingData, isPatient, sameDayConflict]);
 
   // Browser back button handler
   useEffect(() => {
@@ -75,12 +254,15 @@ export const useAppointmentBooking = () => {
       time: null,
       services: [],
       symptoms: '',
+      treatmentPlanId: null,  // ✅ Reset treatment plan link
     });
     setBookingStep('clinic');
     setAvailableTimes([]);
     setError(null);
     setSameDayConflict(null);
     setAppointmentLimitCheck(null);
+    setOngoingTreatments([]);  // ✅ Clear treatments
+    setShowTreatmentLinkPrompt(false);  // ✅ Hide prompt
     
     window.history.replaceState({ step: 'clinic' }, '', window.location.pathname);
   }, []);
@@ -104,11 +286,16 @@ export const useAppointmentBooking = () => {
           return prev;
         }
       }
+
+      // ✅ NEW: Check ongoing treatments when clinic is selected
+      if (updates.clinic && updates.clinic.id !== prev.clinic?.id) {
+        checkOngoingTreatments(updates.clinic.id);
+      }
       
       return newData;
     });
     setError(null);
-  }, []);
+  }, [checkOngoingTreatments]);
 
   const getAvailableDoctors = useCallback(async (clinicId) => {
     if (!clinicId) return { success: false, doctors: [], error: 'Clinic ID required' };
@@ -218,7 +405,6 @@ export const useAppointmentBooking = () => {
     }
   }, []);
 
-  // ✅ FIXED: Properly extract slots from wrapped response
   const checkAllAvailableTimes = useCallback(async (doctorId, date, serviceIds = []) => {
     if (!doctorId || !date) {
       return { success: false, slots: [], error: 'Missing required parameters' };
@@ -266,7 +452,6 @@ export const useAppointmentBooking = () => {
     }
   }, []);
 
-  // ✅ NEW: Check appointment limits with same-day conflict detection
   const checkAppointmentLimits = useCallback(async (clinicId, appointmentDate = null) => {
     if (!clinicId || !isPatient || !profile?.user_id) {
       return { allowed: true, message: 'No restrictions' };
@@ -281,10 +466,8 @@ export const useAppointmentBooking = () => {
 
       if (error) throw error;
 
-      // ✅ Store for display in UI
       setAppointmentLimitCheck(data);
 
-      // ✅ Check for same-day conflict
       if (!data.allowed && data.reason === 'daily_limit_exceeded') {
         setSameDayConflict(data.data?.existing_appointment || null);
       } else {
@@ -356,128 +539,6 @@ export const useAppointmentBooking = () => {
     checkAvailability();
   }, [bookingData.doctor?.id, bookingData.date, bookingData.services, checkAllAvailableTimes]);
 
-  // ✅ ENHANCED: Handle new response structure with patient demographics
-  const bookAppointment = useCallback(async () => {
-    if (!isPatient) {
-      setError('Only patients can book appointments');
-      return { success: false, error: 'Access denied' };
-    }
-
-    const { clinic, doctor, date, time, services, symptoms } = bookingData;
-
-    const requiredFields = [
-      { field: clinic?.id, name: 'clinic' },
-      { field: doctor?.id, name: 'doctor' },
-      { field: date, name: 'date' },
-      { field: time, name: 'time' },
-      { field: services?.length > 0, name: 'services' }
-    ];
-
-    const missingField = requiredFields.find(({ field }) => !field);
-    if (missingField) {
-      setError(`Please select ${missingField.name}`);
-      return { success: false, error: 'Missing required fields' };
-    }
-
-    if (services.length > 3) {
-      setError('Maximum 3 services can be selected');
-      return { success: false, error: 'Too many services' };
-    }
-
-    // ✅ Check for same-day conflict before submitting
-    if (sameDayConflict) {
-      setError('You already have an appointment on this date. Please cancel it first or choose another date.');
-      return { 
-        success: false, 
-        error: 'Same-day appointment exists',
-        conflict: sameDayConflict
-      };
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const { data, error } = await supabase.rpc('book_appointment', {
-        p_clinic_id: clinic.id,
-        p_doctor_id: doctor.id,
-        p_appointment_date: date,
-        p_appointment_time: time,
-        p_service_ids: services,
-        p_symptoms: symptoms || null,
-      });
-
-      if (error) throw new Error(error.message);
-
-      if (data?.authenticated === false) {
-        setError('Please log in to continue');
-        return { success: false, error: 'Authentication required' };
-      }
-
-      if (!data?.success) {
-        // ✅ Handle same-day conflict from server
-        if (data?.reason === 'daily_limit_exceeded' || data?.reason === 'same_day_conflict') {
-          setSameDayConflict(data?.data?.existing_appointment || null);
-          setError('You already have an appointment scheduled for this date. Please cancel it first or choose another date.');
-        } else {
-          setError(data?.error || 'Booking failed');
-        }
-        return { success: false, error: data?.error, reason: data?.reason };
-      }
-
-      // ✅ Enhanced response with patient demographics
-      const appointmentData = data.data;
-
-      resetBooking();
-      
-      return {
-        success: true,
-        appointment: {
-          id: appointmentData.appointment_id,
-          status: appointmentData.status,
-          
-          // ✅ NEW: Patient demographics (visible to staff)
-          patient_info: appointmentData.patient_info,
-          
-          // Appointment details
-          details: appointmentData.appointment_details,
-          
-          // Clinic info
-          clinic: appointmentData.clinic,
-          
-          // Doctor info
-          doctor: appointmentData.doctor,
-          
-          // Services
-          services: appointmentData.services,
-          
-          // Pricing
-          pricing: appointmentData.pricing_estimate,
-          
-          // Policies
-          cancellation_policy: appointmentData.cancellation_policy,
-          
-          // Patient reliability
-          reliability: appointmentData.patient_reliability,
-          
-          // ✅ NEW: Cross-clinic context (role-based)
-          cross_clinic_context: appointmentData.cross_clinic_context,
-        },
-        message: data.message
-      };
-
-    } catch (err) {
-      const errorMsg = err?.message || 'Failed to book appointment';
-      setError(errorMsg);
-      return { 
-        success: false, 
-        error: errorMsg 
-      };
-    } finally {
-      setLoading(false);
-    }
-  }, [bookingData, isPatient, resetBooking, sameDayConflict]);
-
   const validateStep = useCallback((step) => {
     switch (step) {
       case 'clinic':
@@ -537,6 +598,9 @@ export const useAppointmentBooking = () => {
     const steps = ['clinic', 'services', 'doctor', 'datetime', 'confirm'];
     const currentStepIndex = steps.indexOf(bookingStep);
     
+    // ✅ NEW: Get selected treatment info
+    const selectedTreatment = ongoingTreatments.find(t => t.id === bookingData.treatmentPlanId);
+    
     return {
       canProceed: validateStep(bookingStep) && !sameDayConflict,
       isComplete: bookingStep === 'confirm' && validateStep('confirm'),
@@ -546,8 +610,13 @@ export const useAppointmentBooking = () => {
       stepProgress: ((currentStepIndex + 1) / steps.length) * 100,
       totalServices: bookingData.services?.length || 0,
       maxServicesReached: bookingData.services?.length >= 3,
+
+      // ✅ NEW: Treatment plan context
+      hasOngoingTreatments: ongoingTreatments.length > 0,
+      isLinkedToTreatment: Boolean(bookingData.treatmentPlanId),
+      selectedTreatment,
     };
-  }, [bookingStep, bookingData.services, validateStep, sameDayConflict]);
+  }, [bookingStep, bookingData.services, bookingData.treatmentPlanId, validateStep, sameDayConflict, ongoingTreatments]);
 
   return {
     loading,
@@ -556,8 +625,15 @@ export const useAppointmentBooking = () => {
     bookingData,
     checkingAvailability,
     availableTimes,
-    appointmentLimitCheck, // ✅ NEW
-    sameDayConflict, // ✅ NEW
+    appointmentLimitCheck,
+    sameDayConflict,
+    
+    // ✅ NEW: Treatment plan support
+    ongoingTreatments,
+    showTreatmentLinkPrompt,
+    checkingTreatments,
+    
+    // Actions
     updateBookingData,
     resetBooking,
     bookAppointment,
@@ -568,6 +644,13 @@ export const useAppointmentBooking = () => {
     getServices,
     checkAllAvailableTimes,
     checkAppointmentLimits,
+    
+    // ✅ NEW: Treatment plan actions
+    checkOngoingTreatments,
+    selectTreatmentPlan,
+    clearTreatmentPlanLink,
+    dismissTreatmentPrompt: () => setShowTreatmentLinkPrompt(false),
+    
     ...computedValues,
     validateStep,
   };

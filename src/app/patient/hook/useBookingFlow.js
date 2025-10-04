@@ -144,12 +144,12 @@ export const useBookingFlow = () => {
           // Total pending limits
           totalPending: limitData.data.total_pending_appointments || 0,
           maxTotalPending: limitData.data.max_total_pending || 3,
-          totalRemaining: limitData.data.total_remaining_slots || 0,
+          totalRemaining: Math.max(0, (limitData.data.max_total_pending || 3) - (limitData.data.total_pending_appointments || 0)),
           
           // Per-clinic pending limits
           clinicPending: limitData.data.clinic_pending_count || 0,
           maxClinicPending: limitData.data.max_pending_per_clinic || 2,
-          clinicRemaining: limitData.data.clinic_remaining_slots || 0,
+          clinicRemaining: Math.max(0, (limitData.data.max_pending_per_clinic || 2) - (limitData.data.clinic_pending_count || 0)),
           
           // Booking window
           maxAdvanceDays: limitData.data.max_advance_days || 60,
