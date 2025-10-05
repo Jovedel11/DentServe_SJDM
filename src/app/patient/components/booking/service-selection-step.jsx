@@ -1,372 +1,376 @@
 import React, { useMemo } from "react";
+import { FaTeeth } from "react-icons/fa";
 import {
-  FileText,
-  Clock,
-  CreditCard,
   CheckCircle2,
   AlertCircle,
   Info,
-  Calendar,
-  Repeat,
+  Clock,
+  AlertTriangle,
 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/core/components/ui/card";
-import { Badge } from "@/core/components/ui/badge";
+import { Card, CardContent } from "@/core/components/ui/card";
 import { Button } from "@/core/components/ui/button";
-import { Separator } from "@/core/components/ui/separator";
-import { Alert } from "@/core/components/ui/alert";
-import { cn } from "@/lib/utils";
+import { Badge } from "@/core/components/ui/badge";
+import { Alert, AlertDescription } from "@/core/components/ui/alert";
 
+/**
+ * ✅ STEP 2: Service Selection
+ * - Services are OPTIONAL (can skip for consultation-only)
+ * - Shows treatment plan info for multi-visit services
+ * - Maximum 3 services
+ */
 const ServicesSelectionStep = ({
   services,
-  selectedServices = [],
+  selectedServices,
   onServiceToggle,
+  isConsultationOnly = false,
 }) => {
-  const {
-    totalDuration,
-    totalMinCost,
-    totalMaxCost,
-    selectedServiceDetails,
-    requiresTreatmentPlan,
-    multiVisitServices,
-    estimatedTotalVisits,
-  } = useMemo(() => {
-    const selected = services.filter((service) =>
-      selectedServices.includes(service.id)
-    );
+  const selectedCount = selectedServices?.length || 0;
+  const maxServices = 3;
 
-    // ✅ NEW: Check for multi-visit/treatment plan requirements
-    const multiVisit = selected.filter(
-      (s) =>
-        s.requires_multiple_visits ||
-        s.typical_visit_count > 1 ||
-        s.category?.toLowerCase().includes("orthodontics") ||
-        s.category?.toLowerCase().includes("implant") ||
-        s.name?.toLowerCase().includes("root canal")
-    );
+  const serviceAnalysis = useMemo(() => {
+    const selected = services.filter((s) => selectedServices.includes(s.id));
 
-    const totalVisits = multiVisit.reduce(
-      (sum, s) => sum + (s.typical_visit_count || 2),
-      0
+    const requiresConsultation = selected.filter(
+      (s) => s.requires_consultation
+    );
+    const noConsultationNeeded = selected.filter(
+      (s) => !s.requires_consultation
     );
 
     return {
-      totalDuration: selected.reduce(
-        (total, service) => total + (service.duration_minutes || 0),
-        0
-      ),
-      totalMinCost: selected.reduce(
-        (total, service) => total + (parseFloat(service.min_price) || 0),
-        0
-      ),
-      totalMaxCost: selected.reduce(
-        (total, service) => total + (parseFloat(service.max_price) || 0),
-        0
-      ),
-      selectedServiceDetails: selected,
-      requiresTreatmentPlan: multiVisit.length > 0,
-      multiVisitServices: multiVisit,
-      estimatedTotalVisits: totalVisits,
+      selectedCount: selected.length,
+      requiresConsultation,
+      noConsultationNeeded,
+      hasRequiresConsultation: requiresConsultation.length > 0,
+      allNoConsultation:
+        requiresConsultation.length === 0 && selected.length > 0,
     };
   }, [services, selectedServices]);
 
-  const formatDuration = (minutes) => {
-    if (minutes < 60) return `${minutes}min`;
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return mins > 0 ? `${hours}h ${mins}min` : `${hours}h`;
-  };
+  // Calculate totals for selected services
+  const selectedServiceDetails = services.filter((s) =>
+    selectedServices?.includes(s.id)
+  );
 
-  const formatPrice = (min, max) => {
-    if (min === max) return `₱${max.toLocaleString()}`;
-    return `₱${min.toLocaleString()} - ₱${max.toLocaleString()}`;
-  };
+  const totalDuration = selectedServiceDetails.reduce(
+    (sum, s) => sum + (s.duration_minutes || 0),
+    0
+  );
 
-  const maxReached = selectedServices.length >= 3;
-  const hasValidationErrors = totalDuration > 480; // 8 hours max
+  const totalEstimatedCost = selectedServiceDetails.reduce((sum, s) => {
+    const price = s.treatment_price || s.min_price || 0;
+    return sum + price;
+  }, 0);
+
+  const hasTreatmentServices = selectedServiceDetails.some(
+    (s) => s.requires_multiple_visits
+  );
+
+  const servicesRequiringConsultation = useMemo(() => {
+    return services.filter(
+      (s) => selectedServices.includes(s.id) && s.requires_consultation
+    );
+  }, [services, selectedServices]);
+
+  const hasServicesRequiringConsultation =
+    servicesRequiringConsultation.length > 0;
+
+  if (!services || services.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <FaTeeth className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+        <h3 className="text-lg font-semibold mb-2">No Services Available</h3>
+        <p className="text-muted-foreground mb-4">
+          This clinic hasn't added services yet.
+        </p>
+        <Button onClick={() => window.history.back()}>
+          Choose Another Clinic
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-            <FileText className="w-6 h-6 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-3xl font-bold text-foreground">
-              Select Services
-            </h2>
-            <p className="text-muted-foreground mt-1">
-              Choose up to 3 services for your appointment
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <Badge
-            variant={maxReached ? "destructive" : "secondary"}
-            className="text-sm px-3 py-1"
-          >
-            {selectedServices.length}/3 selected
-          </Badge>
-        </div>
+      <div>
+        <h2 className="text-2xl font-bold mb-2">Select Services (Optional)</h2>
+        <p className="text-muted-foreground">
+          Choose up to {maxServices} services, or skip to book consultation
+          only.
+        </p>
       </div>
 
-      {/* ✅ NEW: Treatment Plan Notice */}
-      {requiresTreatmentPlan && (
-        <Alert>
-          <Repeat className="h-4 w-4" />
-          <div>
-            <strong>Multi-Visit Treatment Plan</strong>
-            <p className="text-sm mt-1">
-              The selected service{multiVisitServices.length > 1 ? "s" : ""} (
-              {multiVisitServices.map((s) => s.name).join(", ")}) typically
-              require{multiVisitServices.length === 1 ? "s" : ""} approximately{" "}
-              <strong>{estimatedTotalVisits} visits</strong> to complete. Your
-              dentist will create a treatment plan after your first appointment.
-            </p>
-          </div>
-        </Alert>
-      )}
+      {/* Consultation-Only Info */}
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          <strong>Consultation Only:</strong> You can skip service selection if
+          you want to consult with the doctor first. Treatment services can be
+          added after your consultation.
+        </AlertDescription>
+      </Alert>
 
-      {/* Validation Alerts */}
-      {hasValidationErrors && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <div>
-            <strong>Duration Limit Exceeded</strong>
-            <p className="text-sm mt-1">
-              Total service duration ({formatDuration(totalDuration)}) exceeds
-              the maximum allowed (8 hours). Please remove some services.
-            </p>
-          </div>
-        </Alert>
-      )}
-
-      {maxReached && (
-        <Alert>
-          <Info className="h-4 w-4" />
-          <div>
-            <strong>Maximum Services Selected</strong>
-            <p className="text-sm mt-1">
-              You've selected the maximum number of services. Remove a service
-              to add a different one.
-            </p>
-          </div>
-        </Alert>
-      )}
-
-      {services.length > 0 ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Services Grid */}
-          <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-            {services.map((service) => {
-              const isSelected = selectedServices.includes(service.id);
-              const isDisabled = !isSelected && maxReached;
-
-              // ✅ NEW: Check if service requires multiple visits
-              const isMultiVisit =
-                service.requires_multiple_visits ||
-                service.typical_visit_count > 1 ||
-                service.category?.toLowerCase().includes("orthodontics") ||
-                service.category?.toLowerCase().includes("implant");
-
-              return (
-                <Card
-                  key={service.id}
-                  className={cn(
-                    "cursor-pointer transition-all duration-300 hover:shadow-md group relative",
-                    isSelected &&
-                      "border-primary bg-primary/5 shadow-md ring-2 ring-primary/20",
-                    isDisabled && "opacity-60 cursor-not-allowed",
-                    !isSelected && !isDisabled && "hover:border-primary/50"
-                  )}
-                  onClick={() => !isDisabled && onServiceToggle(service.id)}
+      {/* Selected Services Summary */}
+      {selectedCount > 0 && (
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="p-4">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="font-semibold">
+                  {selectedCount} Service{selectedCount !== 1 ? "s" : ""}{" "}
+                  Selected
+                </span>
+                <Badge
+                  variant={
+                    selectedCount >= maxServices ? "destructive" : "default"
+                  }
                 >
-                  {isSelected && (
-                    <div className="absolute top-3 right-3 w-6 h-6 bg-primary rounded-full flex items-center justify-center">
-                      <CheckCircle2 className="w-4 h-4 text-primary-foreground" />
-                    </div>
+                  {maxServices - selectedCount} slots remaining
+                </Badge>
+              </div>
+
+              {totalDuration > 0 && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Clock className="w-4 h-4" />
+                  <span>Estimated duration: ~{totalDuration} minutes</span>
+                </div>
+              )}
+
+              {totalEstimatedCost > 0 && (
+                <div className="text-sm">
+                  <span className="text-muted-foreground">
+                    Estimated cost:{" "}
+                  </span>
+                  <span className="font-semibold">
+                    ₱{totalEstimatedCost.toLocaleString()}
+                  </span>
+                  <span className="text-xs text-muted-foreground ml-1">
+                    + doctor consultation fee
+                  </span>
+                </div>
+              )}
+
+              {hasTreatmentServices && (
+                <Alert className="mt-2" variant="warning">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    Some selected services require multiple visits. Treatment
+                    plan will be created.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {hasServicesRequiringConsultation && (
+        <Alert className="border-amber-200 bg-amber-50">
+          <Info className="h-4 w-4 text-amber-600" />
+          <div className="text-sm">
+            <strong className="text-amber-900">Consultation Required</strong>
+            <p className="mt-1 text-amber-800">
+              The following service(s) require a prior consultation or will
+              include consultation:
+            </p>
+            <ul className="mt-2 ml-4 list-disc text-amber-800">
+              {servicesRequiringConsultation.map((s) => (
+                <li key={s.id}>
+                  <strong>{s.name}</strong>
+                  {s.consultation_validity_days && (
+                    <span className="text-xs ml-1">
+                      (Valid for {s.consultation_validity_days} days after
+                      consultation)
+                    </span>
                   )}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-amber-700">
+              💡 If you had a recent consultation at this clinic, you may be
+              eligible to skip the consultation fee. This will be checked in the
+              next step.
+            </p>
+          </div>
+        </Alert>
+      )}
 
-                  <CardContent className="p-4">
-                    <div className="space-y-3">
-                      <div className="pr-8">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">
-                            {service.name}
-                          </h3>
-                          {/* ✅ NEW: Multi-visit indicator */}
-                          {isMultiVisit && (
-                            <Badge
-                              variant="secondary"
-                              className="text-xs flex-shrink-0"
-                            >
-                              <Repeat className="w-3 h-3 mr-1" />
-                              {service.typical_visit_count || 2}+ visits
-                            </Badge>
-                          )}
-                        </div>
-                        {service.description && (
-                          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                            {service.description}
-                          </p>
-                        )}
-                      </div>
+      {serviceAnalysis.selectedCount > 0 && (
+        <div className="space-y-3">
+          {serviceAnalysis.hasRequiresConsultation && (
+            <Alert className="border-amber-200 bg-amber-50">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <div className="text-sm">
+                <strong className="text-amber-900">
+                  Consultation Required
+                </strong>
+                <p className="mt-1 text-amber-800">
+                  The following service(s) require consultation:
+                </p>
+                <ul className="mt-2 ml-4 list-disc text-amber-800">
+                  {serviceAnalysis.requiresConsultation.map((s) => (
+                    <li key={s.id}>
+                      <strong>{s.name}</strong>
+                      {s.consultation_validity_days && (
+                        <span className="text-xs ml-1">
+                          (Valid for {s.consultation_validity_days} days)
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 p-2 bg-amber-100 rounded text-xs">
+                  <strong>What this means:</strong>
+                  <ul className="mt-1 ml-4 list-disc">
+                    <li>
+                      You'll be charged a consultation fee in addition to
+                      service costs
+                    </li>
+                    <li>
+                      If you had a recent consultation at this clinic (within{" "}
+                      {serviceAnalysis.requiresConsultation[0]
+                        ?.consultation_validity_days || 30}{" "}
+                      days), you may be able to skip the consultation fee
+                    </li>
+                    <li>
+                      This will be automatically checked when you select a
+                      doctor
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </Alert>
+          )}
 
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <Clock className="w-4 h-4" />
-                          <span>
-                            {formatDuration(service.duration_minutes)}
-                          </span>
-                        </div>
+          {serviceAnalysis.allNoConsultation && (
+            <Alert className="border-green-200 bg-green-50">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <div className="text-sm">
+                <strong className="text-green-900">
+                  No Consultation Required
+                </strong>
+                <p className="mt-1 text-green-800">
+                  The selected service(s) don't require a prior consultation.
+                  You can book directly!
+                </p>
+              </div>
+            </Alert>
+          )}
+        </div>
+      )}
 
-                        <div className="flex items-center gap-1 font-medium text-foreground">
-                          <CreditCard className="w-4 h-4" />
-                          <span>
-                            {formatPrice(service.min_price, service.max_price)}
-                          </span>
-                        </div>
-                      </div>
+      {/* Services Grid */}
+      <div className="grid gap-4">
+        {services.map((service) => {
+          const isSelected = selectedServices?.includes(service.id);
+          const isDisabled = !isSelected && selectedCount >= maxServices;
 
-                      <div className="flex items-center gap-2">
+          return (
+            <Card
+              key={service.id}
+              className={`cursor-pointer transition-all ${
+                isSelected ? "ring-2 ring-primary" : ""
+              } ${
+                isDisabled ? "opacity-50 cursor-not-allowed" : "hover:shadow-md"
+              }`}
+              onClick={() => !isDisabled && onServiceToggle(service.id)}
+            >
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-3">
+                      <FaTeeth className="w-6 h-6 text-primary" />
+                      <div>
+                        <h3 className="text-lg font-semibold">
+                          {service.name}
+                        </h3>
                         {service.category && (
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="secondary" className="mt-1">
                             {service.category}
                           </Badge>
                         )}
-                        {service.priority >= 8 && (
-                          <Badge variant="default" className="text-xs">
-                            Popular
-                          </Badge>
-                        )}
                       </div>
+                      {isSelected && (
+                        <CheckCircle2 className="w-6 h-6 text-primary ml-auto" />
+                      )}
                     </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
 
-          {/* ✅ ENHANCED: Selection Summary with Treatment Plan Info */}
-          {selectedServices.length > 0 && (
-            <div className="lg:col-span-2">
-              <Card className="border-2 border-primary/20 bg-primary/5">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-primary">
-                    <CheckCircle2 className="w-5 h-5" />
-                    Selected Services Summary
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    {selectedServiceDetails.map((service, index) => {
-                      const isMultiVisit = multiVisitServices.find(
-                        (s) => s.id === service.id
-                      );
-                      return (
-                        <div
-                          key={service.id}
-                          className="flex items-center justify-between py-2"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="w-6 h-6 bg-primary/20 rounded-full flex items-center justify-center text-xs font-medium text-primary">
-                              {index + 1}
-                            </span>
-                            <div>
-                              <span className="font-medium text-foreground">
-                                {service.name}
-                              </span>
-                              {/* ✅ NEW: Multi-visit tag */}
-                              {isMultiVisit && (
-                                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                                  <Calendar className="w-3 h-3" />~
-                                  {service.typical_visit_count || 2}{" "}
-                                  appointments needed
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            <span>
-                              {formatDuration(service.duration_minutes)}
-                            </span>
-                            <span className="font-medium text-foreground">
-                              {formatPrice(
-                                service.min_price,
-                                service.max_price
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                    {service.description && (
+                      <p className="text-sm text-muted-foreground mb-3">
+                        {service.description}
+                      </p>
+                    )}
 
-                  <Separator />
-
-                  <div className="flex items-center justify-between pt-2">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-sm">
-                        <Clock className="w-4 h-4 text-muted-foreground" />
-                        <span className="font-medium text-foreground">
-                          First Visit Duration: {formatDuration(totalDuration)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm">
-                        <CreditCard className="w-4 h-4 text-muted-foreground" />
-                        <span className="font-medium text-foreground">
-                          Estimated Total Cost:{" "}
-                          {formatPrice(totalMinCost, totalMaxCost)}
-                        </span>
-                      </div>
-                      {/* ✅ NEW: Show total visits if treatment plan required */}
-                      {requiresTreatmentPlan && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <Calendar className="w-4 h-4 text-muted-foreground" />
-                          <span className="font-medium text-foreground">
-                            Estimated Total Visits: {estimatedTotalVisits}
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      {service.duration_minutes && (
+                        <div>
+                          <span className="text-muted-foreground">
+                            Duration:
                           </span>
+                          <span className="ml-2 font-medium">
+                            {service.duration_minutes} min
+                          </span>
+                        </div>
+                      )}
+
+                      <div>
+                        <span className="text-muted-foreground">Price:</span>
+                        <span className="ml-2 font-semibold text-primary">
+                          ₱
+                          {(
+                            service.treatment_price ||
+                            service.min_price ||
+                            0
+                          ).toLocaleString()}
+                          {service.max_price &&
+                            service.max_price !== service.min_price && (
+                              <span className="text-xs text-muted-foreground">
+                                {" "}
+                                - ₱{service.max_price.toLocaleString()}
+                              </span>
+                            )}
+                        </span>
+                      </div>
+
+                      {service.requires_multiple_visits && (
+                        <div className="col-span-2">
+                          <Badge variant="outline" className="text-xs">
+                            📋 Requires {service.typical_visit_count || 2}+
+                            visits
+                          </Badge>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {totalDuration > 240 && (
-                    <Alert>
-                      <Info className="h-4 w-4" />
-                      <div className="text-sm">
-                        <strong>Extended Appointment</strong>
-                        <p className="mt-1">
-                          Your first appointment is{" "}
-                          {formatDuration(totalDuration)}. Please plan
-                          accordingly.
-                        </p>
-                      </div>
-                    </Alert>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </div>
-      ) : (
-        <Card className="border-dashed border-2 border-muted-foreground/25">
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <FileText className="w-12 h-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">
-              No Services Available
-            </h3>
-            <p className="text-muted-foreground">
-              No services found for the selected clinic.
-            </p>
-          </CardContent>
-        </Card>
+                  <Button
+                    variant={isSelected ? "default" : "outline"}
+                    size="sm"
+                    disabled={isDisabled}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      !isDisabled && onServiceToggle(service.id);
+                    }}
+                  >
+                    {isSelected ? "Selected" : isDisabled ? "Full" : "Select"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Skip Option */}
+      {selectedCount === 0 && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            💡 <strong>Tip:</strong> You can proceed without selecting services
+            for consultation only. The doctor will recommend appropriate
+            treatments during your visit.
+          </AlertDescription>
+        </Alert>
       )}
     </div>
   );

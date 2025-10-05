@@ -5,13 +5,13 @@ import {
   ChevronRight,
   AlertCircle,
   CheckCircle2,
-  AlertTriangle,
+  XCircle,
   Shield,
   Hospital,
   Users,
   CalendarClock,
   CalendarCheck,
-  XCircle,
+  Info,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/core/components/ui/card";
@@ -41,32 +41,56 @@ const BOOKING_STEPS = [
 
 const BookAppointment = () => {
   const {
+    // Step & Progress
     bookingStep,
     bookingData,
     currentStepIndex,
     totalSteps,
     stepProgress,
     canProceed,
+
+    // Loading States
     loading,
     error,
+    checkingAvailability,
+    validationLoading,
+
+    // Data
     clinics,
     clinicsLoading,
     doctors,
     services,
+    availableTimes,
+
+    // UI States
     toastMessage,
     bookingSuccess,
+
+    // Validation States
     appointmentLimitCheck,
     bookingLimitsInfo,
-    sameDayConflictDetails,
     sameDayConflict,
+    sameDayConflictDetails,
     patientReliability,
+
+    // Treatment Plan States
     ongoingTreatments,
     showTreatmentLinkPrompt,
     hasOngoingTreatments,
     isLinkedToTreatment,
     selectedTreatment,
+    isConsultationOnly,
+    bookingType,
+
+    consultationCheckResult,
+    skipConsultation,
+    setSkipConsultation,
+
+    // Auth
     isPatient,
     profile,
+
+    // Actions
     selectTreatmentPlan,
     clearTreatmentPlanLink,
     dismissTreatmentPrompt,
@@ -79,24 +103,33 @@ const BookAppointment = () => {
     nextStep,
     previousStep,
     updateBookingData,
-    availableTimes,
-    checkingAvailability,
     getCancellationInfo,
+    handleClearDate,
   } = useBookingFlow();
 
-  // ✅ FIXED: Only show critical blockers
+  // ✅ Get current critical blocker (only shows blockers that prevent booking)
   const getCriticalBlocker = () => {
-    // Same-day conflict - highest priority
-    if (sameDayConflict) {
+    // Same-day conflict - blocks datetime step onwards
+    if (
+      bookingStep !== "clinic" &&
+      bookingStep !== "services" &&
+      sameDayConflict
+    ) {
       return {
         type: "destructive",
-        title: "Existing Appointment on This Date",
-        message: `You already have an appointment scheduled for this date. Please cancel it first or choose another date.`,
+        title: "Existing Appointment on Selected Date",
+        message: sameDayConflictDetails
+          ? `You have a ${sameDayConflictDetails.status} appointment at ${sameDayConflictDetails.clinicName} on this date.`
+          : "You already have an appointment scheduled for this date.",
       };
     }
 
-    // Appointment limit exceeded
-    if (appointmentLimitCheck && !appointmentLimitCheck.allowed) {
+    // Appointment limit exceeded - blocks confirmation
+    if (
+      bookingStep === "confirm" &&
+      appointmentLimitCheck &&
+      !appointmentLimitCheck.allowed
+    ) {
       return {
         type: "destructive",
         title: "Booking Limit Reached",
@@ -110,7 +143,7 @@ const BookAppointment = () => {
   const currentStep = BOOKING_STEPS[currentStepIndex] || BOOKING_STEPS[0];
   const criticalBlocker = getCriticalBlocker();
 
-  // Access control
+  // ✅ Access control
   if (!isPatient) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -128,18 +161,29 @@ const BookAppointment = () => {
     );
   }
 
-  // Success state
+  // ✅ Success state
   if (bookingSuccess) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="max-w-lg mx-auto">
           <CardContent className="text-center p-8">
             <CheckCircle2 className="w-20 h-20 mx-auto mb-6 text-success" />
-            <h1 className="text-2xl font-bold mb-4">Appointment Booked!</h1>
+            <h1 className="text-2xl font-bold mb-4">
+              {isConsultationOnly
+                ? "Consultation Booked!"
+                : "Appointment Booked!"}
+            </h1>
+
             <div className="space-y-4 text-left">
               <div className="bg-card border rounded-lg p-4">
                 <h3 className="font-semibold mb-2">Details</h3>
                 <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Type:</span>
+                    <span className="font-medium capitalize">
+                      {bookingType?.replace(/_/g, " ")}
+                    </span>
+                  </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Clinic:</span>
                     <span className="font-medium">
@@ -178,7 +222,18 @@ const BookAppointment = () => {
                   </div>
                 </Alert>
               )}
+
+              {isConsultationOnly && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <div className="text-sm">
+                    <strong>Consultation Only:</strong> Your doctor will assess
+                    your needs and recommend treatments during your visit.
+                  </div>
+                </Alert>
+              )}
             </div>
+
             <p className="text-sm text-muted-foreground mt-4">
               Redirecting to your appointments...
             </p>
@@ -218,7 +273,7 @@ const BookAppointment = () => {
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Progress */}
+        {/* Progress Indicator */}
         <div className="mb-8">
           <ProgressIndicator
             currentStep={currentStepIndex}
@@ -228,8 +283,9 @@ const BookAppointment = () => {
           />
         </div>
 
-        {/* Alerts - Only Critical */}
+        {/* Alerts - Context-Aware Warnings */}
         <div className="space-y-4 mb-8">
+          {/* CRITICAL BLOCKER - Always shown if exists */}
           {criticalBlocker && (
             <Alert variant={criticalBlocker.type}>
               <XCircle className="h-5 w-5" />
@@ -252,6 +308,7 @@ const BookAppointment = () => {
             </Alert>
           )}
 
+          {/* General Errors */}
           {error && !criticalBlocker && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
@@ -262,7 +319,7 @@ const BookAppointment = () => {
             </Alert>
           )}
 
-          {/* High risk warning - only on confirm step */}
+          {/* High Risk Warning - Only on confirm step */}
           {bookingStep === "confirm" &&
             patientReliability?.risk_level === "high_risk" && (
               <Alert variant="warning">
@@ -277,7 +334,7 @@ const BookAppointment = () => {
               </Alert>
             )}
 
-          {/* Treatment Link Prompt - Show on services step ONLY if treatments exist */}
+          {/* Treatment Link Prompt - Only on services step if treatments exist */}
           {bookingStep === "services" &&
             showTreatmentLinkPrompt &&
             hasOngoingTreatments &&
@@ -290,7 +347,7 @@ const BookAppointment = () => {
               />
             )}
 
-          {/* Treatment Linked Badge - Show after services step */}
+          {/* Treatment Linked Badge - After services step */}
           {isLinkedToTreatment &&
             selectedTreatment &&
             bookingStep !== "clinic" && (
@@ -319,6 +376,23 @@ const BookAppointment = () => {
                 </div>
               </Alert>
             )}
+
+          {/* Consultation-Only Badge - Doctor step onwards */}
+          {isConsultationOnly &&
+            (bookingStep === "doctor" ||
+              bookingStep === "datetime" ||
+              bookingStep === "confirm") && (
+              <Alert>
+                <Info className="h-4 w-4" />
+                <div>
+                  <strong>Consultation Only Booking</strong>
+                  <p className="text-sm mt-1">
+                    You're booking a consultation without services. The doctor
+                    will assess your needs and recommend treatments.
+                  </p>
+                </div>
+              </Alert>
+            )}
         </div>
 
         {/* Step Content */}
@@ -338,6 +412,7 @@ const BookAppointment = () => {
                 services={services}
                 selectedServices={bookingData.services}
                 onServiceToggle={handleServiceToggle}
+                isConsultationOnly={isConsultationOnly}
               />
             )}
 
@@ -346,6 +421,11 @@ const BookAppointment = () => {
                 doctors={doctors}
                 selectedDoctor={bookingData.doctor}
                 onDoctorSelect={handleDoctorSelect}
+                isConsultationOnly={isConsultationOnly}
+                selectedServices={bookingData.services}
+                consultationCheckResult={consultationCheckResult}
+                skipConsultation={skipConsultation}
+                setSkipConsultation={setSkipConsultation}
               />
             )}
 
@@ -356,6 +436,7 @@ const BookAppointment = () => {
                 checkingAvailability={checkingAvailability}
                 onUpdateBookingData={updateBookingData}
                 onDateSelect={handleDateSelect}
+                onClearDate={handleClearDate} // ✅ ADD THIS
                 sameDayConflict={sameDayConflict}
                 sameDayConflictDetails={sameDayConflictDetails}
                 bookingLimitsInfo={bookingLimitsInfo}
@@ -370,8 +451,10 @@ const BookAppointment = () => {
                 appointmentLimitCheck={appointmentLimitCheck}
                 patientReliability={patientReliability}
                 cancellationInfo={getCancellationInfo()}
-                selectedTreatment={selectedTreatment}
                 bookingLimitsInfo={bookingLimitsInfo}
+                selectedTreatment={selectedTreatment}
+                consultationCheckResult={consultationCheckResult}
+                skipConsultation={skipConsultation}
               />
             )}
           </CardContent>
@@ -382,7 +465,7 @@ const BookAppointment = () => {
           <Button
             variant="outline"
             onClick={previousStep}
-            disabled={currentStepIndex === 0}
+            disabled={currentStepIndex === 0 || loading}
           >
             <ChevronLeft className="w-4 h-4 mr-2" />
             Previous
@@ -409,11 +492,20 @@ const BookAppointment = () => {
           ) : (
             <Button
               onClick={nextStep}
-              disabled={!canProceed || !!criticalBlocker}
+              disabled={!canProceed || !!criticalBlocker || validationLoading}
               size="lg"
             >
-              Next
-              <ChevronRight className="w-4 h-4 ml-2" />
+              {validationLoading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent mr-2" />
+                  Validating...
+                </>
+              ) : (
+                <>
+                  Next
+                  <ChevronRight className="w-4 h-4 ml-2" />
+                </>
+              )}
             </Button>
           )}
         </div>

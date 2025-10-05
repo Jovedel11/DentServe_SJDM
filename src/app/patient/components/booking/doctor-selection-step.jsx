@@ -1,188 +1,293 @@
 import React from "react";
 import {
   Stethoscope,
-  User,
   Calendar,
   Star,
   CreditCard,
   Award,
-  Languages,
   GraduationCap,
   AlertCircle,
+  CheckCircle2,
+  Info,
 } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/core/components/ui/card";
+import { Card, CardContent } from "@/core/components/ui/card";
 import { Badge } from "@/core/components/ui/badge";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/core/components/ui/avatar";
-import { Separator } from "@/core/components/ui/separator";
-import { cn } from "@/lib/utils";
+import { Alert } from "@/core/components/ui/alert";
+import { Button } from "@/core/components/ui/button";
 
-const DoctorSelectionStep = ({ doctors, selectedDoctor, onDoctorSelect }) => {
+const DoctorSelectionStep = ({
+  doctors,
+  selectedDoctor,
+  onDoctorSelect,
+  isConsultationOnly = false,
+  selectedServices = [],
+  consultationCheckResult,
+  skipConsultation,
+  setSkipConsultation,
+}) => {
   const formatConsultationFee = (fee) => {
     if (!fee) return "Consultation fee varies";
-    return `₱${parseFloat(fee).toLocaleString()} consultation fee`;
+    return `₱${parseFloat(fee).toLocaleString()}`;
   };
 
   const formatExperience = (years) => {
-    if (!years) return "Experience varies";
-    return `${years} ${years === 1 ? "year" : "years"} experience`;
+    if (!years || years === 0) return "New practitioner";
+    if (years === 1) return "1 year of experience";
+    return `${years} years of experience`;
   };
 
-  if (!doctors?.length) {
+  if (!doctors || doctors.length === 0) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-            <Stethoscope className="w-6 h-6 text-primary" />
-          </div>
-          <div>
-            <h2 className="text-3xl font-bold text-foreground">
-              Choose Your Doctor
-            </h2>
-            <p className="text-muted-foreground mt-1">
-              Select from our qualified dental professionals
-            </p>
-          </div>
+        <div>
+          <h2 className="text-2xl font-bold mb-2">Choose Your Doctor</h2>
+          <p className="text-muted-foreground">
+            Select from our qualified dental professionals
+          </p>
         </div>
 
-        <Card className="border-dashed border-2 border-muted-foreground/25">
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">
-              No Doctors Available
-            </h3>
-            <p className="text-muted-foreground">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <div>
+            <strong>No Doctors Available</strong>
+            <p className="text-sm mt-1">
               No doctors are currently available at the selected clinic.
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </Alert>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3 mb-8">
-        <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-          <Stethoscope className="w-6 h-6 text-primary" />
-        </div>
-        <div>
-          <h2 className="text-3xl font-bold text-foreground">
-            Choose Your Doctor
-          </h2>
-          <p className="text-muted-foreground mt-1">
-            Select from our qualified dental professionals
-          </p>
-        </div>
+      <div>
+        <h2 className="text-2xl font-bold mb-2">Choose Your Doctor</h2>
+        <p className="text-muted-foreground">
+          Select from our qualified dental professionals
+        </p>
       </div>
 
+      {/* Consultation-Only Notice */}
+      {isConsultationOnly && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <div className="text-sm">
+            <strong>Consultation Only Booking</strong>
+            <p className="mt-1">
+              You're booking a consultation-only appointment. The doctor will
+              assess your needs and recommend appropriate treatments during your
+              visit.
+            </p>
+          </div>
+        </Alert>
+      )}
+
+      {/* ✅ Consultation Skip Option */}
+      {!isConsultationOnly && consultationCheckResult && (
+        <>
+          {consultationCheckResult.canSkipConsultation ? (
+            <Alert className="border-green-200 bg-green-50">
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+              <div className="flex-1">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <strong className="text-green-900">
+                      Consultation Fee Can Be Waived
+                    </strong>
+                    <p className="text-sm mt-1 text-green-800">
+                      You had a recent consultation at this clinic. You can skip
+                      the consultation fee for this booking.
+                    </p>
+                    {consultationCheckResult.checks?.map(
+                      (check, idx) =>
+                        check.last_consultation_date && (
+                          <p
+                            key={idx}
+                            className="text-xs mt-2 text-muted-foreground"
+                          >
+                            Last consultation:{" "}
+                            {new Date(
+                              check.last_consultation_date
+                            ).toLocaleDateString()}
+                            {check.days_valid_remaining &&
+                              ` (Valid for ${check.days_valid_remaining} more days)`}
+                          </p>
+                        )
+                    )}
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={skipConsultation}
+                      onChange={(e) => setSkipConsultation(e.target.checked)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm font-medium whitespace-nowrap">
+                      Skip consultation fee
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </Alert>
+          ) : (
+            <Alert className="border-amber-200 bg-amber-50">
+              <Info className="h-4 w-4 text-amber-600" />
+              <div className="text-sm">
+                <strong className="text-amber-900">
+                  Consultation Fee Required
+                </strong>
+                <p className="mt-1 text-amber-800">
+                  The selected service(s) require consultation. The doctor's
+                  consultation fee will be charged.
+                </p>
+                {consultationCheckResult.checks?.some((c) => !c.allowed) && (
+                  <div className="mt-2 p-2 bg-amber-100 rounded text-xs">
+                    <strong>Why?</strong>
+                    <ul className="mt-1 ml-4 list-disc">
+                      {consultationCheckResult.checks.map((check, idx) => {
+                        if (!check.allowed) {
+                          return (
+                            <li key={idx}>
+                              {check.reason ===
+                              "Consultation required before booking this service"
+                                ? "You haven't had a consultation at this clinic yet"
+                                : check.reason ===
+                                  "Previous consultation expired"
+                                ? `Your last consultation expired (was ${
+                                    check.message?.match(
+                                      /(\d+) days ago/
+                                    )?.[1] || "more than 30"
+                                  } days ago)`
+                                : check.message || check.reason}
+                            </li>
+                          );
+                        }
+                        return null;
+                      })}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </Alert>
+          )}
+        </>
+      )}
+
+      {/* Doctors Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {doctors.map((doctor) => {
           const isSelected = selectedDoctor?.id === doctor.id;
           const fullName =
             `Dr. ${doctor.first_name} ${doctor.last_name}`.trim();
-          const languages = doctor.languages_spoken || [];
           const certifications = doctor.certifications || {};
           const awards = doctor.awards || [];
 
           return (
             <Card
               key={doctor.id}
-              className={cn(
-                "cursor-pointer transition-all duration-300 hover:shadow-lg group relative",
-                isSelected &&
-                  "border-primary bg-primary/5 shadow-md ring-2 ring-primary/20",
-                !isSelected && "hover:border-primary/50"
-              )}
+              className={`cursor-pointer transition-all hover:shadow-lg ${
+                isSelected ? "ring-2 ring-primary bg-primary/5" : ""
+              }`}
               onClick={() => onDoctorSelect(doctor)}
             >
-              {isSelected && (
-                <div className="absolute top-4 right-4 w-6 h-6 bg-primary rounded-full flex items-center justify-center">
-                  <Star className="w-4 h-4 text-primary-foreground fill-current" />
-                </div>
-              )}
-
               <CardContent className="p-6">
                 <div className="space-y-4">
-                  {/* Doctor Header */}
+                  {/* Doctor Header with Avatar */}
                   <div className="flex items-start gap-4">
-                    <Avatar className="w-20 h-20 border-2 border-muted">
+                    <Avatar className="w-20 h-20 border-2">
                       <AvatarImage src={doctor.image_url} alt={fullName} />
                       <AvatarFallback className="bg-primary/10 text-primary font-semibold text-lg">
-                        {doctor.display_name}
+                        {doctor.first_name?.[0]}
+                        {doctor.last_name?.[0]}
                       </AvatarFallback>
                     </Avatar>
 
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors mb-1">
-                        {doctor.display_name}
-                      </h3>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xl font-bold text-foreground">
+                          {doctor.display_name}
+                        </h3>
+                        {isSelected && (
+                          <CheckCircle2 className="w-6 h-6 text-primary" />
+                        )}
+                      </div>
 
-                      <p className="text-primary font-semibold mb-2">
+                      <p className="text-primary font-semibold mt-1">
                         {doctor.specialization}
                       </p>
 
                       {doctor.rating > 0 && (
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center gap-2 mt-2">
                           <div className="flex items-center gap-1">
-                            <Star className="w-4 h-4 text-yellow-500 fill-current" />
-                            <span className="text-sm font-medium text-foreground">
+                            <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                            <span className="text-sm font-medium">
                               {doctor.rating.toFixed(1)}
                             </span>
-                            <span className="text-sm text-muted-foreground">
-                              ({doctor.total_reviews} reviews)
-                            </span>
+                            {doctor.total_reviews && (
+                              <span className="text-sm text-muted-foreground">
+                                ({doctor.total_reviews} reviews)
+                              </span>
+                            )}
                           </div>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Doctor Details */}
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-1 gap-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">
-                          {formatExperience(doctor.experience_years)}
-                        </span>
-                      </div>
-
-                      {doctor.consultation_fee && (
-                        <div className="flex items-center gap-2">
-                          <CreditCard className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-muted-foreground">
+                  {/* ✅ FIXED: Consultation Fee Display */}
+                  <div className="p-3 bg-muted/50 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">
+                        Consultation Fee:
+                      </span>
+                      <div className="text-right">
+                        {skipConsultation &&
+                        consultationCheckResult?.canSkipConsultation ? (
+                          <>
+                            <span className="line-through text-muted-foreground text-sm mr-2">
+                              {formatConsultationFee(doctor.consultation_fee)}
+                            </span>
+                            <span className="font-bold text-green-600">
+                              FREE
+                            </span>
+                          </>
+                        ) : (
+                          <span className="font-bold text-primary text-lg">
                             {formatConsultationFee(doctor.consultation_fee)}
                           </span>
-                        </div>
+                        )}
+                      </div>
+                    </div>
+                    {skipConsultation &&
+                      consultationCheckResult?.canSkipConsultation && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Service-only booking (consultation waived)
+                        </p>
                       )}
+                  </div>
 
-                      {languages.length > 0 && (
-                        <div className="flex items-center gap-2">
-                          <Languages className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-muted-foreground">
-                            Speaks: {languages.join(", ")}
-                          </span>
-                        </div>
-                      )}
+                  {/* Doctor Details */}
+                  <div className="space-y-3">
+                    {/* Experience */}
+                    <div className="flex items-center gap-2 text-sm">
+                      <Calendar className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">
+                        {formatExperience(doctor.experience_years)}
+                      </span>
                     </div>
 
-                    {/* Education & Bio */}
+                    {/* Education */}
                     {doctor.education && (
-                      <div className="space-y-2">
+                      <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <GraduationCap className="w-4 h-4 text-muted-foreground" />
-                          <span className="text-sm font-medium text-foreground">
-                            Education
-                          </span>
+                          <span className="text-sm font-medium">Education</span>
                         </div>
                         <p className="text-sm text-muted-foreground pl-6">
                           {doctor.education}
@@ -190,69 +295,87 @@ const DoctorSelectionStep = ({ doctors, selectedDoctor, onDoctorSelect }) => {
                       </div>
                     )}
 
+                    {/* Bio */}
                     {doctor.bio && (
-                      <div className="space-y-2">
-                        <p className="text-sm text-muted-foreground line-clamp-3">
-                          {doctor.bio}
-                        </p>
-                      </div>
+                      <p className="text-sm text-muted-foreground line-clamp-2">
+                        {doctor.bio}
+                      </p>
                     )}
 
                     {/* Certifications & Awards */}
-                    {((certifications &&
-                      Object.keys(certifications).length > 0) ||
-                      (awards && awards.length > 0)) && (
-                      <>
-                        <Separator />
-                        <div className="space-y-2">
-                          {certifications &&
-                            Object.keys(certifications).length > 0 && (
-                              <div className="flex flex-wrap gap-1">
-                                {Object.entries(certifications)
-                                  .slice(0, 3)
-                                  .map(([cert, details]) => (
-                                    <Badge
-                                      key={cert}
-                                      variant="secondary"
-                                      className="text-xs"
-                                    >
-                                      {details.name} ({details.year})
-                                    </Badge>
-                                  ))}
-                              </div>
-                            )}
+                    {(Object.keys(certifications).length > 0 ||
+                      awards.length > 0) && (
+                      <div className="pt-3 border-t space-y-2">
+                        {Object.keys(certifications).length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {Object.entries(certifications)
+                              .slice(0, 2)
+                              .map(([cert, details]) => (
+                                <Badge
+                                  key={cert}
+                                  variant="secondary"
+                                  className="text-xs"
+                                >
+                                  {details.name || cert}
+                                </Badge>
+                              ))}
+                          </div>
+                        )}
 
-                          {awards && awards.length > 0 && (
-                            <div className="flex items-center gap-2">
-                              <Award className="w-4 h-4 text-yellow-500" />
-                              <span className="text-sm text-muted-foreground">
-                                {awards.length} professional award
-                                {awards.length !== 1 ? "s" : ""}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </>
+                        {awards.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <Award className="w-4 h-4 text-yellow-500" />
+                            <span className="text-sm text-muted-foreground">
+                              {awards.length} professional award
+                              {awards.length !== 1 ? "s" : ""}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
 
-                  {/* Availability Status */}
-                  <div className="pt-2">
+                  {/* Availability */}
+                  <div className="pt-3 border-t">
                     <Badge
                       variant={doctor.is_available ? "default" : "secondary"}
-                      className="w-fit"
                     >
                       {doctor.is_available
                         ? "Available"
-                        : "Limited Availability"}
+                        : "Currently Unavailable"}
                     </Badge>
                   </div>
+
+                  {/* Select Button */}
+                  <Button
+                    variant={isSelected ? "default" : "outline"}
+                    className="w-full"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDoctorSelect(doctor);
+                    }}
+                  >
+                    {isSelected ? "Selected" : "Select Doctor"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
           );
         })}
       </div>
+
+      {/* Services Info (if any selected) */}
+      {!isConsultationOnly && selectedServices.length > 0 && (
+        <Alert>
+          <Info className="h-4 w-4" />
+          <div className="text-sm">
+            <strong>Note:</strong>{" "}
+            {skipConsultation && consultationCheckResult?.canSkipConsultation
+              ? "You're booking service-only (consultation fee waived based on your recent visit)."
+              : "The doctor's consultation fee will be charged in addition to the service fees during your appointment."}
+          </div>
+        </Alert>
+      )}
     </div>
   );
 };

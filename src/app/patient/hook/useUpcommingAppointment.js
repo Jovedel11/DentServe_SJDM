@@ -64,25 +64,30 @@ export const useAppointmentManagement = () => {
   // Fetch ongoing treatments
   const fetchOngoingTreatments = useCallback(async () => {
     if (!isPatient) return;
-
+  
     try {
       setTreatmentsLoading(true);
       setTreatmentsError(null);
-
-      const { data, error } = await supabase.rpc("get_ongoing_treatments");
-
+  
+      const { data, error } = await supabase.rpc("get_ongoing_treatments", {
+        p_patient_id: profile?.user_id,  // ✅ Pass patient_id
+        p_include_paused: false  // ✅ Only active treatments
+      });
+  
       if (error) throw new Error(error.message);
       if (data?.authenticated === false) throw new Error("Authentication required");
       if (!data?.success) throw new Error(data?.error || "Failed to fetch treatments");
-
-      setOngoingTreatments(data.data?.treatments || []);
+  
+      // ✅ CRITICAL FIX: Correct key is 'ongoing_treatments' not 'treatments'
+      const treatments = data.data?.ongoing_treatments || [];
+      setOngoingTreatments(treatments);
     } catch (err) {
       console.error("Error fetching ongoing treatments:", err);
       setTreatmentsError(err.message);
     } finally {
       setTreatmentsLoading(false);
     }
-  }, [isPatient]);
+  }, [isPatient, profile?.user_id]);
 
   // Computed values
   const upcomingAppointments = useMemo(() => {
@@ -95,20 +100,22 @@ export const useAppointmentManagement = () => {
 
   const filteredAppointments = useMemo(() => {
     let filtered = upcomingAppointments;
-
+  
     if (searchTerm.trim()) {
       const query = searchTerm.toLowerCase();
       filtered = filtered.filter(
         (apt) =>
-          apt.services?.some((service) =>
+          // ✅ FIXED: Handle appointments without services (consultation-only)
+          (apt.services && apt.services.length > 0 && apt.services.some((service) =>
             service.name?.toLowerCase().includes(query)
-          ) ||
+          )) ||
           apt.doctor?.name?.toLowerCase().includes(query) ||
           apt.clinic?.name?.toLowerCase().includes(query) ||
-          apt.symptoms?.toLowerCase().includes(query)
+          apt.symptoms?.toLowerCase().includes(query) ||
+          apt.booking_type?.toLowerCase().includes(query)  // ✅ NEW
       );
     }
-
+  
     return filtered;
   }, [upcomingAppointments, searchTerm]);
 

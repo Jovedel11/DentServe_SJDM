@@ -24,13 +24,16 @@ const ConfirmationStep = ({
   bookingData,
   services,
   profile,
-  appointmentLimitInfo,
-  crossClinicWarnings,
+  appointmentLimitCheck,
   patientReliability,
   cancellationInfo,
   bookingLimitsInfo,
+  selectedTreatment,
+  crossClinicWarnings,
+  skipConsultation,
+  consultationCheckResult,
+  isConsultationOnly,
 }) => {
-  // ✅ Calculate patient age from date_of_birth
   const calculateAge = (dateOfBirth) => {
     if (!dateOfBirth) return null;
     const today = new Date();
@@ -48,13 +51,20 @@ const ConfirmationStep = ({
 
   const patientAge = calculateAge(profile?.profile?.date_of_birth);
 
-  // ✅ Gender display mapping
+  // Gender display
   const genderDisplay = {
     M: "Male",
     F: "Female",
-    Other: "Other",
+    male: "Male",
+    female: "Female",
+    other: "Other",
     "Prefer not to say": "Prefer not to say",
   };
+
+  const consultationFee =
+    skipConsultation && consultationCheckResult?.canSkipConsultation
+      ? 0
+      : bookingData.doctor?.consultation_fee || 0;
 
   // Calculate totals and treatment plan requirements
   const {
@@ -66,6 +76,18 @@ const ConfirmationStep = ({
     estimatedTotalVisits,
     estimatedCompletionWeeks,
   } = useMemo(() => {
+    if (isConsultationOnly) {
+      return {
+        totalDuration: 30, // Default consultation duration
+        totalCost: bookingData.doctor?.consultation_fee || 0,
+        selectedServices: [],
+        requiresTreatmentPlan: false,
+        multiVisitServices: [],
+        estimatedTotalVisits: 0,
+        estimatedCompletionWeeks: 0,
+      };
+    }
+
     const selected = services.filter((service) =>
       bookingData.services?.includes(service.id)
     );
@@ -83,7 +105,6 @@ const ConfirmationStep = ({
       0
     );
 
-    // Estimate completion time (assuming bi-weekly visits)
     const weeksEstimate = totalVisits * 2;
 
     return {
@@ -91,17 +112,26 @@ const ConfirmationStep = ({
         (total, service) => total + (service.duration_minutes || 0),
         0
       ),
-      totalCost: selected.reduce(
-        (total, service) => total + (parseFloat(service.max_price) || 0),
-        0
-      ),
+      totalCost:
+        selected.reduce(
+          (total, service) =>
+            total +
+            (parseFloat(service.treatment_price || service.min_price) || 0),
+          0
+        ) + consultationFee, // ✅ USE CALCULATED FEE, NOT FULL FEE
       selectedServices: selected,
       requiresTreatmentPlan: multiVisit.length > 0,
       multiVisitServices: multiVisit,
       estimatedTotalVisits: totalVisits,
       estimatedCompletionWeeks: weeksEstimate,
     };
-  }, [services, bookingData.services]);
+  }, [
+    services,
+    bookingData.services,
+    bookingData.doctor?.consultation_fee,
+    isConsultationOnly,
+    consultationFee, // ✅ ADD DEPENDENCY
+  ]);
 
   return (
     <div>
@@ -111,6 +141,21 @@ const ConfirmationStep = ({
           Review & Confirm Your Appointment
         </h2>
       </div>
+
+      {isConsultationOnly && (
+        <Alert className="mb-6 border-blue-200 bg-blue-50">
+          <Info className="h-4 w-4 text-blue-600" />
+          <div>
+            <strong className="text-blue-900">
+              Consultation Only Appointment
+            </strong>
+            <p className="text-sm mt-1 text-blue-800">
+              You're booking a consultation with the doctor. Treatment options
+              will be discussed during your visit.
+            </p>
+          </div>
+        </Alert>
+      )}
 
       {/* Treatment Plan Notice */}
       {requiresTreatmentPlan && (
@@ -230,6 +275,14 @@ const ConfirmationStep = ({
                   <p className="text-sm text-primary font-medium">
                     {bookingData.doctor?.specialization}
                   </p>
+                  {bookingData.doctor?.consultation_fee && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Consultation: ₱
+                      {parseFloat(
+                        bookingData.doctor.consultation_fee
+                      ).toLocaleString()}
+                    </p>
+                  )}
                 </div>
 
                 {/* Date & Time */}
@@ -253,7 +306,10 @@ const ConfirmationStep = ({
                   <div className="flex items-center gap-2 mt-1">
                     <Clock className="w-4 h-4 text-primary" />
                     <p className="font-semibold text-foreground">
-                      {bookingData.time} ({totalDuration} minutes)
+                      {bookingData.time}
+                      {isConsultationOnly
+                        ? " (30-45 min consultation)"
+                        : ` (~${totalDuration} minutes)`}
                     </p>
                   </div>
                 </div>
@@ -261,62 +317,143 @@ const ConfirmationStep = ({
             </CardContent>
           </Card>
 
-          {/* Services with Treatment Plan Details */}
-          <Card className="border-2 border-primary/20 bg-primary/5">
-            <CardContent className="p-6">
-              <h4 className="font-bold text-foreground mb-4 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-primary" />
-                Selected Services
-              </h4>
-              <div className="space-y-3">
-                {selectedServices.map((service) => {
-                  const isMultiVisit = multiVisitServices.find(
-                    (s) => s.id === service.id
-                  );
-                  return (
-                    <div
-                      key={service.id}
-                      className="p-3 bg-background rounded-lg border"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <span className="font-medium">{service.name}</span>
-                          {isMultiVisit && (
-                            <div className="flex items-center gap-1 mt-1">
-                              <Repeat className="w-3 h-3 text-primary" />
-                              <span className="text-xs text-muted-foreground">
-                                ~{service.typical_visit_count || 2} visits •
-                                Treatment plan required
-                              </span>
-                            </div>
-                          )}
+          {/* Services or Consultation Info */}
+          {isConsultationOnly ? (
+            <Card className="border-2 border-primary/20 bg-primary/5">
+              <CardContent className="p-6">
+                <h4 className="font-bold text-foreground mb-4 flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-primary" />
+                  Consultation Details
+                </h4>
+                <div className="space-y-3">
+                  <div className="p-4 bg-background rounded-lg border">
+                    <p className="font-medium mb-2">General Consultation</p>
+                    <p className="text-sm text-muted-foreground">
+                      The doctor will assess your dental health and recommend
+                      appropriate treatments.
+                    </p>
+                  </div>
+                  <Separator />
+                  <div className="space-y-2 pt-2">
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-lg">
+                        Consultation Fee:
+                      </span>
+                      <span className="font-bold text-2xl text-primary">
+                        ₱
+                        {parseFloat(
+                          bookingData.doctor?.consultation_fee || 0
+                        ).toLocaleString()}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      * Treatment costs will be discussed during your visit
+                      based on your needs.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-2 border-primary/20 bg-primary/5">
+              <CardContent className="p-6">
+                <h4 className="font-bold text-foreground mb-4 flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-primary" />
+                  Selected Services
+                </h4>
+                <div className="space-y-3">
+                  {selectedServices.map((service) => {
+                    const isMultiVisit = multiVisitServices.find(
+                      (s) => s.id === service.id
+                    );
+                    const servicePrice =
+                      service.treatment_price || service.min_price || 0;
+                    return (
+                      <div
+                        key={service.id}
+                        className="p-3 bg-background rounded-lg border"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <span className="font-medium">{service.name}</span>
+                            {isMultiVisit && (
+                              <div className="flex items-center gap-1 mt-1">
+                                <Repeat className="w-3 h-3 text-primary" />
+                                <span className="text-xs text-muted-foreground">
+                                  ~{service.typical_visit_count || 2} visits •
+                                  Treatment plan required
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          <span className="font-semibold text-primary">
+                            ₱{parseFloat(servicePrice).toLocaleString()}
+                          </span>
                         </div>
-                        <span className="font-semibold text-primary">
-                          ₱{service.min_price}-₱{service.max_price}
-                        </span>
+                      </div>
+                    );
+                  })}
+                  <Separator />
+                  <div className="space-y-2 pt-2">
+                    <div className="flex justify-between items-center text-sm">
+                      <span>Services Total:</span>
+                      <span className="font-semibold">
+                        ₱
+                        {(
+                          totalCost -
+                          (bookingData.doctor?.consultation_fee || 0)
+                        ).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span>Consultation Fee:</span>
+                      <div className="text-right">
+                        {skipConsultation &&
+                        consultationCheckResult?.canSkipConsultation ? (
+                          <>
+                            <span className="line-through text-muted-foreground mr-2">
+                              ₱
+                              {parseFloat(
+                                bookingData.doctor?.consultation_fee || 0
+                              ).toLocaleString()}
+                            </span>
+                            <span className="font-semibold text-green-600">
+                              FREE
+                            </span>
+                          </>
+                        ) : (
+                          <span className="font-semibold">
+                            ₱{parseFloat(consultationFee).toLocaleString()}
+                          </span>
+                        )}
                       </div>
                     </div>
-                  );
-                })}
-                <Separator />
-                <div className="space-y-2 pt-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-lg">First Visit Cost:</span>
-                    <span className="font-bold text-2xl text-primary">
-                      ₱{totalCost.toLocaleString()}
-                    </span>
+                    {skipConsultation &&
+                      consultationCheckResult?.canSkipConsultation && (
+                        <p className="text-xs text-green-600 mt-1">
+                          ✓ Consultation fee waived (recent visit found)
+                        </p>
+                      )}
+                    <Separator />
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold text-lg">
+                        Total Estimated Cost:
+                      </span>
+                      <span className="font-bold text-2xl text-primary">
+                        ₱{totalCost.toLocaleString()}
+                      </span>
+                    </div>
+                    {requiresTreatmentPlan && (
+                      <p className="text-xs text-muted-foreground">
+                        * Additional costs may apply for subsequent visits. Your
+                        dentist will provide a detailed treatment plan.
+                      </p>
+                    )}
                   </div>
-                  {requiresTreatmentPlan && (
-                    <p className="text-xs text-muted-foreground">
-                      * Additional costs may apply for subsequent visits. Your
-                      dentist will provide a detailed treatment plan and cost
-                      breakdown.
-                    </p>
-                  )}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Cross-Clinic Coordination */}
           {crossClinicWarnings && crossClinicWarnings.length > 0 && (
@@ -395,17 +532,16 @@ const ConfirmationStep = ({
                   </p>
                 </div>
 
-                {/* ✅ NEW: Gender & Age in a grid */}
-                {(profile?.gender || patientAge !== null) && (
+                {(profile?.profile?.gender || patientAge !== null) && (
                   <div className="grid grid-cols-2 gap-4">
-                    {profile?.gender && (
+                    {profile?.profile?.gender && (
                       <div>
                         <span className="text-sm font-medium text-muted-foreground">
                           Gender:
                         </span>
                         <p className="font-medium text-foreground">
-                          {genderDisplay[profile?.profile?.gender] ||
-                            profile?.profile?.gender}
+                          {genderDisplay[profile.profile.gender] ||
+                            profile.profile.gender}
                         </p>
                       </div>
                     )}

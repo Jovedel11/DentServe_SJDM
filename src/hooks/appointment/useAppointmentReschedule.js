@@ -75,6 +75,19 @@ export const useAppointmentReschedule = () => {
     }
   }, []);
 
+  const getNextSevenDays = () => {
+    const dates = [];
+    const today = new Date();
+    
+    for (let i = 1; i <= 7; i++) {
+      const date = new Date(today);
+      date.setDate(date.getDate() + i);
+      dates.push(date.toISOString().split('T')[0]);
+    }
+    
+    return dates;
+  };
+
   // =====================================================
   // Get Available Slots for Rescheduling
   // =====================================================
@@ -85,7 +98,7 @@ export const useAppointmentReschedule = () => {
   ) => {
     try {
       setState(prev => ({ ...prev, checkingAvailability: true, error: null }));
-
+  
       // Get current appointment details
       const { data: appointment, error: fetchError } = await supabase
         .from('appointments')
@@ -95,52 +108,71 @@ export const useAppointmentReschedule = () => {
         `)
         .eq('id', appointmentId)
         .single();
-
+  
       if (fetchError) throw fetchError;
-
-      const serviceIds = appointment.services.map(s => s.service_id);
-      const datesToCheck = newDate ? [newDate] : alternativeDates;
-
-      // Get available slots for each date
-      const slotsPromises = datesToCheck.map(async (date) => {
-        const { data, error } = await supabase.rpc('get_available_time_slots', {
-          p_doctor_id: appointment.doctor_id,
-          p_appointment_date: date,
-          p_service_ids: serviceIds
-        });
-
-        return {
-          date,
-          slots: data || [],
-          error: error?.message
-        };
+  
+      // ✅ FIXED: Extract service IDs, handle consultation-only (no services)
+      const serviceIds = appointment.services?.map(s => s.service_id).filter(Boolean) || [];
+  
+      // Determine dates to check
+      const datesToCheck = newDate 
+        ? [newDate] 
+        : alternativeDates.length > 0 
+          ? alternativeDates 
+          : getNextSevenDays();
+  
+      // Check availability for each date
+      const availabilityPromises = datesToCheck.map(async (date) => {
+        try {
+          const { data, error } = await supabase.rpc('get_available_time_slots', {
+            p_doctor_id: appointment.doctor_id,
+            p_appointment_date: date,
+            // ✅ FIXED: Pass null for consultation-only, array for services
+            p_service_ids: serviceIds.length > 0 ? serviceIds : null
+          });
+  
+          if (error) throw error;
+  
+          return {
+            date,
+            slots: data?.slots || [],
+            available: (data?.slots || []).filter(s => s.available).length > 0
+          };
+        } catch (err) {
+          console.error(`Error checking slots for ${date}:`, err);
+          return { date, slots: [], available: false, error: err.message };
+        }
       });
-
-      const slotsResults = await Promise.all(slotsPromises);
-
+  
+      const availabilityResults = await Promise.all(availabilityPromises);
+  
       setState(prev => ({
         ...prev,
         checkingAvailability: false,
-        availableSlots: slotsResults,
+        availableSlots: availabilityResults,
         rescheduleData: {
           appointmentId,
           currentDate: appointment.appointment_date,
           currentTime: appointment.appointment_time,
           doctorId: appointment.doctor_id,
           clinicId: appointment.clinic_id,
-          serviceIds
+          serviceIds,  // ✅ Can be empty array for consultation-only
+          isConsultationOnly: serviceIds.length === 0  // ✅ NEW FLAG
         }
       }));
-
-      return { success: true, slots: slotsResults };
-
+  
+      return {
+        success: true,
+        availability: availabilityResults,
+        appointment
+      };
+  
     } catch (err) {
-      const errorMsg = err.message || 'Failed to fetch available slots';
+      const errorMsg = err.message || 'Failed to check availability';
       setState(prev => ({ ...prev, checkingAvailability: false, error: errorMsg }));
       return { success: false, error: errorMsg };
     }
   }, []);
-
   // =====================================================
   // Reschedule Appointment
   // =====================================================

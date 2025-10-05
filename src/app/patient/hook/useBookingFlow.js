@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { useAppointmentBooking } from "@/hooks/appointment/useAppointmentBooking";
 import { supabase } from "@/lib/supabaseClient";
@@ -19,6 +19,7 @@ export const useBookingFlow = () => {
     checkAppointmentLimits,
     appointmentLimitCheck,
     sameDayConflict,
+    checkConsultationRequirement,
   } = appointmentHook;
   
   // Local state
@@ -31,6 +32,9 @@ export const useBookingFlow = () => {
 
   const [bookingLimitsInfo, setBookingLimitsInfo] = useState(null);
   const [sameDayConflictDetails, setSameDayConflictDetails] = useState(null);
+
+  const [consultationCheckResult, setConsultationCheckResult] = useState(null);
+  const [skipConsultation, setSkipConsultation] = useState(false);
   
   // Enhanced booking validation state
   const [crossClinicWarnings, setCrossClinicWarnings] = useState([]);
@@ -140,26 +144,38 @@ export const useBookingFlow = () => {
       const limitData = await checkAppointmentLimits(clinicId, appointmentDate);
 
       if (limitData?.data) {
-        setBookingLimitsInfo({
-          // Total pending limits
-          totalPending: limitData.data.total_pending_appointments || 0,
-          maxTotalPending: limitData.data.max_total_pending || 3,
-          totalRemaining: Math.max(0, (limitData.data.max_total_pending || 3) - (limitData.data.total_pending_appointments || 0)),
-          
-          // Per-clinic pending limits
-          clinicPending: limitData.data.clinic_pending_count || 0,
-          maxClinicPending: limitData.data.max_pending_per_clinic || 2,
-          clinicRemaining: Math.max(0, (limitData.data.max_pending_per_clinic || 2) - (limitData.data.clinic_pending_count || 0)),
-          
-          // Booking window
-          maxAdvanceDays: limitData.data.max_advance_days || 60,
-          latestBookableDate: limitData.data.latest_bookable_date,
-          
-          // Historical limits
-          clinicHistoricalCount: limitData.data.clinic_current_count || 0,
-          clinicHistoricalLimit: limitData.data.clinic_limit || 0,
-          clinicHistoricalRemaining: limitData.data.clinic_remaining || 0,
-        });
+        const totalPending = limitData.data.total_pending_appointments || 0;
+        const maxTotalPending = limitData.data.max_total_pending || 3;
+        const clinicPending = limitData.data.clinic_pending_count || 0;
+        const maxClinicPending = limitData.data.max_pending_per_clinic || 2;
+        
+        // ✅ FIX: Account for same-day conflict in remaining calculation
+    const hasSameDayConflict = !limitData.allowed && limitData.reason === 'daily_appointment_exists';
+
+    setBookingLimitsInfo({
+      // Total pending limits
+      totalPending,
+      maxTotalPending,
+      // ✅ FIXED: Correct calculation - if at limit, show 0
+      totalRemaining: Math.max(0, maxTotalPending - totalPending),
+      
+      // Per-clinic pending limits
+      clinicPending,
+      maxClinicPending,
+      clinicRemaining: Math.max(0, maxClinicPending - clinicPending),
+      
+      // Booking window
+      maxAdvanceDays: limitData.data.max_advance_days || 60,
+      latestBookableDate: limitData.data.latest_bookable_date,
+      
+      // Historical limits
+      clinicHistoricalCount: limitData.data.clinic_current_count || 0,
+      clinicHistoricalLimit: limitData.data.clinic_limit || 0,
+      clinicHistoricalRemaining: limitData.data.clinic_remaining || 0,
+      
+      // ✅ NEW: Same-day conflict flag
+      hasSameDayConflict,
+    });
       }
 
       if (!limitData.allowed && limitData.reason === 'daily_appointment_exists') {
@@ -267,6 +283,26 @@ export const useBookingFlow = () => {
       return;
     }
 
+    // ✅ NEW: Check if booking limit reached (accounting for this booking)
+    if (bookingLimitsInfo && bookingLimitsInfo.totalRemaining === 0) {
+      showToast(
+        `You have reached your pending appointment limit (${bookingLimitsInfo.totalPending}/${bookingLimitsInfo.maxTotalPending}). Please wait for confirmations before booking more.`,
+        "error"
+      );
+      return;
+    }
+
+    // ✅ NEW: Validate consultation requirement
+    if (bookingData.services?.length > 0 && consultationCheckResult) {
+      if (!consultationCheckResult.canSkipConsultation && !bookingData.doctor) {
+        showToast(
+          "Please select a doctor for consultation as selected services require it.",
+          "error"
+        );
+        return;
+      }
+    }
+
     // ✅ Check for same-day conflict
     if (sameDayConflict) {
       showToast(
@@ -292,43 +328,45 @@ export const useBookingFlow = () => {
     }
 
     try {
-      const result = await bookAppointment();
+      // ✅ FIXED: Pass skipConsultation flag to booking function
+      const result = await bookAppointment(skipConsultation);  // ✅ PASS THE FLAG
 
       if (result.success) {
         setBookingSuccess(true);
+        showToast("Appointment booked successfully!", "success");
         
-        // ✅ Enhanced success message
-        let successMessage = "Appointment booked successfully! ";
-        
-        const appointmentData = result.appointment;
-        
-        if (appointmentData?.details?.requires_approval) {
-          successMessage += "Pending clinic approval. ";
-        }
-        
-        if (appointmentData?.cross_clinic_context?.has_other_appointments) {
-          successMessage += `You have ${appointmentData.cross_clinic_context.count} other appointment(s). `;
-        }
-        
-        showToast(successMessage, "success");
-
-        // Redirect after success
         setTimeout(() => {
           window.location.href = "/patient/appointments/upcoming";
         }, 3000);
       } else {
-        // ✅ Handle specific error reasons
-        if (result.reason === 'daily_limit_exceeded') {
-          showToast("You already have an appointment scheduled for this date. Please cancel it first or choose another date.", "error");
-        } else {
-          showToast(`Booking failed: ${result.error}`, "error");
-        }
+        showToast(result.error || "Booking failed. Please try again.", "error");
       }
     } catch (err) {
-      console.error("Booking error:", err);
-      showToast(`Booking failed: ${err.message}`, "error");
+      console.error("Error submitting booking:", err);
+      showToast("An error occurred. Please try again.", "error");
     }
-  }, [isPatient, bookAppointment, appointmentLimitCheck, patientReliability, sameDayConflict, showToast]);
+  }, [
+    isPatient,
+    bookingData,
+    bookingLimitsInfo,
+    consultationCheckResult,
+    skipConsultation,  // ✅ ADD DEPENDENCY
+    sameDayConflict,
+    appointmentLimitCheck,
+    patientReliability,
+    bookAppointment,
+    showToast,
+  ]);
+
+    const handleClearDate = useCallback(() => {
+    updateBookingData({ date: null, time: null });
+    setSameDayConflictDetails(null);
+    
+    // Re-check booking eligibility without date
+    if (bookingData.clinic?.id) {
+      checkBookingEligibility(bookingData.clinic.id, null);
+    }
+  }, [bookingData.clinic?.id, updateBookingData, checkBookingEligibility]);
 
   // Enhanced cancellation policy info
   const getCancellationInfo = useCallback(() => {
@@ -349,6 +387,38 @@ export const useBookingFlow = () => {
       canStillCancel: new Date() < cancellationDeadline
     };
   }, [bookingData.clinic, bookingData.date, bookingData.time]);
+  
+
+  useEffect(() => {
+    const checkConsultation = async () => {
+      if (bookingData.services?.length > 0 && bookingData.clinic?.id) {
+        try {
+          const result = await checkConsultationRequirement(
+            bookingData.services,
+            bookingData.clinic.id
+          );
+          setConsultationCheckResult(result);
+          
+          // ✅ Auto-enable skip ONLY if all services allow it
+          if (result?.canSkipConsultation) {
+            setSkipConsultation(true);
+          } else {
+            // ✅ IMPORTANT: If cannot skip, must charge consultation
+            setSkipConsultation(false);
+          }
+        } catch (error) {
+          console.error('Error checking consultation requirement:', error);
+          setConsultationCheckResult(null);
+          setSkipConsultation(false);
+        }
+      } else {
+        setConsultationCheckResult(null);
+        setSkipConsultation(false);
+      }
+    };
+    
+    checkConsultation();
+  }, [bookingData.services, bookingData.clinic?.id, checkConsultationRequirement]);
 
   // ✅ FIX: Initial clinic fetch - only once
   useEffect(() => {
@@ -389,6 +459,10 @@ export const useBookingFlow = () => {
     services,
     toastMessage,
     bookingSuccess,
+    consultationCheckResult,
+    skipConsultation,
+    setSkipConsultation,
+    checkConsultationRequirement,
     
     // Enhanced validation state
     appointmentLimitCheck,
@@ -403,10 +477,11 @@ export const useBookingFlow = () => {
     showToast,
     closeToast,
     handleClinicSelect,
-    handleServiceToggle,
+    handleServiceToggle,  
     handleDoctorSelect,
     handleDateSelect,
     handleSubmit,
+    handleClearDate,
     
     // Enhanced methods
     checkBookingEligibility,

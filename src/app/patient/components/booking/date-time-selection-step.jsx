@@ -10,6 +10,7 @@ import {
   XCircle,
   AlertTriangle,
   Ban,
+  CheckCircle2,
 } from "lucide-react";
 import {
   Card,
@@ -32,6 +33,7 @@ const DateTimeSelectionStep = ({
   checkingAvailability,
   onUpdateBookingData,
   onDateSelect,
+  onClearDate,
   sameDayConflict,
   sameDayConflictDetails,
   bookingLimitsInfo,
@@ -280,9 +282,14 @@ const DateTimeSelectionStep = ({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() =>
-                      onUpdateBookingData({ date: null, time: null })
-                    }
+                    onClick={() => {
+                      // ✅ FIXED: Use proper clear handler
+                      if (onClearDate) {
+                        onClearDate();
+                      } else {
+                        onUpdateBookingData({ date: null, time: null });
+                      }
+                    }}
                   >
                     <ChevronLeft className="w-4 h-4 mr-2" />
                     Choose Different Date
@@ -294,34 +301,87 @@ const DateTimeSelectionStep = ({
         </Alert>
       )}
 
-      {/* ⚠️ BOOKING POLICY REMINDER - Enhanced with limits */}
-      {!hasConflict && bookingLimitsInfo && (
-        <Alert>
+      {/* ⚠️ BOOKING POLICY REMINDER - Enhanced with ACCURATE limits */}
+      {bookingData.date && !hasConflict && bookingLimitsInfo && (
+        <Alert
+          className={
+            bookingLimitsInfo.totalPending >= bookingLimitsInfo.maxTotalPending
+              ? "border-destructive bg-destructive/10"
+              : "border-blue-200 bg-blue-50"
+          }
+        >
           <Info className="h-4 w-4" />
           <div className="text-sm">
-            <strong>Booking Guidelines:</strong>
-            <ul className="mt-2 space-y-1 ml-4 list-disc">
-              <li>
-                <strong>1 appointment per day</strong> across all clinics
-              </li>
-              <li>
-                Maximum{" "}
-                <strong>
-                  {bookingLimitsInfo.maxTotalPending} pending appointments
-                </strong>{" "}
-                at a time
-              </li>
-              <li>
-                Book up to{" "}
-                <strong>{bookingLimitsInfo.maxAdvanceDays} days</strong> in
-                advance
-              </li>
-              <li>
-                You have{" "}
-                <strong>{bookingLimitsInfo.totalRemaining} slot(s)</strong>{" "}
-                remaining
-              </li>
-            </ul>
+            <strong>Your Booking Status:</strong>
+            <div className="mt-2 space-y-1">
+              {bookingLimitsInfo.totalPending >=
+              bookingLimitsInfo.maxTotalPending ? (
+                <div className="text-destructive font-semibold flex items-start gap-2">
+                  <Ban className="w-4 h-4 mt-0.5 shrink-0" />
+                  <div>
+                    <strong>Booking limit reached:</strong>
+                    <div className="text-xs font-normal mt-1">
+                      You have{" "}
+                      <strong>
+                        {bookingLimitsInfo.totalPending} pending appointment(s)
+                      </strong>
+                      . You cannot book more until at least one is confirmed or
+                      canceled.
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      onClick={() =>
+                        (window.location.href =
+                          "/patient/appointments/upcoming")
+                      }
+                    >
+                      View My Appointments
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">
+                      <strong>Current:</strong> {bookingLimitsInfo.totalPending}
+                      /{bookingLimitsInfo.maxTotalPending} pending
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">
+                      <strong>After this:</strong>{" "}
+                      {bookingLimitsInfo.totalPending + 1}/
+                      {bookingLimitsInfo.maxTotalPending}
+                    </span>
+                  </div>
+                  {bookingLimitsInfo.totalPending + 1 >=
+                  bookingLimitsInfo.maxTotalPending ? (
+                    <div className="flex items-center gap-2 text-warning">
+                      <AlertTriangle className="w-4 h-4" />
+                      <span className="text-sm font-semibold">
+                        ⚠️ This will be your last available slot
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-success">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span className="text-sm">
+                        You can book{" "}
+                        <strong>
+                          {bookingLimitsInfo.maxTotalPending -
+                            bookingLimitsInfo.totalPending -
+                            1}{" "}
+                          more
+                        </strong>{" "}
+                        after this
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </Alert>
       )}
