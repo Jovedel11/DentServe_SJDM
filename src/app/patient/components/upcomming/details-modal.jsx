@@ -7,8 +7,12 @@ import {
   Calendar,
   Phone,
   FileText,
+  DollarSign,
+  Activity,
+  AlertCircle,
 } from "lucide-react";
 import StatusBadge from "./status-badge";
+import { Badge } from "@/core/components/ui/badge";
 
 const DetailsModal = ({
   appointment,
@@ -19,13 +23,43 @@ const DetailsModal = ({
 }) => {
   if (!appointment) return null;
 
+  // Get booking type config
+  const getBookingTypeConfig = (bookingType) => {
+    const configs = {
+      consultation_only: {
+        label: "Consultation Only",
+        color: "bg-blue-100 text-blue-700",
+      },
+      service_only: {
+        label: "Service Only",
+        color: "bg-green-100 text-green-700",
+      },
+      consultation_with_service: {
+        label: "Consultation + Service",
+        color: "bg-purple-100 text-purple-700",
+      },
+      treatment_plan_follow_up: {
+        label: "Treatment Follow-up",
+        color: "bg-orange-100 text-orange-700",
+      },
+    };
+    return configs[bookingType] || configs.consultation_only;
+  };
+
+  const bookingConfig = getBookingTypeConfig(appointment.booking_type);
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-card rounded-xl border shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden animate-fadeIn">
         <div className="flex items-center justify-between p-6 border-b border-border">
-          <h2 className="text-2xl font-bold text-foreground">
-            Appointment Details
-          </h2>
+          <div>
+            <h2 className="text-2xl font-bold text-foreground">
+              Appointment Details
+            </h2>
+            <Badge className={`${bookingConfig.color} mt-2`}>
+              {bookingConfig.label}
+            </Badge>
+          </div>
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors"
@@ -35,6 +69,23 @@ const DetailsModal = ({
         </div>
 
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+          {/* Symptoms Alert */}
+          {appointment.symptoms && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-amber-900 mb-1">
+                    Reported Symptoms
+                  </p>
+                  <p className="text-sm text-amber-800">
+                    {appointment.symptoms}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Left Column */}
             <div className="space-y-6">
@@ -50,8 +101,9 @@ const DetailsModal = ({
                       Services:
                     </span>
                     <p className="font-medium text-foreground">
-                      {appointment.services?.map((s) => s.name).join(", ") ||
-                        "N/A"}
+                      {appointment.services && appointment.services.length > 0
+                        ? appointment.services.map((s) => s.name).join(", ")
+                        : "Consultation Only"}
                     </p>
                   </div>
                   <div>
@@ -62,6 +114,16 @@ const DetailsModal = ({
                       <StatusBadge status={appointment.status} />
                     </div>
                   </div>
+                  {appointment.duration_minutes && (
+                    <div>
+                      <span className="text-sm font-medium text-muted-foreground">
+                        Duration:
+                      </span>
+                      <p className="font-medium text-foreground">
+                        {appointment.duration_minutes} minutes
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -103,6 +165,32 @@ const DetailsModal = ({
                   </div>
                 </div>
               </div>
+
+              {/* Consultation Fee */}
+              {appointment.consultation_fee_charged != null && (
+                <div className="bg-accent/10 rounded-lg p-6 border border-accent/20">
+                  <h4 className="font-bold text-foreground mb-4 flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-primary" />
+                    Fee Information
+                  </h4>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">
+                      Consultation Fee:
+                    </span>
+                    <span className="text-2xl font-bold text-foreground">
+                      ₱
+                      {Number(
+                        appointment.consultation_fee_charged
+                      ).toLocaleString()}
+                    </span>
+                  </div>
+                  {appointment.booking_type === "service_only" && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      * Consultation fee waived for this appointment
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Right Column */}

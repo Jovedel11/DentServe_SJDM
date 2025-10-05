@@ -1,21 +1,21 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
-import { usePatientArchive } from '../archived/usePatientArchive';
 
 /**
- * ✅ ENHANCED Patient Appointments Hook
- * Integrated with treatment plans and ongoing treatments
+ * ✅ FIXED Patient Appointments Hook
+ * Gets all data from get_appointments_by_role - NO DIRECT TABLE QUERIES
  * 
  * Features:
- * - Appointments with treatment plan context
+ * - Fetch active appointments (pending/confirmed)
+ * - Treatment plan data included from RPC
+ * - Cancel appointments
  * - Health analytics
- * - Archive management
- * - Treatment progress tracking
+ * 
+ * NOTE: Archive functionality is in AppointmentHistory.jsx only
  */
 export const usePatientAppointments = () => {
   const { user, isPatient } = useAuth();
-  const patientArchive = usePatientArchive();
   
   const [appointments, setAppointments] = useState([]);
   const [healthAnalytics, setHealthAnalytics] = useState(null);
@@ -29,7 +29,7 @@ export const usePatientAppointments = () => {
   });
 
   // ====================================================================
-  // ✅ Fetch Appointments (with treatment plan context)
+  // ✅ Fetch Appointments (ALL DATA FROM RPC - NO DIRECT QUERIES)
   // ====================================================================
   const fetchAppointments = useCallback(async (options = {}) => {
     if (!user || !isPatient) return { success: false, error: 'Authentication required' };
@@ -47,6 +47,9 @@ export const usePatientAppointments = () => {
 
       const currentOffset = loadMore ? pagination.offset : 0;
 
+      console.log('🔄 Fetching appointments via RPC...');
+
+      // ✅ ONLY use RPC functions - NO direct table queries
       const [appointmentsResponse, analyticsResponse] = await Promise.allSettled([
         supabase.rpc('get_appointments_by_role', {
           p_status: status ? [status] : null,
@@ -75,41 +78,23 @@ export const usePatientAppointments = () => {
       const appointmentData = appointmentsResult.data.data;
       const newAppointments = appointmentData?.appointments || [];
       
-      // ✅ Check which appointments are linked to treatment plans
-      const appointmentsWithTreatmentInfo = await Promise.all(
-        newAppointments.map(async (apt) => {
-          const { data: treatmentLink } = await supabase
-            .from('treatment_plan_appointments')
-            .select(`
-              visit_number,
-              visit_purpose,
-              is_completed,
-              treatment_plan:treatment_plans (
-                id,
-                treatment_name,
-                treatment_category,
-                progress_percentage,
-                visits_completed,
-                total_visits_planned
-              )
-            `)
-            .eq('appointment_id', apt.id)
-            .single();
-
-          return {
-            ...apt,
-            treatment_plan_info: treatmentLink || null
-          };
-        })
-      );
+      console.log('📥 Raw appointments from DB:', {
+        total: newAppointments.length,
+        byStatus: {
+          pending: newAppointments.filter(a => a.status === 'pending').length,
+          confirmed: newAppointments.filter(a => a.status === 'confirmed').length,
+          completed: newAppointments.filter(a => a.status === 'completed').length,
+          cancelled: newAppointments.filter(a => a.status === 'cancelled').length,
+        }
+      });
       
-      // Get archived IDs for filtering
-      const archivedIds = new Set(
-        patientArchive.archivedData.appointments.map(item => item.item_id)
+      // ✅ Filter for active appointments only (pending/confirmed)
+      // Treatment plan data is already included in the response as 'treatment_plan'
+      const activeAppointments = newAppointments.filter(apt => 
+        ['pending', 'confirmed'].includes(apt.status)
       );
 
-      // Filter out archived appointments
-      const activeAppointments = appointmentsWithTreatmentInfo.filter(apt => !archivedIds.has(apt.id));
+      console.log('✅ Fetched appointments:', activeAppointments);
 
       // Update state
       setAppointments(prev => 
@@ -132,38 +117,13 @@ export const usePatientAppointments = () => {
 
     } catch (err) {
       const errorMsg = err.message || 'Failed to fetch appointments';
+      console.error('❌ Fetch appointments error:', errorMsg);
       setError(errorMsg);
       return { success: false, error: errorMsg };
     } finally {
       setLoading(false);
     }
-  }, [user, isPatient, pagination.limit, pagination.offset, patientArchive.archivedData.appointments]);
-
-  // ====================================================================
-  // ✅ Archive Appointment
-  // ====================================================================
-  const archiveAppointment = useCallback(async (appointmentId) => {
-    const appointment = appointments.find(apt => apt.id === appointmentId);
-    if (!appointment) {
-      return { success: false, error: 'Appointment not found' };
-    }
-
-    if (appointment.status !== 'completed') {
-      return { success: false, error: 'Only completed appointments can be archived' };
-    }
-
-    try {
-      const result = await patientArchive.archiveAppointment(appointmentId, appointment);
-      
-      if (result.success) {
-        setAppointments(prev => prev.filter(apt => apt.id !== appointmentId));
-      }
-      
-      return result;
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  }, [appointments, patientArchive]);
+  }, [user, isPatient, pagination.limit, pagination.offset]);
 
   // ====================================================================
   // ✅ Cancel Appointment
@@ -188,18 +148,29 @@ export const usePatientAppointments = () => {
   }, []);
 
   // ====================================================================
-  // ✅ Computed Statistics
+  // ✅ Check if can cancel appointment
+  // ====================================================================
+  const canCancelAppointment = useCallback((appointmentId) => {
+    const appointment = appointments.find(apt => apt.id === appointmentId);
+    if (!appointment) return false;
+    
+    // Use can_cancel from the database response
+    return appointment.can_cancel === true;
+  }, [appointments]);
+
+  // ====================================================================
+  // ✅ Computed Statistics (UPCOMING ONLY)
   // ====================================================================
   const stats = useMemo(() => {
-    const treatmentRelatedAppointments = appointments.filter(apt => apt.treatment_plan_info);
+    // ✅ FIXED: Use 'treatment_plan' from database response
+    const treatmentRelatedAppointments = appointments.filter(apt => apt.treatment_plan);
+    const today = new Date().toISOString().split('T')[0];
     
     return {
       total: appointments.length,
-      completed: appointments.filter(apt => apt.status === 'completed').length,
-      upcoming: appointments.filter(apt => 
-        apt.status === 'confirmed' && new Date(apt.appointment_date) > new Date()
-      ).length,
-      canArchiveCount: appointments.filter(apt => apt.status === 'completed').length,
+      pending: appointments.filter(apt => apt.status === 'pending').length,
+      confirmed: appointments.filter(apt => apt.status === 'confirmed').length,
+      upcoming: appointments.filter(apt => apt.appointment_date >= today).length,
       healthScore: healthAnalytics?.health_score || 0,
       
       // ✅ Treatment-specific stats
@@ -216,11 +187,26 @@ export const usePatientAppointments = () => {
   }, [appointments]);
 
   // ====================================================================
+  // ✅ Helper: Get Upcoming Appointments
+  // ====================================================================
+  const upcomingAppointments = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return appointments.filter(apt => 
+      apt.appointment_date >= today && ['pending', 'confirmed'].includes(apt.status)
+    ).sort((a, b) => {
+      const dateA = new Date(`${a.appointment_date}T${a.appointment_time}`);
+      const dateB = new Date(`${b.appointment_date}T${b.appointment_time}`);
+      return dateA - dateB;
+    });
+  }, [appointments]);
+
+  // ====================================================================
   // ✅ Helper: Get Appointments by Treatment Plan
   // ====================================================================
   const getAppointmentsByTreatmentPlan = useCallback((treatmentPlanId) => {
+    // ✅ FIXED: Use 'treatment_plan' from database response
     return appointments.filter(apt => 
-      apt.treatment_plan_info?.treatment_plan?.id === treatmentPlanId
+      apt.treatment_plan?.id === treatmentPlanId
     );
   }, [appointments]);
 
@@ -232,39 +218,24 @@ export const usePatientAppointments = () => {
       fetchAppointments();
     }
   }, [user, isPatient]);
-
-  // ====================================================================
-  // ✅ Sync with archive changes
-  // ====================================================================
-  useEffect(() => {
-    if (patientArchive.archivedData.appointments.length > 0) {
-      const archivedIds = new Set(
-        patientArchive.archivedData.appointments.map(item => item.item_id)
-      );
-      setAppointments(prev => prev.filter(apt => !archivedIds.has(apt.id)));
-    }
-  }, [patientArchive.archivedData.appointments]);
+  
 
   return {
     // State
     appointments,
+    upcomingAppointments,
     healthAnalytics,
-    loading: loading || patientArchive.loading,
-    error: error || patientArchive.error,
+    loading,
+    error,
     pagination,
     stats,
 
     // Actions
     fetchAppointments,
-    archiveAppointment,
     cancelAppointment,
+    canCancelAppointment,
     loadMore: () => fetchAppointments({ loadMore: true }),
     refresh: () => fetchAppointments(),
-
-    // Archive data
-    archivedAppointments: patientArchive.archivedData.appointments,
-    unarchiveAppointment: patientArchive.unarchiveAppointment,
-    deleteArchivedAppointment: patientArchive.deleteAppointment,
 
     // Utilities
     isEmpty: appointments.length === 0,

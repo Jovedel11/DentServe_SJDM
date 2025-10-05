@@ -5,11 +5,12 @@ import {
   CheckCircle2,
   Activity,
   RefreshCw,
-  Wifi,
-  WifiOff,
   AlertTriangle,
   Plus,
+  Filter,
+  Stethoscope,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 // UI Components
 import Toast from "@/core/components/ui/toast";
@@ -19,6 +20,7 @@ import Loader from "@/core/components/Loader";
 // Specialized Components
 import StatsCard from "../components/upcomming/stats-card";
 import SearchBar from "../components/upcomming/search-bar";
+import FilterSection from "../components/upcomming/filter-section";
 import UrgentReminders from "../components/upcomming/urgent-reminders";
 import OngoingTreatments from "../components/upcomming/ongoing-treatments";
 import AppointmentCard from "../components/upcomming/appointment-card";
@@ -28,11 +30,14 @@ import TreatmentAlertBanner from "@/app/shared/components/treatment-alert-banner
 // Modals
 import CancelModal from "../components/upcomming/cancel-modal";
 import DetailsModal from "../components/upcomming/details-modal";
+import TreatmentDetailsModal from "../components/upcomming/treatment-details-modal";
 
 // Logic Hook
 import { useAppointmentManagement } from "../hook/useUpcommingAppointment";
 
 const UpcomingAppointments = () => {
+  const navigate = useNavigate();
+
   const {
     // Auth
     user,
@@ -50,13 +55,19 @@ const UpcomingAppointments = () => {
     loading: appointmentsLoading,
     error: appointmentsError,
 
-    // Search
+    // Search & Filters
     searchTerm,
     setSearchTerm,
+    statusFilter,
+    setStatusFilter,
+    bookingTypeFilter,
+    setBookingTypeFilter,
 
     // Modals
     selectedAppointment,
     setSelectedAppointment,
+    selectedTreatment,
+    setSelectedTreatment,
     cancelModal,
     setCancelModal,
 
@@ -72,6 +83,7 @@ const UpcomingAppointments = () => {
     handleCancelAppointment,
     confirmCancelAppointment,
     handleViewDetails,
+    handleViewTreatmentPlan,
     closeCancelModal,
   } = useAppointmentManagement();
 
@@ -130,7 +142,11 @@ const UpcomingAppointments = () => {
       const details = `
 APPOINTMENT DETAILS
 ==================
-Service: ${appointment.services?.map((s) => s.name).join(", ") || "N/A"}
+Booking Type: ${appointment.booking_type || "N/A"}
+Service: ${
+        appointment.services?.map((s) => s.name).join(", ") ||
+        "Consultation Only"
+      }
 Doctor: ${appointment.doctor?.name || "N/A"}
 Clinic: ${appointment.clinic?.name || "N/A"}
 Address: ${appointment.clinic?.address || "N/A"}
@@ -142,12 +158,15 @@ Duration: ${
           : "N/A"
       }
 Status: ${appointment.status}
+${appointment.symptoms ? `Symptoms: ${appointment.symptoms}` : ""}
 Notes: ${appointment.notes || "None"}
 
 CONTACT INFORMATION
 ==================
 Phone: ${appointment.clinic?.phone || "N/A"}
 Email: ${appointment.clinic?.email || "N/A"}
+
+Consultation Fee: ₱${appointment.consultation_fee_charged || 0}
     `;
 
       const blob = new Blob([details], { type: "text/plain" });
@@ -230,36 +249,26 @@ Email: ${appointment.clinic?.email || "N/A"}
   if (
     filteredAppointments.length === 0 &&
     ongoingTreatments.length === 0 &&
-    !appointmentsLoading
+    !appointmentsLoading &&
+    !searchTerm &&
+    statusFilter === "all" &&
+    bookingTypeFilter === "all"
   ) {
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-4xl mx-auto">
           <EmptyState
             icon={Calendar}
-            title={
-              searchTerm ? "No appointments found" : "No Upcoming Appointments"
-            }
-            description={
-              searchTerm
-                ? "Try adjusting your search terms to find what you're looking for."
-                : "You don't have any upcoming appointments scheduled. Book your next dental visit today."
-            }
+            title="No Upcoming Appointments"
+            description="You don't have any upcoming appointments scheduled. Book your next dental visit today."
             action={
-              <div className="flex items-center justify-center gap-4">
-                {searchTerm && (
-                  <button
-                    onClick={() => setSearchTerm("")}
-                    className="px-6 py-3 border border-border rounded-lg text-foreground hover:bg-muted transition-colors"
-                  >
-                    Clear Search
-                  </button>
-                )}
-                <button className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium">
-                  <Plus className="w-4 h-4" />
-                  Book New Appointment
-                </button>
-              </div>
+              <button
+                onClick={() => navigate("/patient/book-appointment")}
+                className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                Book New Appointment
+              </button>
             }
           />
         </div>
@@ -293,23 +302,6 @@ Email: ${appointment.clinic?.email || "N/A"}
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 rounded-lg">
-                {isConnected ? (
-                  <>
-                    <Wifi className="w-4 h-4 text-success" />
-                    <span className="text-sm font-medium text-success">
-                      Live Updates
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <WifiOff className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm font-medium text-muted-foreground">
-                      Offline
-                    </span>
-                  </>
-                )}
-              </div>
               <button
                 onClick={refresh}
                 disabled={appointmentsLoading}
@@ -332,9 +324,10 @@ Email: ${appointment.clinic?.email || "N/A"}
               value={stats.total}
               icon={<Calendar className="w-6 h-6 text-primary" />}
               color="primary"
+              trend={`${stats.urgentCount} urgent`}
             />
             <StatsCard
-              title="Pending"
+              title="Pending Approval"
               value={stats.pending}
               icon={<Clock className="w-6 h-6 text-warning" />}
               color="warning"
@@ -346,10 +339,37 @@ Email: ${appointment.clinic?.email || "N/A"}
               color="success"
             />
             <StatsCard
-              title="Ongoing Treatments"
+              title="Active Treatments"
               value={stats.ongoingTreatments}
               icon={<Activity className="w-6 h-6 text-accent" />}
               color="accent"
+              trend={
+                stats.overduetreatments > 0
+                  ? `${stats.overduetreatments} overdue`
+                  : "On track"
+              }
+            />
+          </div>
+
+          {/* Additional Stats Row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <StatsCard
+              title="Consultation Only"
+              value={stats.consultationOnly}
+              icon={<Stethoscope className="w-5 h-5 text-blue-600" />}
+              color="blue-600"
+            />
+            <StatsCard
+              title="With Treatment"
+              value={stats.withTreatment}
+              icon={<Activity className="w-5 h-5 text-purple-600" />}
+              color="purple-600"
+            />
+            <StatsCard
+              title="Treatment Follow-ups"
+              value={stats.treatmentPlanLinked}
+              icon={<Calendar className="w-5 h-5 text-green-600" />}
+              color="green-600"
             />
           </div>
 
@@ -359,6 +379,15 @@ Email: ${appointment.clinic?.email || "N/A"}
             onChange={setSearchTerm}
             onClear={() => setSearchTerm("")}
             placeholder="Search appointments, doctors, or clinics..."
+          />
+
+          {/* Filter Section */}
+          <FilterSection
+            statusFilter={statusFilter}
+            setStatusFilter={setStatusFilter}
+            bookingTypeFilter={bookingTypeFilter}
+            setBookingTypeFilter={setBookingTypeFilter}
+            stats={stats}
           />
         </div>
 
@@ -388,27 +417,63 @@ Email: ${appointment.clinic?.email || "N/A"}
           error={treatmentsError}
           formatDate={formatDate}
           formatTime={formatTime}
+          onViewDetails={handleViewTreatmentPlan}
         />
 
         {/* Appointments List */}
-        <div className="space-y-6">
-          {filteredAppointments.map((appointment) => {
-            const reminder = getReminderMessage(appointment);
+        {filteredAppointments.length > 0 ? (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
+              <Calendar className="w-6 h-6 text-primary" />
+              Your Appointments ({filteredAppointments.length})
+            </h2>
+            {filteredAppointments.map((appointment) => {
+              const reminder = getReminderMessage(appointment);
 
-            return (
-              <AppointmentCard
-                key={appointment.id}
-                appointment={appointment}
-                reminder={reminder}
-                onViewDetails={handleViewDetails}
-                onDownload={handleDownloadDetails}
-                onCancel={handleCancelAppointment}
-                formatDate={formatDate}
-                formatTime={formatTime}
-              />
-            );
-          })}
-        </div>
+              return (
+                <AppointmentCard
+                  key={appointment.id}
+                  appointment={appointment}
+                  reminder={reminder}
+                  onViewDetails={handleViewDetails}
+                  onDownload={handleDownloadDetails}
+                  onCancel={handleCancelAppointment}
+                  formatDate={formatDate}
+                  formatTime={formatTime}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <EmptyState
+              icon={Filter}
+              title="No appointments match your filters"
+              description="Try adjusting your search or filter criteria"
+              action={
+                <div className="flex gap-3 justify-center">
+                  <button
+                    onClick={() => {
+                      setSearchTerm("");
+                      setStatusFilter("all");
+                      setBookingTypeFilter("all");
+                    }}
+                    className="px-6 py-2 border border-border rounded-lg hover:bg-muted transition-colors"
+                  >
+                    Clear Filters
+                  </button>
+                  <button
+                    onClick={() => navigate("/patient/book-appointment")}
+                    className="flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Book New
+                  </button>
+                </div>
+              }
+            />
+          </div>
+        )}
 
         {/* Modals */}
         <CancelModal
@@ -429,6 +494,13 @@ Email: ${appointment.clinic?.email || "N/A"}
           appointment={selectedAppointment}
           onClose={() => setSelectedAppointment(null)}
           onDownload={handleDownloadDetails}
+          formatDate={formatDate}
+          formatTime={formatTime}
+        />
+
+        <TreatmentDetailsModal
+          treatment={selectedTreatment}
+          onClose={() => setSelectedTreatment(null)}
           formatDate={formatDate}
           formatTime={formatTime}
         />

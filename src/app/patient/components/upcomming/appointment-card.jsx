@@ -10,8 +10,13 @@ import {
   Eye,
   Download,
   X,
+  Stethoscope,
+  Activity,
+  AlertCircle,
+  DollarSign,
 } from "lucide-react";
 import StatusBadge from "./status-badge";
+import { Badge } from "@/core/components/ui/badge";
 
 const AppointmentCard = ({
   appointment,
@@ -22,21 +27,71 @@ const AppointmentCard = ({
   formatDate,
   formatTime,
 }) => {
+  // Get booking type config
+  const getBookingTypeConfig = (bookingType) => {
+    const configs = {
+      consultation_only: {
+        label: "Consultation Only",
+        color: "bg-blue-100 text-blue-700 border-blue-300",
+        icon: Stethoscope,
+      },
+      service_only: {
+        label: "Service Only",
+        color: "bg-green-100 text-green-700 border-green-300",
+        icon: Activity,
+      },
+      consultation_with_service: {
+        label: "Consultation + Service",
+        color: "bg-purple-100 text-purple-700 border-purple-300",
+        icon: Activity,
+      },
+      treatment_plan_follow_up: {
+        label: "Treatment Follow-up",
+        color: "bg-orange-100 text-orange-700 border-orange-300",
+        icon: Calendar,
+      },
+    };
+    return configs[bookingType] || configs.consultation_only;
+  };
+
+  const bookingConfig = getBookingTypeConfig(appointment.booking_type);
+  const BookingIcon = bookingConfig.icon;
+
+  const hasTreatmentPlan = appointment.treatment_plan != null;
+
   return (
     <div
       className={`bg-card rounded-xl border p-6 hover:shadow-lg transition-all duration-300 ${
         reminder.urgent ? "ring-2 ring-warning/50" : ""
       }`}
     >
+      {hasTreatmentPlan && (
+        <div className="text-xs text-muted-foreground">
+          <Activity className="w-3 h-3 inline mr-1" />
+          Treatment: {appointment.treatment_plan.treatment_name}
+          {appointment.treatment_plan.progress_percentage && (
+            <span className="ml-2">
+              ({appointment.treatment_plan.progress_percentage}% complete)
+            </span>
+          )}
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-3 mb-2 flex-wrap">
             <h3 className="text-xl font-bold text-foreground">
-              {appointment.services?.map((s) => s.name).join(", ") ||
-                "Appointment"}
+              {appointment.services && appointment.services.length > 0
+                ? appointment.services.map((s) => s.name).join(", ")
+                : "Consultation Appointment"}
             </h3>
             <StatusBadge status={appointment.status} urgent={reminder.urgent} />
+            <Badge
+              className={`${bookingConfig.color} border text-xs font-medium`}
+            >
+              <BookingIcon className="w-3 h-3 mr-1" />
+              {bookingConfig.label}
+            </Badge>
           </div>
           <p className="text-muted-foreground flex items-center gap-2">
             <Clock className="w-4 h-4" />
@@ -44,6 +99,21 @@ const AppointmentCard = ({
           </p>
         </div>
       </div>
+
+      {/* Symptoms Alert */}
+      {appointment.symptoms && (
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-900">
+                Reported Symptoms:
+              </p>
+              <p className="text-sm text-amber-800">{appointment.symptoms}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Details Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -109,6 +179,23 @@ const AppointmentCard = ({
           </div>
         </div>
       </div>
+
+      {/* Consultation Fee Info */}
+      {appointment.consultation_fee_charged != null && (
+        <div className="mb-4 p-3 bg-muted/50 rounded-lg border">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium text-foreground">
+                Consultation Fee:
+              </span>
+            </div>
+            <span className="font-bold text-foreground">
+              ₱{Number(appointment.consultation_fee_charged).toLocaleString()}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Notes */}
       {appointment.notes && (

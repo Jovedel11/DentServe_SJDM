@@ -77,25 +77,43 @@ const AppointmentHistory = () => {
     totalSpent,
     avgAppointmentCost,
 
+    completionRate,
+    totalPastAppointments,
+    cancelledCount,
+    noShowCount,
+
+    // ✅ NEW: Selection state from hook
+    hasSelection,
+    selectedCount,
+    selectedCompletedCount,
+    canBulkArchive,
+    selectedArchivableCount,
+
     // Actions from hook
     fetchAppointmentData,
     loadMoreAppointments,
     archiveAppointment,
+    bulkArchiveAppointments, // ✅ Bulk archive method
     unarchiveAppointment,
     deleteArchivedAppointment,
     downloadAppointmentDetails,
-    downloadAllReport,
     toggleArchiveView,
     setSearchQuery,
     setStatusFilter,
     setDateRange,
+
+    // ✅ NEW: Selection actions from hook
+    toggleSelectItem,
+    toggleSelectAll,
+    clearSelection,
+    isSelected,
 
     // Utilities from hook
     isEmpty: isEmptyList,
     hasMore: paginationHasMore,
   } = usePatientAppointmentHistory();
 
-  // LOCAL STATE for UI interactions
+  // ✅ LOCAL STATE for UI interactions
   const [expandedAppointment, setExpandedAppointment] = useState(null);
   const [deleteModal, setDeleteModal] = useState({
     isOpen: false,
@@ -111,6 +129,7 @@ const AppointmentHistory = () => {
     unarchiving: null,
     deleting: null,
     refreshing: false,
+    bulkArchiving: false, // ✅ FIXED: Added bulk archiving state
   });
 
   // Show toast helper
@@ -142,7 +161,7 @@ const AppointmentHistory = () => {
       if (result.success) {
         console.log("✅ UI: Archive successful");
         showToast("Appointment archived successfully");
-        setExpandedAppointment(null); // Collapse expanded view
+        setExpandedAppointment(null);
       } else {
         console.error("❌ UI: Archive failed:", result.error);
         showToast(result.error || "Failed to archive appointment", "error");
@@ -152,6 +171,39 @@ const AppointmentHistory = () => {
       showToast("Failed to archive appointment", "error");
     } finally {
       setActionLoading((prev) => ({ ...prev, archiving: null }));
+    }
+
+    return false;
+  };
+
+  // ✅ FIXED: Bulk archive handler with proper loading state
+  const handleBulkArchive = async (e) => {
+    preventDefaults(e);
+
+    if (!canBulkArchive || actionLoading.bulkArchiving) return false;
+
+    setActionLoading((prev) => ({ ...prev, bulkArchiving: true }));
+
+    try {
+      console.log("🔄 UI: Starting bulk archive");
+
+      const result = await bulkArchiveAppointments();
+
+      if (result.success) {
+        console.log("✅ UI: Bulk archive successful");
+        showToast(
+          `Successfully archived ${result.count} appointment(s)`,
+          "success"
+        );
+      } else {
+        console.error("❌ UI: Bulk archive failed:", result.error);
+        showToast(result.error || "Failed to archive appointments", "error");
+      }
+    } catch (err) {
+      console.error("❌ UI: Bulk archive error:", err);
+      showToast("Failed to archive appointments", "error");
+    } finally {
+      setActionLoading((prev) => ({ ...prev, bulkArchiving: false }));
     }
 
     return false;
@@ -229,7 +281,7 @@ const AppointmentHistory = () => {
     preventDefaults(e);
 
     console.log("🔄 UI: Toggling archive view");
-    setExpandedAppointment(null); // Collapse any expanded items
+    setExpandedAppointment(null);
     await toggleArchiveView();
     console.log("✅ UI: Archive view toggled");
 
@@ -248,6 +300,70 @@ const AppointmentHistory = () => {
     } catch (err) {
       console.error("Download error:", err);
       showToast("Failed to download appointment details", "error");
+    }
+
+    return false;
+  };
+
+  // Download all report
+  const handleDownloadAllReport = (e = null) => {
+    preventDefaults(e);
+
+    try {
+      // Generate comprehensive report
+      const reportData = `
+APPOINTMENT HISTORY REPORT
+==========================
+Generated: ${new Date().toLocaleString()}
+
+SUMMARY STATISTICS
+------------------
+Total Appointments: ${totalAppointments}
+Completed: ${completedAppointments}
+Archived: ${archivedCount}
+Health Score: ${healthScore}/100
+Improvement Trend: ${improvementTrend.toFixed(1)}%
+Consistency Rating: ${consistencyRating}%
+
+FINANCIAL SUMMARY
+-----------------
+Total Spent: ₱${totalSpent.toLocaleString()}
+Average per Visit: ₱${avgAppointmentCost.toFixed(2)}
+
+APPOINTMENTS
+------------
+${[...appointments, ...archivedAppointments]
+  .map(
+    (apt, idx) => `
+${idx + 1}. ${apt.type}
+   Date: ${new Date(apt.date).toLocaleDateString()}
+   Time: ${apt.time}
+   Status: ${apt.status}
+   Doctor: ${apt.doctor}
+   Clinic: ${apt.clinic}
+   Cost: ₱${apt.cost.toFixed(2)}
+   ${apt.isArchived ? "[ARCHIVED]" : ""}
+`
+  )
+  .join("\n")}
+      `.trim();
+
+      const blob = new Blob([reportData], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `appointment-history-${
+        new Date().toISOString().split("T")[0]
+      }.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast("Complete report downloaded");
+    } catch (err) {
+      console.error("Download report error:", err);
+      showToast("Failed to download report", "error");
     }
 
     return false;
@@ -289,7 +405,7 @@ const AppointmentHistory = () => {
     }
   };
 
-  // Chart data with proper error handling
+  // ✅ FIXED: Chart data with proper null handling
   const chartData = useMemo(() => {
     if (!totalAppointments) {
       return {
@@ -374,7 +490,7 @@ const AppointmentHistory = () => {
     }
   }, [appointments, archivedAppointments, totalAppointments]);
 
-  // ✅ UTILITY: Status styling helpers
+  // Status styling helpers
   const getStatusColor = (status) => {
     switch (status) {
       case "completed":
@@ -409,7 +525,7 @@ const AppointmentHistory = () => {
     }
   };
 
-  // ✅ ACCESS CONTROL: Check user permissions
+  // Access control
   if (!user || !isPatient) {
     return (
       <div className="min-h-screen p-6 bg-background flex items-center justify-center">
@@ -432,7 +548,7 @@ const AppointmentHistory = () => {
     );
   }
 
-  // ✅ ERROR STATE: Show error with retry
+  // Error state
   if (error) {
     return (
       <div className="min-h-screen p-6 bg-background flex items-center justify-center">
@@ -465,7 +581,7 @@ const AppointmentHistory = () => {
     );
   }
 
-  // ✅ LOADING STATE: Show skeleton
+  // Loading state
   if (loading && !appointments.length && !archivedAppointments.length) {
     return <Loader />;
   }
@@ -473,7 +589,7 @@ const AppointmentHistory = () => {
   return (
     <div className="min-h-screen p-6 bg-background">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* ✅ ENHANCED: Header Section with Better Controls */}
+        {/* Header Section */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -492,7 +608,14 @@ const AppointmentHistory = () => {
                     totalAppointments !== 1 ? "s" : ""
                   } and health progress`}
             </p>
-            {/* ✅ NEW: Show pagination info if relevant */}
+            {/* Selection info */}
+            {hasSelection && !showArchived && (
+              <p className="text-sm text-primary font-medium">
+                {selectedCount} selected ({selectedArchivableCount} can be
+                archived)
+              </p>
+            )}
+            {/* Pagination info */}
             {paginationHasMore && (
               <p className="text-xs text-muted-foreground">
                 Showing {filteredAppointments.length} of{" "}
@@ -502,6 +625,38 @@ const AppointmentHistory = () => {
           </div>
 
           <div className="flex items-center gap-3 flex-wrap">
+            {/* Bulk Actions - Only show when items are selected */}
+            {hasSelection && !showArchived && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleBulkArchive}
+                  disabled={!canBulkArchive || actionLoading.bulkArchiving}
+                  className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={
+                    canBulkArchive
+                      ? "Archive selected"
+                      : "Only completed appointments can be archived"
+                  }
+                >
+                  {actionLoading.bulkArchiving ? (
+                    <FiLoader className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <FiArchive className="w-4 h-4" />
+                  )}
+                  Archive Selected ({selectedArchivableCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="flex items-center gap-2 px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors text-sm"
+                >
+                  <FiX className="w-4 h-4" />
+                  Clear
+                </button>
+              </>
+            )}
+
             {/* Refresh Button */}
             <button
               type="button"
@@ -546,12 +701,7 @@ const AppointmentHistory = () => {
             {/* Download Button */}
             <button
               type="button"
-              onClick={(e) => {
-                preventDefaults(e);
-                downloadAllReport();
-                showToast("Complete report downloaded");
-                return false;
-              }}
+              onClick={handleDownloadAllReport}
               className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-lg hover:bg-secondary/80 transition-colors"
             >
               <FiDownload className="w-4 h-4" />
@@ -560,7 +710,7 @@ const AppointmentHistory = () => {
           </div>
         </motion.div>
 
-        {/* ✅ ENHANCED: Analytics Cards - Only for Active View */}
+        {/* Analytics Cards - Only for Active View */}
         {!showArchived && (
           <motion.div
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
@@ -643,18 +793,18 @@ const AppointmentHistory = () => {
               </div>
               <div className="space-y-1">
                 <h3 className="text-2xl font-bold text-foreground">
-                  ₱{totalSpent.toLocaleString()}
+                  {completionRate.toFixed(1)}%
                 </h3>
-                <p className="text-sm text-muted-foreground">Total Spent</p>
+                <p className="text-sm text-muted-foreground">Completion Rate</p>
                 <p className="text-xs text-muted-foreground">
-                  ₱{avgAppointmentCost.toFixed(0)} avg per visit
+                  {completedAppointments} of {totalPastAppointments} attended
                 </p>
               </div>
             </div>
           </motion.div>
         )}
 
-        {/* ✅ ENHANCED: Charts Section - Only for Active View with Data */}
+        {/* Charts Section - Only for Active View with Data */}
         {!showArchived && chartData.healthTrendData.length > 0 && (
           <motion.div
             className="grid grid-cols-1 lg:grid-cols-2 gap-6"
@@ -763,7 +913,7 @@ const AppointmentHistory = () => {
           </motion.div>
         )}
 
-        {/* ✅ ENHANCED: Filters and Search Section */}
+        {/* Filters and Search Section */}
         <motion.div
           className="bg-card border border-border rounded-lg p-6"
           initial={{ opacity: 0, y: 20 }}
@@ -840,12 +990,43 @@ const AppointmentHistory = () => {
             </div>
           </div>
 
-          {/* ✅ ENHANCED: Appointments List */}
+          {/* Appointments List */}
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-foreground">
-                {showArchived ? "Archived" : "Active"} Appointments
-              </h3>
+              <div className="flex items-center gap-4">
+                <h3 className="text-lg font-semibold text-foreground">
+                  {showArchived ? "Archived" : "Active"} Appointments
+                </h3>
+                {/* Select All Checkbox - Only for active completed appointments */}
+                {!showArchived && canArchiveCount > 0 && (
+                  <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={
+                        filteredAppointments
+                          .filter((apt) =>
+                            ["completed", "cancelled", "no_show"].includes(
+                              apt.status
+                            )
+                          )
+                          .every((apt) => isSelected(apt.id)) &&
+                        canArchiveCount > 0
+                      }
+                      onChange={() =>
+                        toggleSelectAll(
+                          filteredAppointments.filter((apt) =>
+                            ["completed", "cancelled", "no_show"].includes(
+                              apt.status
+                            )
+                          )
+                        )
+                      }
+                      className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+                    />
+                    Select All Archivable
+                  </label>
+                )}
+              </div>
               <span className="text-sm text-muted-foreground">
                 {filteredAppointments.length} of{" "}
                 {showArchived ? archivedCount : activeAppointments} records
@@ -909,10 +1090,26 @@ const AppointmentHistory = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: Math.min(index * 0.05, 0.5) }}
                   >
-                    {/* ✅ ENHANCED: Appointment Header */}
+                    {/* Appointment Header */}
                     <div className="p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4 flex-1 min-w-0">
+                          {/* ✅ FIXED: Checkbox for bulk selection - All archivable statuses */}
+                          {!showArchived &&
+                            ["completed", "cancelled", "no_show"].includes(
+                              appointment.status
+                            ) && (
+                              <input
+                                type="checkbox"
+                                checked={isSelected(appointment.id)}
+                                onChange={() =>
+                                  toggleSelectItem(appointment.id)
+                                }
+                                className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary flex-shrink-0 cursor-pointer"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            )}
+
                           {/* Status Badge */}
                           <div
                             className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
@@ -965,7 +1162,7 @@ const AppointmentHistory = () => {
                           </div>
                         </div>
 
-                        {/* ✅ ENHANCED: Action Buttons */}
+                        {/* Action Buttons */}
                         <div className="flex items-center gap-1 flex-shrink-0">
                           {/* Download Button */}
                           <button
@@ -978,7 +1175,9 @@ const AppointmentHistory = () => {
 
                           {/* Archive Button - Active view only for completed appointments */}
                           {!showArchived &&
-                            appointment.status === "completed" && (
+                            ["completed", "cancelled", "no_show"].includes(
+                              appointment.status
+                            ) && (
                               <button
                                 onClick={(e) =>
                                   handleArchive(appointment.id, e)
@@ -1062,7 +1261,7 @@ const AppointmentHistory = () => {
                       </div>
                     </div>
 
-                    {/* ✅ ENHANCED: Expanded Details */}
+                    {/* Expanded Details */}
                     <AnimatePresence>
                       {expandedAppointment === appointment.id && (
                         <motion.div
@@ -1073,7 +1272,7 @@ const AppointmentHistory = () => {
                           transition={{ duration: 0.2 }}
                         >
                           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {/* ✅ Treatments Section */}
+                            {/* Treatments Section */}
                             <div>
                               <h5 className="font-medium text-foreground mb-3 flex items-center gap-2">
                                 <FiActivity className="w-4 h-4" />
@@ -1118,7 +1317,7 @@ const AppointmentHistory = () => {
                               </div>
                             </div>
 
-                            {/* ✅ Clinic Details Section */}
+                            {/* Clinic Details Section */}
                             <div>
                               <h5 className="font-medium text-foreground mb-3 flex items-center gap-2">
                                 <FiMapPin className="w-4 h-4" />
@@ -1177,7 +1376,7 @@ const AppointmentHistory = () => {
                               </div>
                             </div>
 
-                            {/* ✅ Notes & Details Section */}
+                            {/* Notes & Details Section */}
                             <div>
                               <h5 className="font-medium text-foreground mb-3 flex items-center gap-2">
                                 <FiFileText className="w-4 h-4" />
@@ -1266,7 +1465,7 @@ const AppointmentHistory = () => {
                             </div>
                           </div>
 
-                          {/* ✅ Quick Actions in Expanded View */}
+                          {/* Quick Actions in Expanded View */}
                           <div className="mt-6 pt-4 border-t border-border">
                             <div className="flex flex-wrap gap-2">
                               <button
@@ -1278,7 +1477,9 @@ const AppointmentHistory = () => {
                               </button>
 
                               {!showArchived &&
-                                appointment.status === "completed" && (
+                                ["completed", "cancelled", "no_show"].includes(
+                                  appointment.status
+                                ) && (
                                   <button
                                     onClick={(e) =>
                                       handleArchive(appointment.id, e)
@@ -1345,7 +1546,7 @@ const AppointmentHistory = () => {
                   </motion.div>
                 ))}
 
-                {/* ✅ ENHANCED: Load More Button */}
+                {/* Load More Button */}
                 {paginationHasMore && !showArchived && (
                   <motion.div
                     className="flex justify-center pt-6"
@@ -1377,7 +1578,7 @@ const AppointmentHistory = () => {
         </motion.div>
       </div>
 
-      {/* ✅ ENHANCED: Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal */}
       <AnimatePresence>
         <DeleteConfirmationModal
           isOpen={deleteModal.isOpen}
@@ -1388,7 +1589,7 @@ const AppointmentHistory = () => {
         />
       </AnimatePresence>
 
-      {/* ✅ ENHANCED: Toast Notifications */}
+      {/* Toast Notifications */}
       <AnimatePresence>
         {toast.show && (
           <Toast

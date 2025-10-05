@@ -8,6 +8,7 @@ export const usePatientAppointmentHistory = () => {
   
   const {
     archiveAppointment: archiveAppointmentItem,
+    archiveMultipleAppointments,
     unarchiveItem,
     hideItem,
     listArchived,
@@ -26,6 +27,7 @@ export const usePatientAppointmentHistory = () => {
     statusFilter: 'all',
     dateRange: 'all',
     showArchived: false,
+    selectedItems: [],
     pagination: {
       limit: 50,
       offset: 0,
@@ -33,6 +35,36 @@ export const usePatientAppointmentHistory = () => {
       hasMore: false
     }
   });
+
+  const ARCHIVABLE_STATUSES = ['completed', 'cancelled', 'no_show'];
+
+    const toggleSelectItem = useCallback((appointmentId) => {
+    setState(prev => {
+      const isSelected = prev.selectedItems.includes(appointmentId);
+      return {
+        ...prev,
+        selectedItems: isSelected
+          ? prev.selectedItems.filter(id => id !== appointmentId)
+          : [...prev.selectedItems, appointmentId]
+      };
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback((appointments) => {
+    setState(prev => {
+      const allIds = appointments.map(apt => apt.id);
+      const allSelected = allIds.every(id => prev.selectedItems.includes(id));
+      
+      return {
+        ...prev,
+        selectedItems: allSelected ? [] : allIds
+      };
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => {
+    setState(prev => ({ ...prev, selectedItems: [] }));
+  }, []);
 
   //Fetch appointments with
   const fetchAppointmentData = useCallback(async (forceRefresh = false, loadMore = false) => {
@@ -268,14 +300,16 @@ export const usePatientAppointmentHistory = () => {
         return { success: false, error: 'Appointment not found' };
       }
 
-      if (appointment.status !== 'completed') {
-        console.error('❌ Appointment not completed:', appointment.status);
-        return { success: false, error: 'Only completed appointments can be archived' };
+      if (!ARCHIVABLE_STATUSES.includes(appointment.status)) {
+        console.error('❌ Appointment cannot be archived:', appointment.status);
+        return { 
+          success: false, 
+          error: `Only ${ARCHIVABLE_STATUSES.join(', ')} appointments can be archived` 
+        };
       }
 
       console.log('🗃️ Archiving appointment:', appointment);
       
-      // ✅ FIXED: Use the correct archive method
       const result = await archiveAppointmentItem(appointmentId);
       
       console.log('🗃️ Archive result:', result);
@@ -283,7 +317,12 @@ export const usePatientAppointmentHistory = () => {
       if (result && result.success) {
         console.log('✅ Archive successful, refreshing data...');
         
-        // ✅ FIXED: Force refresh to get updated archive status
+        // Clear selection if this item was selected
+        setState(prev => ({
+          ...prev,
+          selectedItems: prev.selectedItems.filter(id => id !== appointmentId)
+        }));
+        
         const refreshResult = await fetchAppointmentData(true);
         
         console.log('🔄 Refresh result:', refreshResult);
@@ -302,6 +341,76 @@ export const usePatientAppointmentHistory = () => {
       return { success: false, error: err.message || 'Failed to archive appointment' };
     }
   }, [state.appointments, archiveAppointmentItem, fetchAppointmentData]);
+
+  const bulkArchiveAppointments = useCallback(async (appointmentIds = null) => {
+    try {
+      // ✅ FIXED: Use selectedItems if no IDs provided
+      const idsToArchive = appointmentIds || state.selectedItems;
+      
+      console.log('🔄 Starting bulk archive for appointments:', idsToArchive);
+      
+      if (!idsToArchive || idsToArchive.length === 0) {
+        return { 
+          success: false, 
+          error: 'No appointments selected for archiving' 
+        };
+      }
+      
+      // ✅ FIXED: Validate all appointments are archivable and belong to user
+      const appointmentsToArchive = state.appointments.filter(apt => 
+        idsToArchive.includes(apt.id) && ARCHIVABLE_STATUSES.includes(apt.status)
+      );
+
+      if (appointmentsToArchive.length === 0) {
+        return { 
+          success: false, 
+          error: `No archivable appointments selected. Only ${ARCHIVABLE_STATUSES.join(', ')} appointments can be archived.` 
+        };
+      }
+
+      if (appointmentsToArchive.length !== idsToArchive.length) {
+        const invalidCount = idsToArchive.length - appointmentsToArchive.length;
+        console.warn(`⚠️ ${invalidCount} appointment(s) cannot be archived (not in archivable status)`);
+      }
+
+      console.log(`🗃️ Archiving ${appointmentsToArchive.length} appointments...`);
+      
+      // Call bulk archive function
+      const result = await archiveMultipleAppointments(
+        appointmentsToArchive.map(apt => apt.id)
+      );
+      
+      console.log('🗃️ Bulk archive result:', result);
+      
+      if (result && result.success) {
+        console.log('✅ Bulk archive successful, refreshing data...');
+        
+        // Clear all selections
+        clearSelection();
+        
+        // Refresh data
+        const refreshResult = await fetchAppointmentData(true);
+        
+        console.log('🔄 Refresh result:', refreshResult);
+        
+        return { 
+          success: true, 
+          message: `Successfully archived ${appointmentsToArchive.length} appointment(s)`,
+          count: appointmentsToArchive.length
+        };
+      }
+      
+      console.error('❌ Bulk archive failed:', result);
+      return result || { success: false, error: 'Bulk archive operation failed' };
+
+    } catch (err) {
+      console.error('❌ Bulk archive error:', err);
+      return { 
+        success: false, 
+        error: err.message || 'Failed to archive appointments' 
+      };
+    }
+  }, [state.appointments, state.selectedItems, archiveMultipleAppointments, clearSelection, fetchAppointmentData]);
 
   // ✅ FIXED: Unarchive appointment
   const unarchiveAppointment = useCallback(async (appointmentId) => {
@@ -471,6 +580,19 @@ export const usePatientAppointmentHistory = () => {
     // Calculate analytics from all appointments
     const allAppointments = [...state.appointments, ...state.archivedAppointments];
     const completedAppointments = allAppointments.filter(apt => apt.status === 'completed');
+    const cancelledAppointments = allAppointments.filter(apt => apt.status === 'cancelled');
+    const noShowAppointments = allAppointments.filter(apt => apt.status === 'no_show');
+    
+    // ✅ FIXED: Selection stats based on archivable statuses
+    const selectedCount = state.selectedItems.length;
+    const selectedArchivableCount = state.appointments.filter(apt => 
+      state.selectedItems.includes(apt.id) && ARCHIVABLE_STATUSES.includes(apt.status)
+    ).length;
+
+    const totalPastAppointments = completedAppointments.length + cancelledAppointments.length + noShowAppointments.length;
+    const completionRate = totalPastAppointments > 0 
+      ? (completedAppointments.length / totalPastAppointments) * 100 
+      : 0;
     
     return {
       filteredAppointments,
@@ -478,18 +600,23 @@ export const usePatientAppointmentHistory = () => {
       activeAppointments: state.appointments.length,
       completedAppointments: completedAppointments.length,
       archivedCount: state.archivedAppointments.length,
-      canArchiveCount: state.appointments.filter(apt => apt.status === 'completed').length,
+      // ✅ FIXED: Count all archivable appointments
+      canArchiveCount: state.appointments.filter(apt => ARCHIVABLE_STATUSES.includes(apt.status)).length,
       pendingCount: state.appointments.filter(apt => apt.status === 'pending').length,
       confirmedCount: state.appointments.filter(apt => apt.status === 'confirmed').length,
-      cancelledCount: state.appointments.filter(apt => apt.status === 'cancelled').length,
+      cancelledCount: cancelledAppointments.length,
+      noShowCount: noShowAppointments.length,
       healthScore: state.healthAnalytics?.health_score || 0,
       improvementTrend: state.healthAnalytics?.improvement_trend || 0,
       consistencyRating: state.healthAnalytics?.consistency_rating || 0,
-      // Financial data
-      totalSpent: completedAppointments.reduce((sum, apt) => sum + (apt.cost || 0), 0),
-      avgAppointmentCost: completedAppointments.length > 0 
-        ? completedAppointments.reduce((sum, apt) => sum + (apt.cost || 0), 0) / completedAppointments.length 
-        : 0
+      // ✅ FIXED: Replace total spent with completion rate
+      completionRate: completionRate,
+      totalPastAppointments: totalPastAppointments,
+      // ✅ FIXED: Selection data based on archivable count
+      selectedCount,
+      selectedArchivableCount,
+      hasSelection: selectedCount > 0,
+      canBulkArchive: selectedArchivableCount > 0
     };
   }, [state]);
 
@@ -510,11 +637,18 @@ export const usePatientAppointmentHistory = () => {
     fetchAppointmentData,
     loadMoreAppointments,
     archiveAppointment,
+    bulkArchiveAppointments, // ✅ NEW
     unarchiveAppointment,
     deleteArchivedAppointment,
     downloadAppointmentDetails,
     updateState,
     toggleArchiveView,
+    
+    // ✅ NEW: Selection actions
+    toggleSelectItem,
+    toggleSelectAll,
+    clearSelection,
+    isSelected: (id) => state.selectedItems.includes(id),
     
     // Filter actions
     setSearchQuery: (query) => updateState({ searchQuery: query }),
@@ -523,7 +657,7 @@ export const usePatientAppointmentHistory = () => {
     
     // Utilities
     isEmpty: computedData.filteredAppointments.length === 0,
-    hasUnread: false, // Not applicable for appointments
+    hasUnread: false,
     hasMore: state.pagination.hasMore
   };
 };
