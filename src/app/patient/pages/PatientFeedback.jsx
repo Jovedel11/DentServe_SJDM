@@ -12,86 +12,12 @@ import {
   FiEye,
   FiEyeOff,
   FiAward,
-  FiArchive,
-  FiTrash2,
-  FiAlertTriangle,
-  FiRotateCcw,
-  FiFolder,
-  FiDownload,
   FiUser,
   FiActivity,
 } from "react-icons/fi";
-import { FaBuilding } from "react-icons/fa";
+import { FaBuilding, FaUserMd } from "react-icons/fa";
 import { useAuth } from "@/auth/context/AuthProvider";
-import { usePatientFeedback } from "@/core/hooks/usePatientFeedback";
-
-// ✅ DELETE CONFIRMATION MODAL
-const DeleteConfirmationModal = ({
-  isOpen,
-  onClose,
-  onConfirm,
-  feedbackDetails,
-}) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="fixed inset-0 bg-black/20 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="relative bg-card border border-border rounded-lg shadow-lg max-w-md w-full mx-4 p-6"
-      >
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 bg-red-100 rounded-full dark:bg-red-900/20">
-            <FiAlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400" />
-          </div>
-          <h3 className="text-lg font-semibold text-foreground">
-            Delete Feedback
-          </h3>
-        </div>
-
-        <div className="mb-6">
-          <p className="text-muted-foreground mb-4">
-            Are you sure you want to permanently delete this feedback? This
-            action cannot be undone.
-          </p>
-
-          <div className="bg-muted/50 rounded-lg p-3 text-sm">
-            <div className="font-medium text-foreground">
-              {feedbackDetails?.rating}/5 stars •{" "}
-              {feedbackDetails?.clinic?.name}
-            </div>
-            <div className="text-muted-foreground">
-              {new Date(feedbackDetails?.created_at).toLocaleDateString()} •{" "}
-              {feedbackDetails?.doctor?.name}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-3 justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
-          >
-            <FiTrash2 className="w-4 h-4" />
-            Delete Permanently
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
-};
+import { usePatientFeedback } from "@/hooks/feedback/usePatientFeedback";
 
 const PatientFeedback = () => {
   const { user, profile, isPatient } = useAuth();
@@ -101,16 +27,14 @@ const PatientFeedback = () => {
     error,
     availableClinics,
     feedbackHistory,
-    archivedFeedback,
     selectedClinic,
     selectedDoctor,
     selectedAppointment,
     feedbackForm,
-    showArchived,
     totalFeedback,
-    activeFeedback,
-    archivedCount,
     averageRating,
+    averageClinicRating,
+    averageDoctorRating,
     canSubmitFeedback,
     formProgress,
     doctorsForSelectedClinic,
@@ -118,78 +42,64 @@ const PatientFeedback = () => {
 
     // Actions
     handleSubmitFeedback,
-    archiveFeedback,
-    unarchiveFeedback,
-    deleteArchivedFeedback,
-    downloadFeedbackDetails,
     updateFeedbackForm,
     selectClinic,
     selectDoctor,
     selectAppointment,
-    toggleArchiveView,
     resetForm,
   } = usePatientFeedback();
 
   const [activeTab, setActiveTab] = useState("new");
-  const [hoverRating, setHoverRating] = useState(0);
-  const [deleteModal, setDeleteModal] = useState({
-    isOpen: false,
-    feedback: null,
-  });
+  const [hoverClinicRating, setHoverClinicRating] = useState(0);
+  const [hoverDoctorRating, setHoverDoctorRating] = useState(0);
 
   // ✅ HANDLERS
-  const handleArchive = async (feedbackId) => {
-    const result = await archiveFeedback(feedbackId);
-    if (result.success) {
-      console.log("Archived successfully");
+  const handleRatingClick = (type, rating) => {
+    if (type === "clinic") {
+      updateFeedbackForm({ clinic_rating: rating });
     } else {
-      console.error("Archive failed:", result.error);
+      updateFeedbackForm({ doctor_rating: rating });
     }
-  };
-
-  const handleUnarchive = async (feedbackId) => {
-    const result = await unarchiveFeedback(feedbackId);
-    if (result.success) {
-      console.log("Unarchived successfully");
-    } else {
-      console.error("Unarchive failed:", result.error);
-    }
-  };
-
-  const handleDeleteClick = (feedback) => {
-    setDeleteModal({ isOpen: true, feedback });
-  };
-
-  const handleDeleteConfirm = async () => {
-    if (!deleteModal.feedback) return;
-
-    const result = await deleteArchivedFeedback(deleteModal.feedback.id);
-    if (result.success) {
-      console.log("Deleted successfully");
-    } else {
-      console.error("Delete failed:", result.error);
-    }
-
-    setDeleteModal({ isOpen: false, feedback: null });
-  };
-
-  const handleRatingClick = (rating) => {
-    updateFeedbackForm({ rating });
   };
 
   const handleSubmitForm = async (e) => {
     e.preventDefault();
+
+    console.log("📤 Submitting feedback form...", {
+      clinic: selectedClinic?.name,
+      doctor: selectedDoctor?.name,
+      appointment: selectedAppointment?.id,
+      hasAlreadySubmitted: selectedAppointment?.hasFeedback,
+    });
+
     const result = await handleSubmitFeedback();
 
     if (result.success) {
+      console.log("✅ Feedback submitted successfully!");
       setActiveTab("history");
-      console.log("✅ Feedback submitted and staff notified");
+
+      // ✅ Visual feedback
+      setTimeout(() => {
+        alert(
+          "✅ Feedback submitted successfully! The clinic staff will be notified.\n\n" +
+            "The clinic has been removed from your available list since you've reviewed all appointments there."
+        );
+      }, 100);
     } else {
       console.error("❌ Feedback submission failed:", result.error);
+      alert(`❌ Error: ${result.error}`);
     }
   };
 
-  const renderStars = (rating, interactive = false, size = "normal") => {
+  // ✅ DUAL STAR RATING RENDERER
+  const renderStars = (
+    rating,
+    interactive = false,
+    size = "normal",
+    onHover,
+    onLeave,
+    onClick
+  ) => {
     const sizeClasses = {
       large: "w-8 h-8",
       normal: "w-5 h-5",
@@ -198,9 +108,7 @@ const PatientFeedback = () => {
 
     return [...Array(5)].map((_, index) => {
       const starValue = index + 1;
-      const isActive =
-        starValue <=
-        (interactive ? hoverRating || feedbackForm.rating : rating);
+      const isActive = starValue <= rating;
 
       return (
         <FiStar
@@ -214,11 +122,9 @@ const PatientFeedback = () => {
               ? "cursor-pointer hover:text-yellow-300 hover:scale-110"
               : ""
           }`}
-          onClick={interactive ? () => handleRatingClick(starValue) : undefined}
-          onMouseEnter={
-            interactive ? () => setHoverRating(starValue) : undefined
-          }
-          onMouseLeave={interactive ? () => setHoverRating(0) : undefined}
+          onClick={interactive ? () => onClick(starValue) : undefined}
+          onMouseEnter={interactive ? () => onHover(starValue) : undefined}
+          onMouseLeave={interactive ? () => onLeave(0) : undefined}
         />
       );
     });
@@ -226,7 +132,7 @@ const PatientFeedback = () => {
 
   const getRatingText = (rating) => {
     const texts = {
-      0: "Select your rating",
+      0: "Not rated yet",
       1: "Poor",
       2: "Fair",
       3: "Good",
@@ -288,8 +194,6 @@ const PatientFeedback = () => {
     );
   }
 
-  const currentList = showArchived ? archivedFeedback : feedbackHistory;
-
   return (
     <div className="min-h-screen bg-background p-6 md:p-8">
       <div className="max-w-6xl mx-auto">
@@ -330,9 +234,7 @@ const PatientFeedback = () => {
                 {totalFeedback}
               </h3>
               <p className="text-sm text-muted-foreground">Total Reviews</p>
-              <p className="text-xs text-muted-foreground">
-                {activeFeedback} active
-              </p>
+              <p className="text-xs text-muted-foreground">All time feedback</p>
             </div>
           </div>
 
@@ -346,7 +248,7 @@ const PatientFeedback = () => {
               <h3 className="text-2xl font-bold text-foreground">
                 {averageRating}
               </h3>
-              <p className="text-sm text-muted-foreground">Average Rating</p>
+              <p className="text-sm text-muted-foreground">Overall Average</p>
               <div className="flex items-center">
                 {renderStars(
                   Math.round(parseFloat(averageRating)),
@@ -360,35 +262,47 @@ const PatientFeedback = () => {
           <div className="bg-card border border-border rounded-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="p-2 bg-purple-100 rounded-lg dark:bg-purple-900/20">
-                <FiFolder className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                <FaBuilding className="w-5 h-5 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
             <div className="space-y-1">
               <h3 className="text-2xl font-bold text-foreground">
-                {archivedCount}
+                {averageClinicRating}
               </h3>
-              <p className="text-sm text-muted-foreground">Archived Reviews</p>
-              <p className="text-xs text-muted-foreground">Personal archive</p>
+              <p className="text-sm text-muted-foreground">Clinic Average</p>
+              <div className="flex items-center">
+                {renderStars(
+                  Math.round(parseFloat(averageClinicRating)),
+                  false,
+                  "small"
+                )}
+              </div>
             </div>
           </div>
 
           <div className="bg-card border border-border rounded-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <div className="p-2 bg-green-100 rounded-lg dark:bg-green-900/20">
-                <FiActivity className="w-5 h-5 text-green-600 dark:text-green-400" />
+                <FaUserMd className="w-5 h-5 text-green-600 dark:text-green-400" />
               </div>
             </div>
             <div className="space-y-1">
               <h3 className="text-2xl font-bold text-foreground">
-                {availableClinics.length}
+                {averageDoctorRating}
               </h3>
-              <p className="text-sm text-muted-foreground">Clinics Visited</p>
-              <p className="text-xs text-muted-foreground">Can review</p>
+              <p className="text-sm text-muted-foreground">Doctor Average</p>
+              <div className="flex items-center">
+                {renderStars(
+                  Math.round(parseFloat(averageDoctorRating)),
+                  false,
+                  "small"
+                )}
+              </div>
             </div>
           </div>
         </motion.div>
 
-        {/* Enhanced Tabs with Archive Toggle */}
+        {/* Tabs */}
         <motion.div
           className="mb-8"
           initial={{ opacity: 0, y: -10 }}
@@ -418,7 +332,7 @@ const PatientFeedback = () => {
                   onClick={() => setActiveTab("history")}
                 >
                   <FiCheckCircle className="w-4 h-4" />
-                  <span>{showArchived ? "Archived" : "My Reviews"}</span>
+                  <span>My Reviews</span>
                   <span
                     className={`px-2 py-1 text-xs font-bold rounded-full ${
                       activeTab === "history"
@@ -426,33 +340,9 @@ const PatientFeedback = () => {
                         : "bg-primary/10 text-primary"
                     }`}
                   >
-                    {showArchived ? archivedCount : activeFeedback}
+                    {totalFeedback}
                   </span>
                 </button>
-
-                {/* Archive Toggle - Only show in history tab */}
-                {activeTab === "history" && (
-                  <button
-                    onClick={toggleArchiveView}
-                    className={`flex items-center space-x-2 px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
-                      showArchived
-                        ? "bg-secondary text-secondary-foreground"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    }`}
-                  >
-                    {showArchived ? (
-                      <>
-                        <FiEye className="w-4 h-4" />
-                        <span>Active</span>
-                      </>
-                    ) : (
-                      <>
-                        <FiArchive className="w-4 h-4" />
-                        <span>Archive ({archivedCount})</span>
-                      </>
-                    )}
-                  </button>
-                )}
               </div>
             </div>
           </div>
@@ -467,7 +357,7 @@ const PatientFeedback = () => {
           transition={{ delay: 0.1 }}
         >
           {activeTab === "new" ? (
-            // ✅ NEW FEEDBACK FORM
+            // ✅ NEW FEEDBACK FORM WITH DUAL RATINGS
             <div className="max-w-4xl mx-auto">
               <div className="bg-card border border-border rounded-2xl shadow-xl overflow-hidden">
                 {/* Progress Bar */}
@@ -506,47 +396,93 @@ const PatientFeedback = () => {
                       </p>
 
                       <div className="ml-11 grid gap-4 md:grid-cols-2">
-                        {availableClinics.map((clinic) => (
-                          <div
-                            key={clinic.id}
-                            className={`border rounded-xl p-4 cursor-pointer transition-all duration-200 ${
-                              selectedClinic?.id === clinic.id
-                                ? "border-primary bg-primary/5 shadow-md"
-                                : "border-border hover:border-primary/50 hover:bg-muted/30"
-                            }`}
-                            onClick={() => selectClinic(clinic)}
-                          >
-                            <div className="flex items-start space-x-4">
-                              <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center">
-                                <FaBuilding className="w-8 h-8 text-muted-foreground" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <h3 className="font-semibold text-foreground text-base mb-1">
-                                  {clinic.name}
-                                </h3>
-                                <div className="flex items-center text-xs text-muted-foreground mb-2">
-                                  <FiMapPin className="w-3 h-3 mr-1" />
-                                  {clinic.address}
+                        <div className="ml-11 grid gap-4 md:grid-cols-2">
+                          {availableClinics.map((clinic) => (
+                            <div
+                              key={clinic.id}
+                              className={`border rounded-xl p-4 cursor-pointer transition-all duration-200 ${
+                                selectedClinic?.id === clinic.id
+                                  ? "border-primary bg-primary/5 shadow-md"
+                                  : "border-border hover:border-primary/50 hover:bg-muted/30"
+                              }`}
+                              onClick={() => selectClinic(clinic)}
+                            >
+                              <div className="flex items-start space-x-4">
+                                <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center">
+                                  <FaBuilding className="w-8 h-8 text-muted-foreground" />
                                 </div>
-                                <div className="flex items-center justify-between text-xs">
-                                  <span className="text-primary font-medium">
-                                    {clinic.totalAppointments} completed visits
-                                  </span>
-                                  <span className="text-muted-foreground">
-                                    {clinic.doctors?.length || 0} doctors
-                                  </span>
+                                <div className="flex-1 min-w-0">
+                                  <h3 className="font-semibold text-foreground text-base mb-1">
+                                    {clinic.name}
+                                  </h3>
+                                  <div className="flex items-center text-xs text-muted-foreground mb-2">
+                                    <FiMapPin className="w-3 h-3 mr-1" />
+                                    <span className="truncate">
+                                      {clinic.address}
+                                    </span>
+                                  </div>
+
+                                  {/* ✅ ENHANCED: Detailed feedback status */}
+                                  <div className="flex items-center justify-between text-xs">
+                                    <div className="flex flex-col gap-1">
+                                      <span className="text-primary font-medium">
+                                        {clinic.availableAppointments === 1
+                                          ? "1 appointment to review"
+                                          : `${clinic.availableAppointments} appointments to review`}
+                                      </span>
+                                      <span className="text-muted-foreground text-[10px]">
+                                        {clinic.reviewedAppointments} already
+                                        reviewed • {clinic.totalAppointments}{" "}
+                                        total visits
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1">
+                                      <div className="flex items-center">
+                                        {renderStars(
+                                          clinic.rating || 0,
+                                          false,
+                                          "small"
+                                        )}
+                                      </div>
+                                      <span className="text-[10px] text-muted-foreground">
+                                        {clinic.total_reviews} reviews
+                                      </span>
+                                    </div>
+                                  </div>
                                 </div>
+                                <input
+                                  type="radio"
+                                  name="clinic"
+                                  checked={selectedClinic?.id === clinic.id}
+                                  onChange={() => {}}
+                                  className="w-5 h-5 text-primary mt-2 flex-shrink-0"
+                                />
                               </div>
-                              <input
-                                type="radio"
-                                name="clinic"
-                                checked={selectedClinic?.id === clinic.id}
-                                onChange={() => {}}
-                                className="w-5 h-5 text-primary mt-2"
-                              />
                             </div>
-                          </div>
-                        ))}
+                          ))}
+
+                          {/* No clinics available message */}
+                          {availableClinics.length === 0 && (
+                            <div className="col-span-full text-center py-12">
+                              <div className="bg-green-50 dark:bg-green-900/10 border-2 border-green-200 dark:border-green-800 rounded-xl p-8 max-w-md mx-auto">
+                                <div className="w-16 h-16 bg-green-100 dark:bg-green-900/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                  <FiCheckCircle className="w-8 h-8 text-green-600 dark:text-green-400" />
+                                </div>
+                                <h3 className="text-xl font-semibold text-foreground mb-2">
+                                  All Caught Up! 🎉
+                                </h3>
+                                <p className="text-muted-foreground mb-1">
+                                  You've reviewed all your completed
+                                  appointments.
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  Visit the "Review History" tab to see your
+                                  past feedback.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -566,8 +502,7 @@ const PatientFeedback = () => {
                           </label>
                         </div>
                         <p className="text-sm text-muted-foreground ml-11">
-                          Choose the doctor you want to provide feedback for at{" "}
-                          {selectedClinic.name}
+                          Choose the doctor you want to provide feedback for
                         </p>
 
                         <div className="ml-11 space-y-3">
@@ -583,7 +518,7 @@ const PatientFeedback = () => {
                             >
                               <div className="flex items-start space-x-4">
                                 <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-                                  <FiUser className="w-6 h-6 text-muted-foreground" />
+                                  <FaUserMd className="w-6 h-6 text-muted-foreground" />
                                 </div>
                                 <div className="flex-1">
                                   <h3 className="font-semibold text-foreground text-base">
@@ -592,9 +527,17 @@ const PatientFeedback = () => {
                                   <p className="text-sm text-primary mb-2">
                                     {doctor.specialization}
                                   </p>
-                                  <div className="text-sm text-muted-foreground">
-                                    {doctor.appointments?.length || 0} completed
-                                    appointments
+                                  <div className="flex items-center space-x-4 text-sm">
+                                    <span className="text-muted-foreground">
+                                      {doctor.availableAppointments} can review
+                                    </span>
+                                    <div className="flex items-center">
+                                      {renderStars(
+                                        doctor.rating || 0,
+                                        false,
+                                        "small"
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                                 <input
@@ -607,6 +550,18 @@ const PatientFeedback = () => {
                               </div>
                             </div>
                           ))}
+
+                          {doctorsForSelectedClinic.length === 0 && (
+                            <div className="text-center py-6 text-muted-foreground">
+                              <p>
+                                No doctors available for feedback at this
+                                clinic.
+                              </p>
+                              <p className="text-sm mt-2">
+                                All appointments have been reviewed.
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </motion.div>
                     )}
@@ -631,23 +586,36 @@ const PatientFeedback = () => {
                         </p>
 
                         <div className="ml-11 space-y-3">
-                          {selectedDoctor.appointments?.map((appointment) => (
+                          {appointmentsForSelectedDoctor.map((appointment) => (
                             <div
                               key={appointment.id}
-                              className={`border rounded-xl p-4 cursor-pointer transition-all duration-200 ${
-                                selectedAppointment?.id === appointment.id
-                                  ? "border-primary bg-primary/5 shadow-md"
-                                  : "border-border hover:border-primary/50 hover:bg-muted/30"
+                              className={`border rounded-xl p-4 transition-all duration-200 ${
+                                appointment.hasFeedback
+                                  ? "border-green-200 bg-green-50 dark:bg-green-900/10 dark:border-green-800 opacity-60 cursor-not-allowed"
+                                  : selectedAppointment?.id === appointment.id
+                                  ? "border-primary bg-primary/5 shadow-md cursor-pointer"
+                                  : "border-border hover:border-primary/50 hover:bg-muted/30 cursor-pointer"
                               }`}
-                              onClick={() => selectAppointment(appointment)}
+                              onClick={() =>
+                                !appointment.hasFeedback &&
+                                selectAppointment(appointment)
+                              }
                             >
                               <div className="flex items-center justify-between">
-                                <div>
-                                  <h4 className="font-medium text-foreground">
-                                    {appointment.services
-                                      ?.map((s) => s.name || s)
-                                      .join(", ") || "General Appointment"}
-                                  </h4>
+                                <div className="flex-1">
+                                  <div className="flex items-center space-x-2">
+                                    <h4 className="font-medium text-foreground">
+                                      {appointment.services
+                                        ?.map((s) => s.name || s)
+                                        .join(", ") || "General Appointment"}
+                                    </h4>
+                                    {appointment.hasFeedback && (
+                                      <span className="inline-flex items-center px-2 py-1 bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-full text-xs font-medium">
+                                        <FiCheckCircle className="w-3 h-3 mr-1" />
+                                        Reviewed
+                                      </span>
+                                    )}
+                                  </div>
                                   <div className="flex items-center space-x-4 mt-2 text-sm text-muted-foreground">
                                     <div className="flex items-center">
                                       <FiCalendar className="w-4 h-4 mr-1" />
@@ -661,26 +629,38 @@ const PatientFeedback = () => {
                                     </div>
                                   </div>
                                 </div>
-                                <input
-                                  type="radio"
-                                  name="appointment"
-                                  checked={
-                                    selectedAppointment?.id === appointment.id
-                                  }
-                                  onChange={() => {}}
-                                  className="w-5 h-5 text-primary"
-                                />
+                                {!appointment.hasFeedback && (
+                                  <input
+                                    type="radio"
+                                    name="appointment"
+                                    checked={
+                                      selectedAppointment?.id === appointment.id
+                                    }
+                                    onChange={() => {}}
+                                    className="w-5 h-5 text-primary"
+                                  />
+                                )}
                               </div>
                             </div>
                           ))}
+
+                          {appointmentsForSelectedDoctor.length === 0 && (
+                            <div className="text-center py-6 text-muted-foreground">
+                              <p>No appointments available for feedback.</p>
+                              <p className="text-sm mt-2">
+                                All appointments with this doctor have been
+                                reviewed.
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </motion.div>
                     )}
 
-                    {/* Step 4: Rating */}
+                    {/* Step 4: DUAL RATINGS - Clinic & Doctor */}
                     {selectedAppointment && (
                       <motion.div
-                        className="space-y-4"
+                        className="space-y-6"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                       >
@@ -689,43 +669,120 @@ const PatientFeedback = () => {
                             4
                           </div>
                           <label className="text-lg font-semibold text-foreground">
-                            Overall Rating
+                            Rate Your Experience
                           </label>
                         </div>
                         <p className="text-sm text-muted-foreground ml-11">
-                          Rate your overall experience with{" "}
-                          {selectedDoctor?.name}
+                          Rate both the clinic and doctor separately (optional
+                          but recommended)
                         </p>
 
-                        <div className="ml-11">
-                          <div className="bg-muted/30 border border-border rounded-xl p-6">
+                        <div className="ml-11 space-y-6">
+                          {/* Clinic Rating */}
+                          <div className="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 rounded-xl p-6">
+                            <div className="flex items-center space-x-3 mb-4">
+                              <FaBuilding className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                              <h4 className="font-semibold text-foreground">
+                                Clinic Experience
+                              </h4>
+                            </div>
+                            <p className="text-sm text-muted-foreground mb-4">
+                              Rate the overall clinic experience (facility,
+                              staff, wait time, cleanliness)
+                            </p>
                             <div className="text-center space-y-4">
                               <div className="flex items-center justify-center space-x-2">
                                 {renderStars(
-                                  feedbackForm.rating,
+                                  hoverClinicRating ||
+                                    feedbackForm.clinic_rating,
                                   true,
-                                  "large"
+                                  "large",
+                                  setHoverClinicRating,
+                                  setHoverClinicRating,
+                                  (rating) =>
+                                    handleRatingClick("clinic", rating)
                                 )}
                               </div>
                               <p className="text-lg font-medium text-foreground">
-                                {getRatingText(feedbackForm.rating)}
+                                {getRatingText(
+                                  hoverClinicRating ||
+                                    feedbackForm.clinic_rating
+                                )}
                               </p>
-                              {feedbackForm.rating > 0 && (
-                                <div className="inline-flex items-center px-4 py-2 bg-primary/10 rounded-full">
-                                  <FiAward className="w-4 h-4 text-primary mr-2" />
-                                  <span className="text-sm font-medium text-primary">
-                                    {feedbackForm.rating}/5 Stars
+                              {feedbackForm.clinic_rating > 0 && (
+                                <div className="inline-flex items-center px-4 py-2 bg-purple-100 dark:bg-purple-900/20 rounded-full">
+                                  <FiAward className="w-4 h-4 text-purple-600 dark:text-purple-400 mr-2" />
+                                  <span className="text-sm font-medium text-purple-600 dark:text-purple-400">
+                                    Clinic: {feedbackForm.clinic_rating}/5 Stars
                                   </span>
                                 </div>
                               )}
                             </div>
                           </div>
+
+                          {/* Doctor Rating */}
+                          {selectedDoctor && (
+                            <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-xl p-6">
+                              <div className="flex items-center space-x-3 mb-4">
+                                <FaUserMd className="w-5 h-5 text-green-600 dark:text-green-400" />
+                                <h4 className="font-semibold text-foreground">
+                                  Doctor Performance
+                                </h4>
+                              </div>
+                              <p className="text-sm text-muted-foreground mb-4">
+                                Rate {selectedDoctor.name}'s care
+                                (professionalism, treatment quality,
+                                communication)
+                              </p>
+                              <div className="text-center space-y-4">
+                                <div className="flex items-center justify-center space-x-2">
+                                  {renderStars(
+                                    hoverDoctorRating ||
+                                      feedbackForm.doctor_rating,
+                                    true,
+                                    "large",
+                                    setHoverDoctorRating,
+                                    setHoverDoctorRating,
+                                    (rating) =>
+                                      handleRatingClick("doctor", rating)
+                                  )}
+                                </div>
+                                <p className="text-lg font-medium text-foreground">
+                                  {getRatingText(
+                                    hoverDoctorRating ||
+                                      feedbackForm.doctor_rating
+                                  )}
+                                </p>
+                                {feedbackForm.doctor_rating > 0 && (
+                                  <div className="inline-flex items-center px-4 py-2 bg-green-100 dark:bg-green-900/20 rounded-full">
+                                    <FiAward className="w-4 h-4 text-green-600 dark:text-green-400 mr-2" />
+                                    <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                                      Doctor: {feedbackForm.doctor_rating}/5
+                                      Stars
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Validation Message */}
+                          {!feedbackForm.clinic_rating &&
+                            !feedbackForm.doctor_rating && (
+                              <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 text-center">
+                                <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                                  ⚠️ Please provide at least one rating (clinic
+                                  or doctor) to continue
+                                </p>
+                              </div>
+                            )}
                         </div>
                       </motion.div>
                     )}
 
-                    {/* Step 5: Message */}
-                    {feedbackForm.rating > 0 && (
+                    {/* Step 5: Comment */}
+                    {(feedbackForm.clinic_rating > 0 ||
+                      feedbackForm.doctor_rating > 0) && (
                       <motion.div
                         className="space-y-4"
                         initial={{ opacity: 0, y: 20 }}
@@ -751,25 +808,77 @@ const PatientFeedback = () => {
                                 comment: e.target.value,
                               })
                             }
-                            placeholder="Tell us about your experience with the doctor, staff, and clinic. What did you like? What could be improved?"
-                            className="w-full px-4 py-3 border border-border rounded-xl bg-background text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                            placeholder="Tell us about your experience with the doctor, staff, and clinic. What did you like? What could be improved? (Minimum 10 characters)"
+                            className={`w-full px-4 py-3 border rounded-xl bg-background text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:ring-2 transition-colors ${
+                              feedbackForm.comment.trim().length > 0 &&
+                              feedbackForm.comment.trim().length < 10
+                                ? "border-red-500 focus:ring-red-500/20 focus:border-red-500"
+                                : "border-border focus:ring-primary/20 focus:border-primary"
+                            }`}
                             rows="6"
                             maxLength="1000"
                             required
                           />
-                          <div className="flex justify-between items-center text-xs text-muted-foreground">
-                            <span>
-                              Be specific and constructive in your feedback
-                            </span>
+                          <div className="flex justify-between items-center text-xs">
+                            <div className="flex items-center space-x-2">
+                              {feedbackForm.comment.trim().length === 0 ? (
+                                <span className="text-muted-foreground">
+                                  ℹ️ Please enter at least 10 characters
+                                </span>
+                              ) : feedbackForm.comment.trim().length < 10 ? (
+                                <span className="text-red-600 dark:text-red-400 font-medium">
+                                  ⚠️ {10 - feedbackForm.comment.trim().length}{" "}
+                                  more character
+                                  {10 - feedbackForm.comment.trim().length !== 1
+                                    ? "s"
+                                    : ""}{" "}
+                                  required
+                                </span>
+                              ) : (
+                                <span className="text-green-600 dark:text-green-400 font-medium">
+                                  ✓ Minimum requirement met
+                                </span>
+                              )}
+                            </div>
                             <span
                               className={
                                 feedbackForm.comment.length > 900
-                                  ? "text-warning"
-                                  : ""
+                                  ? "text-orange-600 dark:text-orange-400 font-medium"
+                                  : "text-muted-foreground"
                               }
                             >
-                              {feedbackForm.comment.length}/1000{" "}
+                              {feedbackForm.comment.length}/1000
                             </span>
+                          </div>
+
+                          {/* Feedback Type */}
+                          <div className="bg-muted/30 border border-border rounded-xl p-4">
+                            <label className="block text-sm font-medium text-foreground mb-3">
+                              Feedback Category
+                            </label>
+                            <div className="grid grid-cols-2 gap-3">
+                              {["general", "doctor", "service", "facility"].map(
+                                (type) => (
+                                  <button
+                                    key={type}
+                                    type="button"
+                                    onClick={() =>
+                                      updateFeedbackForm({
+                                        feedback_type: type,
+                                      })
+                                    }
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                      feedbackForm.feedback_type === type
+                                        ? "bg-primary text-primary-foreground"
+                                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                    }`}
+                                  >
+                                    {type.charAt(0).toUpperCase() +
+                                      type.slice(1)}
+                                  </button>
+                                )
+                              )}
+                            </div>
                           </div>
 
                           {/* Privacy Settings */}
@@ -812,8 +921,6 @@ const PatientFeedback = () => {
                               </div>
                             </div>
                           </div>
-
-                          {/* Recommend Toggle */}
                         </div>
                       </motion.div>
                     )}
@@ -844,40 +951,36 @@ const PatientFeedback = () => {
               </div>
             </div>
           ) : (
-            // ✅ FEEDBACK HISTORY WITH ARCHIVE FUNCTIONALITY
+            // ✅ FEEDBACK HISTORY WITH DUAL RATINGS DISPLAY
             <div className="max-w-5xl mx-auto space-y-6">
               <div className="flex justify-between items-center">
                 <h3 className="text-lg font-semibold text-foreground">
-                  {showArchived ? "Archived" : "Active"} Reviews (
-                  {currentList.length} records)
+                  Your Reviews ({feedbackHistory.length} records)
                 </h3>
               </div>
 
-              {currentList.length === 0 ? (
+              {feedbackHistory.length === 0 ? (
                 <div className="text-center py-16">
                   <div className="bg-muted/20 rounded-full p-6 w-24 h-24 mx-auto mb-6">
                     <FiMessageSquare className="w-12 h-12 text-muted-foreground mx-auto" />
                   </div>
                   <h3 className="text-2xl font-semibold text-foreground mb-3">
-                    {showArchived ? "No Archived Reviews" : "No Reviews Yet"}
+                    No Reviews Yet
                   </h3>
                   <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-                    {showArchived
-                      ? "Reviews you archive will appear here"
-                      : "You haven't submitted any feedback yet. Share your experience to help us improve!"}
+                    You haven't submitted any feedback yet. Share your
+                    experience to help us improve!
                   </p>
-                  {!showArchived && (
-                    <button
-                      className="inline-flex items-center space-x-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors"
-                      onClick={() => setActiveTab("new")}
-                    >
-                      <FiSend className="w-4 h-4" />
-                      <span>Write Your First Review</span>
-                    </button>
-                  )}
+                  <button
+                    className="inline-flex items-center space-x-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors"
+                    onClick={() => setActiveTab("new")}
+                  >
+                    <FiSend className="w-4 h-4" />
+                    <span>Write Your First Review</span>
+                  </button>
                 </div>
               ) : (
-                currentList.map((review, index) => (
+                feedbackHistory.map((review, index) => (
                   <motion.div
                     key={review.id}
                     className="bg-card border border-border rounded-2xl shadow-lg overflow-hidden"
@@ -890,45 +993,48 @@ const PatientFeedback = () => {
                       <div className="flex items-start justify-between">
                         <div className="flex items-start space-x-4">
                           <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
-                            <FiUser className="w-6 h-6 text-muted-foreground" />
+                            {review.doctor ? (
+                              <FaUserMd className="w-6 h-6 text-muted-foreground" />
+                            ) : (
+                              <FaBuilding className="w-6 h-6 text-muted-foreground" />
+                            )}
                           </div>
                           <div>
                             <h3 className="font-semibold text-foreground text-lg">
-                              {review.appointment.services
+                              {review.appointment?.services
                                 ?.map((s) => s.name || s)
-                                .join(", ") || "General Appointment"}
+                                .join(", ") || review.clinic.name}
                             </h3>
-                            <div className="flex items-center space-x-2 text-primary">
-                              <span className="font-medium">
-                                {review.doctor?.name}
-                              </span>
-                              <span className="text-muted-foreground">•</span>
-                              <span className="text-sm text-muted-foreground">
-                                {review.doctor?.specialization}
-                              </span>
-                            </div>
+                            {review.doctor && (
+                              <div className="flex items-center space-x-2 text-primary">
+                                <span className="font-medium">
+                                  {review.doctor.name}
+                                </span>
+                                <span className="text-muted-foreground">•</span>
+                                <span className="text-sm text-muted-foreground">
+                                  {review.doctor.specialization}
+                                </span>
+                              </div>
+                            )}
                             <div className="flex items-center space-x-4 mt-2 text-sm text-muted-foreground">
                               <div className="flex items-center">
                                 <FaBuilding className="w-4 h-4 mr-1" />
                                 {review.clinic.name}
                               </div>
-                              <div className="flex items-center">
-                                <FiCalendar className="w-4 h-4 mr-1" />
-                                {new Date(
-                                  review.appointment.date
-                                ).toLocaleDateString()}
-                              </div>
-                              // ✅ CONTINUING FROM WHERE IT WAS CUT OFF...
-                              <div className="flex items-center">
-                                <FiCalendar className="w-4 h-4 mr-1" />
-                                {new Date(
-                                  review.appointment.date
-                                ).toLocaleDateString()}
-                              </div>
-                              <div className="flex items-center">
-                                <FiClock className="w-4 h-4 mr-1" />
-                                {review.appointment.time}
-                              </div>
+                              {review.appointment && (
+                                <>
+                                  <div className="flex items-center">
+                                    <FiCalendar className="w-4 h-4 mr-1" />
+                                    {new Date(
+                                      review.appointment.date
+                                    ).toLocaleDateString()}
+                                  </div>
+                                  <div className="flex items-center">
+                                    <FiClock className="w-4 h-4 mr-1" />
+                                    {review.appointment.time}
+                                  </div>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -946,81 +1052,94 @@ const PatientFeedback = () => {
                               <span>Public</span>
                             </div>
                           )}
-
-                          {/* Archive Status */}
-                          {showArchived && (
-                            <div className="inline-flex items-center space-x-2 px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-sm font-medium dark:bg-orange-900/20 dark:text-orange-400">
-                              <FiArchive className="w-4 h-4" />
-                              <span>Archived</span>
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>
 
                     {/* Review Content */}
                     <div className="p-6 space-y-4">
-                      {/* Rating and Date */}
-                      <div className="flex items-center justify-between">
+                      {/* DUAL RATINGS DISPLAY */}
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {/* Clinic Rating */}
+                        {review.clinic_rating && (
+                          <div className="bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center space-x-2">
+                                <FaBuilding className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                                <span className="text-sm font-medium text-foreground">
+                                  Clinic Experience
+                                </span>
+                              </div>
+                              <span className="font-bold text-purple-600 dark:text-purple-400">
+                                {review.clinic_rating}/5
+                              </span>
+                            </div>
+                            <div className="flex items-center">
+                              {renderStars(
+                                review.clinic_rating,
+                                false,
+                                "small"
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Doctor Rating */}
+                        {review.doctor_rating && (
+                          <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center space-x-2">
+                                <FaUserMd className="w-4 h-4 text-green-600 dark:text-green-400" />
+                                <span className="text-sm font-medium text-foreground">
+                                  Doctor Performance
+                                </span>
+                              </div>
+                              <span className="font-bold text-green-600 dark:text-green-400">
+                                {review.doctor_rating}/5
+                              </span>
+                            </div>
+                            <div className="flex items-center">
+                              {renderStars(
+                                review.doctor_rating,
+                                false,
+                                "small"
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Overall Rating (Legacy) */}
+                      <div className="flex items-center justify-between text-sm">
                         <div className="flex items-center space-x-3">
+                          <span className="text-muted-foreground">
+                            Overall:
+                          </span>
                           <div className="flex items-center space-x-1">
-                            {renderStars(review.rating, false, "normal")}
+                            {renderStars(review.rating, false, "small")}
                           </div>
                           <span className="font-medium text-foreground">
-                            {review.rating}/5 Stars
-                          </span>
-                          <span className="text-muted-foreground">
-                            {getRatingText(review.rating)}
+                            {review.rating}/5 • {getRatingText(review.rating)}
                           </span>
                         </div>
-                        <div className="text-sm text-muted-foreground">
-                          Submitted{" "}
+                        <div className="text-muted-foreground">
                           {new Date(review.created_at).toLocaleDateString()}
                         </div>
                       </div>
 
-                      {/* Review Message */}
-                      <div className="bg-muted/20 rounded-xl p-4">
-                        <p className="text-foreground leading-relaxed">
-                          {review.message}
-                        </p>
+                      {/* Feedback Type Badge */}
+                      <div className="inline-flex items-center px-3 py-1 bg-muted rounded-full text-xs font-medium">
+                        <span className="capitalize">
+                          {review.feedback_type} Feedback
+                        </span>
                       </div>
 
-                      {/* Recommendation */}
-                      {review.recommend_to_others !== null && (
-                        <div className="flex items-center space-x-2">
-                          {review.recommend_to_others ? (
-                            <div className="inline-flex items-center space-x-2 px-3 py-1 bg-green-50 text-green-700 rounded-full text-sm font-medium dark:bg-green-900/20 dark:text-green-400">
-                              <FiThumbsUp className="w-4 h-4" />
-                              <span>Recommends this clinic</span>
-                            </div>
-                          ) : (
-                            <div className="inline-flex items-center space-x-2 px-3 py-1 bg-red-50 text-red-700 rounded-full text-sm font-medium dark:bg-red-900/20 dark:text-red-400">
-                              <span>Does not recommend</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Feedback Categories */}
-                      {review.feedback_categories &&
-                        review.feedback_categories.length > 0 && (
-                          <div className="flex flex-wrap gap-2">
-                            <span className="text-sm text-muted-foreground">
-                              Categories:
-                            </span>
-                            {review.feedback_categories.map((category, idx) => (
-                              <span
-                                key={idx}
-                                className="px-2 py-1 bg-primary/10 text-primary rounded-md text-xs font-medium"
-                              >
-                                {category
-                                  .replace("_", " ")
-                                  .replace(/\b\w/g, (l) => l.toUpperCase())}
-                              </span>
-                            ))}
-                          </div>
-                        )}
+                      {/* Review Comment */}
+                      <div className="bg-muted/20 rounded-xl p-4">
+                        <p className="text-foreground leading-relaxed">
+                          {review.comment}
+                        </p>
+                      </div>
 
                       {/* Clinic Response */}
                       {review.clinic_response && (
@@ -1030,8 +1149,15 @@ const PatientFeedback = () => {
                               <FaBuilding className="w-4 h-4 text-primary" />
                             </div>
                             <div className="flex-1">
-                              <div className="font-medium text-primary mb-2">
-                                Response from {review.clinic.name}
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="font-medium text-primary">
+                                  Response from {review.clinic.name}
+                                </div>
+                                {review.responder_name && (
+                                  <span className="text-xs text-muted-foreground">
+                                    by {review.responder_name}
+                                  </span>
+                                )}
                               </div>
                               <p className="text-foreground leading-relaxed">
                                 {review.clinic_response}
@@ -1049,50 +1175,24 @@ const PatientFeedback = () => {
                         </div>
                       )}
 
-                      {/* Action Buttons */}
-                      <div className="flex items-center justify-between pt-4 border-t border-border">
-                        <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                          <FiMessageSquare className="w-4 h-4" />
-                          <span>Review ID: {review.id}</span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {/* Download Button */}
-                          <button
-                            onClick={() => downloadFeedbackDetails(review)}
-                            className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-                            title="Download feedback details"
-                          >
-                            <FiDownload className="w-4 h-4" />
-                          </button>
-
-                          {/* Archive/Unarchive Button */}
-                          {!showArchived ? (
-                            <button
-                              onClick={() => handleArchive(review.id)}
-                              className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-                              title="Archive feedback"
-                            >
-                              <FiArchive className="w-4 h-4" />
-                            </button>
-                          ) : (
-                            <>
-                              <button
-                                onClick={() => handleUnarchive(review.id)}
-                                className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors dark:text-blue-400 dark:hover:bg-blue-900/20"
-                                title="Unarchive feedback"
-                              >
-                                <FiRotateCcw className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteClick(review)}
-                                className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors dark:text-red-400 dark:hover:bg-red-900/20"
-                                title="Delete permanently"
-                              >
-                                <FiTrash2 className="w-4 h-4" />
-                              </button>
-                            </>
-                          )}
+                      {/* Current Ratings Info */}
+                      <div className="pt-4 border-t border-border">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <div className="flex items-center space-x-4">
+                            {review.clinic.current_rating > 0 && (
+                              <span>
+                                Clinic now: {review.clinic.current_rating}⭐ (
+                                {review.clinic.total_reviews} reviews)
+                              </span>
+                            )}
+                            {review.doctor?.current_rating > 0 && (
+                              <span>
+                                Doctor now: {review.doctor.current_rating}⭐ (
+                                {review.doctor.total_reviews} reviews)
+                              </span>
+                            )}
+                          </div>
+                          <span>Review ID: {review.id.slice(0, 8)}...</span>
                         </div>
                       </div>
                     </div>
@@ -1103,16 +1203,6 @@ const PatientFeedback = () => {
           )}
         </motion.div>
       </div>
-
-      {/* Delete Confirmation Modal */}
-      <AnimatePresence>
-        <DeleteConfirmationModal
-          isOpen={deleteModal.isOpen}
-          onClose={() => setDeleteModal({ isOpen: false, feedback: null })}
-          onConfirm={handleDeleteConfirm}
-          feedbackDetails={deleteModal.feedback}
-        />
-      </AnimatePresence>
     </div>
   );
 };

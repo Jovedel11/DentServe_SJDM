@@ -7,7 +7,7 @@ create type "public"."appointment_status" as enum ('pending', 'confirmed', 'comp
 
 create type "public"."feedback_type" as enum ('general', 'service', 'doctor', 'facility');
 
-create type "public"."notification_type" as enum ('appointment_reminder', 'appointment_confirmed', 'appointment_cancelled', 'feedback_request', 'partnership_request');
+create type "public"."notification_type" as enum ('appointment_reminder', 'appointment_confirmed', 'appointment_cancelled', 'feedback_request', 'partnership_request', 'feedback_response');
 
 create type "public"."partnership_status" as enum ('pending', 'approved', 'rejected');
 
@@ -273,7 +273,9 @@ create table "public"."feedback" (
     "response" text,
     "responded_by" uuid,
     "responded_at" timestamp with time zone,
-    "created_at" timestamp with time zone default now()
+    "created_at" timestamp with time zone default now(),
+    "clinic_rating" integer,
+    "doctor_rating" integer
 );
 
 
@@ -741,9 +743,15 @@ CREATE INDEX idx_feedback_clinic_created_rating ON public.feedback USING btree (
 
 CREATE INDEX idx_feedback_clinic_id ON public.feedback USING btree (clinic_id);
 
+CREATE INDEX idx_feedback_clinic_rating_new ON public.feedback USING btree (clinic_id, clinic_rating, created_at DESC) WHERE (clinic_rating IS NOT NULL);
+
 CREATE INDEX idx_feedback_clinic_rating_public ON public.feedback USING btree (clinic_id, rating, is_public, created_at DESC) WHERE (rating IS NOT NULL);
 
 CREATE INDEX idx_feedback_comprehensive ON public.feedback USING btree (clinic_id, patient_id, created_at DESC, rating) WHERE (rating IS NOT NULL);
+
+CREATE INDEX idx_feedback_doctor_rating ON public.feedback USING btree (doctor_id, doctor_rating, created_at DESC) WHERE (doctor_rating IS NOT NULL);
+
+CREATE INDEX idx_feedback_dual_ratings ON public.feedback USING btree (clinic_id, doctor_id, clinic_rating, doctor_rating, created_at DESC) WHERE ((clinic_rating IS NOT NULL) OR (doctor_rating IS NOT NULL));
 
 CREATE INDEX idx_feedback_patient_created ON public.feedback USING btree (patient_id, created_at DESC) WHERE (patient_id IS NOT NULL);
 
@@ -1107,6 +1115,14 @@ alter table "public"."email_communications" add constraint "email_communications
 
 alter table "public"."email_communications" validate constraint "email_communications_to_user_id_fkey";
 
+alter table "public"."feedback" add constraint "check_at_least_one_rating" CHECK (((clinic_rating IS NOT NULL) OR (doctor_rating IS NOT NULL) OR (rating IS NOT NULL))) not valid;
+
+alter table "public"."feedback" validate constraint "check_at_least_one_rating";
+
+alter table "public"."feedback" add constraint "check_doctor_rating_requires_doctor" CHECK (((doctor_rating IS NULL) OR (doctor_id IS NOT NULL))) not valid;
+
+alter table "public"."feedback" validate constraint "check_doctor_rating_requires_doctor";
+
 alter table "public"."feedback" add constraint "feedback_appointment_id_fkey" FOREIGN KEY (appointment_id) REFERENCES appointments(id) ON DELETE SET NULL not valid;
 
 alter table "public"."feedback" validate constraint "feedback_appointment_id_fkey";
@@ -1115,9 +1131,17 @@ alter table "public"."feedback" add constraint "feedback_clinic_id_fkey" FOREIGN
 
 alter table "public"."feedback" validate constraint "feedback_clinic_id_fkey";
 
+alter table "public"."feedback" add constraint "feedback_clinic_rating_check" CHECK (((clinic_rating >= 1) AND (clinic_rating <= 5))) not valid;
+
+alter table "public"."feedback" validate constraint "feedback_clinic_rating_check";
+
 alter table "public"."feedback" add constraint "feedback_doctor_id_fkey" FOREIGN KEY (doctor_id) REFERENCES doctors(id) ON DELETE SET NULL not valid;
 
 alter table "public"."feedback" validate constraint "feedback_doctor_id_fkey";
+
+alter table "public"."feedback" add constraint "feedback_doctor_rating_check" CHECK (((doctor_rating >= 1) AND (doctor_rating <= 5))) not valid;
+
+alter table "public"."feedback" validate constraint "feedback_doctor_rating_check";
 
 alter table "public"."feedback" add constraint "feedback_patient_id_fkey" FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE not valid;
 
@@ -1704,22 +1728,12 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.book_appointment(
-    p_clinic_id uuid, 
-    p_doctor_id uuid, 
-    p_appointment_date date, 
-    p_appointment_time time without time zone, 
-    p_service_ids uuid[] DEFAULT NULL::uuid[], 
-    p_symptoms text DEFAULT NULL::text, 
-    p_treatment_plan_id uuid DEFAULT NULL::uuid,
-    p_skip_consultation boolean DEFAULT false
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_catalog', 'extensions'
-AS $function$
-DECLARE
+CREATE OR REPLACE FUNCTION public.book_appointment(p_clinic_id uuid, p_doctor_id uuid, p_appointment_date date, p_appointment_time time without time zone, p_service_ids uuid[] DEFAULT NULL::uuid[], p_symptoms text DEFAULT NULL::text, p_treatment_plan_id uuid DEFAULT NULL::uuid, p_skip_consultation boolean DEFAULT false)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_catalog', 'extensions'
+AS $function$DECLARE
     current_context JSONB;
     patient_id_val UUID;
     user_email VARCHAR(255);
@@ -1802,44 +1816,44 @@ BEGIN
     END IF;
 
     -- ✅ Determine if consultation-only or with services
-IF p_service_ids IS NULL OR array_length(p_service_ids, 1) IS NULL OR array_length(p_service_ids, 1) = 0 THEN
-    is_consultation_only := true;
-    booking_type_val := 'consultation_only'::appointment_booking_type;
-ELSIF p_treatment_plan_id IS NOT NULL THEN
-    booking_type_val := 'treatment_plan_follow_up'::appointment_booking_type;
-ELSE
+    IF p_service_ids IS NULL OR array_length(p_service_ids, 1) IS NULL OR array_length(p_service_ids, 1) = 0 THEN
+        is_consultation_only := true;
+        booking_type_val := 'consultation_only'::appointment_booking_type;
+    ELSIF p_treatment_plan_id IS NOT NULL THEN
+        booking_type_val := 'treatment_plan_follow_up'::appointment_booking_type;
+    ELSE
         -- ✅ Check skip consultation
-    DECLARE
-        srv RECORD;
-        can_skip_consultation BOOLEAN := true;
+        DECLARE
+            srv RECORD;
+            can_skip_consultation BOOLEAN := true;
             any_service_requires_consultation BOOLEAN := false;
-        last_consultation_date DATE;
-    BEGIN
-        SELECT MAX(a.appointment_date) INTO last_consultation_date
-        FROM appointments a
-        WHERE a.patient_id = patient_id_val
-          AND a.clinic_id = p_clinic_id
-          AND a.status = 'completed'
-          AND (
-              a.booking_type IN ('consultation_only','consultation_with_service')
-              OR a.appointment_type IN ('consultation_only','consultation_with_service')
-          );
+            last_consultation_date DATE;
+        BEGIN
+            SELECT MAX(a.appointment_date) INTO last_consultation_date
+            FROM appointments a
+            WHERE a.patient_id = patient_id_val
+              AND a.clinic_id = p_clinic_id
+              AND a.status = 'completed'
+              AND (
+                  a.booking_type IN ('consultation_only','consultation_with_service')
+                  OR a.appointment_type IN ('consultation_only','consultation_with_service')
+              );
 
-        FOR srv IN
-            SELECT id, requires_consultation, consultation_validity_days
-            FROM services
-            WHERE id = ANY(p_service_ids)
-        LOOP
-            IF srv.requires_consultation THEN
+            FOR srv IN
+                SELECT id, requires_consultation, consultation_validity_days
+                FROM services
+                WHERE id = ANY(p_service_ids)
+            LOOP
+                IF srv.requires_consultation THEN
                     any_service_requires_consultation := true;
 
-                IF last_consultation_date IS NULL
-                   OR (CURRENT_DATE - last_consultation_date) > COALESCE(srv.consultation_validity_days, 0) THEN
-                    can_skip_consultation := false;
+                    IF last_consultation_date IS NULL
+                       OR (CURRENT_DATE - last_consultation_date) > COALESCE(srv.consultation_validity_days, 0) THEN
+                        can_skip_consultation := false;
                         EXIT;
+                    END IF;
                 END IF;
-            END IF;
-        END LOOP;
+            END LOOP;
 
             IF NOT any_service_requires_consultation THEN
                 booking_type_val := 'service_only'::appointment_booking_type;
@@ -2068,9 +2082,8 @@ EXCEPTION
     WHEN OTHERS THEN
         RAISE LOG 'book_appointment error: %', SQLERRM;
         RETURN jsonb_build_object('success', false, 'error', 'Booking failed: ' || SQLERRM);
-END;
-$function$;
-
+END;$function$
+;
 
 CREATE OR REPLACE FUNCTION public.calculate_appointment_duration(p_service_ids uuid[], p_clinic_id uuid)
  RETURNS integer
@@ -2116,11 +2129,7 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.can_book_service_without_consultation(
-    p_patient_id uuid, 
-    p_service_id uuid, 
-    p_clinic_id uuid
-)
+CREATE OR REPLACE FUNCTION public.can_book_service_without_consultation(p_patient_id uuid, p_service_id uuid, p_clinic_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -2188,10 +2197,8 @@ BEGIN
         'days_valid_remaining', service_record.consultation_validity_days - days_since_consultation
     );
 END;
-$function$;
-
-COMMENT ON FUNCTION public.can_book_service_without_consultation IS 
-'✅ FIXED: Now checks both booking_type (new) and appointment_type (old) columns for consultation history. Determines if patient can skip consultation fee based on recent completed consultation within validity period.';
+$function$
+;
 
 CREATE OR REPLACE FUNCTION public.can_cancel_appointment(p_appointment_id uuid)
  RETURNS boolean
@@ -3751,6 +3758,77 @@ END;
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.check_appointments_feedback_status(
+    p_appointment_ids uuid[]
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_catalog', 'extensions'
+AS $function$
+DECLARE
+    current_user_id UUID;
+    result JSONB;
+BEGIN
+    -- Get current user
+    current_user_id := auth.uid();
+    
+    IF current_user_id IS NULL THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Not authenticated'
+        );
+    END IF;
+    
+    -- Bypass RLS
+    SET LOCAL row_security = off;
+    
+    -- Get feedback status for these appointments
+    WITH feedback_check AS (
+        SELECT 
+            f.appointment_id,
+            f.id as feedback_id,
+            f.clinic_rating,
+            f.doctor_rating,
+            f.created_at,
+            TRUE as has_feedback
+        FROM feedback f
+        WHERE f.appointment_id = ANY(p_appointment_ids)
+        AND f.patient_id = current_user_id  -- ✅ Only patient's own feedback
+    )
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', COALESCE(
+            jsonb_object_agg(
+                appointment_id::text,
+                jsonb_build_object(
+                    'id', feedback_id,
+                    'clinic_rating', clinic_rating,
+                    'doctor_rating', doctor_rating,
+                    'created_at', created_at,
+                    'has_feedback', has_feedback
+                )
+            ),
+            '{}'::jsonb
+        )
+    ) INTO result
+    FROM feedback_check;
+    
+    RETURN result;
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Failed to check feedback status',
+            'details', SQLERRM
+        );
+END;
+$function$;
+
+-- Grant permissions
+GRANT EXECUTE ON FUNCTION check_appointments_feedback_status TO authenticated;
+
 CREATE OR REPLACE FUNCTION public.create_appointment_notification(p_user_id uuid, p_notification_type notification_type, p_appointment_id uuid, p_custom_message text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -4969,19 +5047,12 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.find_nearest_clinics(
-    p_latitude double precision DEFAULT NULL,
-    p_longitude double precision DEFAULT NULL,
-    max_distance_km double precision DEFAULT 50.0,
-    limit_count integer DEFAULT 20,
-    services_filter text[] DEFAULT NULL,
-    min_rating numeric DEFAULT NULL
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_catalog', 'extensions'
-AS $$
+CREATE OR REPLACE FUNCTION public.find_nearest_clinics(p_latitude double precision DEFAULT NULL::double precision, p_longitude double precision DEFAULT NULL::double precision, max_distance_km double precision DEFAULT 50.0, limit_count integer DEFAULT 20, services_filter text[] DEFAULT NULL::text[], min_rating numeric DEFAULT NULL::numeric)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_catalog', 'extensions'
+AS $function$
 DECLARE
     result JSONB;
     current_context JSONB;
@@ -5235,8 +5306,256 @@ EXCEPTION
             'data', jsonb_build_object('clinics', '[]'::jsonb)
         );
 END;
-$$;
+$function$
+;
 
+CREATE OR REPLACE FUNCTION public.find_nearest_clinics(user_location extensions.geography DEFAULT NULL::extensions.geography, max_distance_km double precision DEFAULT 50.0, limit_count integer DEFAULT 20, services_filter text[] DEFAULT NULL::text[], min_rating numeric DEFAULT NULL::numeric)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_catalog', 'extensions'
+AS $function$DECLARE
+    result JSONB;
+    current_context JSONB;
+    current_user_id UUID;
+BEGIN
+    -- ✅ Input validation with safe bounds
+    max_distance_km := LEAST(GREATEST(COALESCE(max_distance_km, 50.0), 1.0), 200.0);
+    limit_count := LEAST(GREATEST(COALESCE(limit_count, 20), 1), 50);
+    
+    -- ✅ Get current user using existing function
+    current_context := get_current_user_context();
+    IF (current_context->>'authenticated')::boolean THEN
+        current_user_id := (current_context->>'user_id')::UUID;
+    END IF;
+    
+    -- ✅ Smart location fallback using patient preferences
+    IF user_location IS NULL AND current_user_id IS NOT NULL THEN
+        SELECT pp.preferred_location INTO user_location 
+        FROM users u
+        JOIN user_profiles up ON u.id = up.user_id
+        JOIN patient_profiles pp ON up.id = pp.user_profile_id
+        WHERE u.id = current_user_id
+        AND pp.preferred_location IS NOT NULL;
+    END IF;
+    
+    -- ✅ FIXED: Main query with proper services join
+    WITH clinic_services AS (
+        -- Get all services for each clinic
+        SELECT 
+            s.clinic_id,
+            jsonb_agg(
+                jsonb_build_object(
+                    'id', s.id,
+                    'name', s.name,
+                    'description', s.description,
+                    'category', s.category,
+                    'duration_minutes', s.duration_minutes,
+                    'min_price', s.min_price,
+                    'max_price', s.max_price,
+                    'priority', s.priority
+                )
+                ORDER BY s.priority ASC, s.name ASC
+            ) AS services_offered,
+            -- Create array of service names for filtering
+            array_agg(LOWER(s.name)) AS service_names
+        FROM services s
+        WHERE s.is_active = true
+        GROUP BY s.clinic_id
+    ),
+    clinic_data AS (
+        SELECT 
+            c.id,
+            c.name,
+            c.description,
+            c.address,
+            c.city,
+            c.province,
+            c.zip_code,
+            c.country,
+            c.phone,
+            c.email,
+            c.website_url,
+            c.rating,
+            c.total_reviews,
+            c.operating_hours,
+            c.image_url,
+            c.location,
+            c.timezone,
+            c.appointment_limit_per_patient,
+            c.cancellation_policy_hours,
+            c.created_at,
+            cs.services_offered,
+            cs.service_names,
+            -- ✅ Safe distance calculation
+            CASE 
+                WHEN user_location IS NULL THEN 0::FLOAT
+                ELSE ST_Distance(c.location::geometry, user_location::geometry) / 1000.0
+            END AS distance_km
+        FROM clinics c
+        LEFT JOIN clinic_services cs ON c.id = cs.clinic_id
+        WHERE 
+            c.is_active = true
+            -- ✅ Distance filter
+            AND (user_location IS NULL OR 
+                 ST_DWithin(c.location::geometry, user_location::geometry, max_distance_km * 1000))
+            -- Rating filter
+            AND (min_rating IS NULL OR c.rating >= min_rating)
+            -- ✅ FIXED: Services filter using actual services table
+            AND (services_filter IS NULL OR 
+                 cs.service_names && (SELECT array_agg(LOWER(unnest)) FROM unnest(services_filter)))
+    ),
+    clinic_badges AS (
+        SELECT 
+            cba.clinic_id,
+            COALESCE(jsonb_agg(
+                jsonb_build_object(
+                    'badge_name', cb.badge_name,
+                    'badge_description', cb.badge_description,
+                    'badge_color', cb.badge_color,
+                    'badge_icon_url', cb.badge_icon_url,
+                    'award_date', cba.award_date
+                )
+                ORDER BY cba.award_date DESC
+            ), '[]'::jsonb) AS badges
+        FROM clinic_badge_awards cba
+        JOIN clinic_badges cb ON cba.badge_id = cb.id
+        WHERE cba.is_current = true
+        AND cb.is_active = true
+        AND cba.clinic_id IN (SELECT id FROM clinic_data)
+        GROUP BY cba.clinic_id
+    ),
+    clinic_stats AS (
+        SELECT 
+            clinic_id,
+            COUNT(*) as total_appointments,
+            COUNT(*) FILTER (WHERE status = 'completed') as completed_appointments,
+            COUNT(*) FILTER (WHERE appointment_date >= CURRENT_DATE - INTERVAL '30 days') as recent_appointments
+        FROM appointments
+        WHERE clinic_id IN (SELECT id FROM clinic_data)
+        GROUP BY clinic_id
+    )
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'clinics', COALESCE(jsonb_agg(
+                jsonb_build_object(
+                    'id', cd.id,
+                    'name', cd.name,
+                    'description', cd.description,
+                    'address', cd.address,
+                    'city', cd.city,
+                    'province', cd.province,
+                    'zip_code', cd.zip_code,
+                    'country', cd.country,
+                    'phone', cd.phone,
+                    'email', cd.email,
+                    'website_url', cd.website_url,
+                    'image_url', cd.image_url,
+                    'timezone', cd.timezone,
+                    'distance_km', ROUND(cd.distance_km::NUMERIC, 2),
+                    'rating', cd.rating,
+                    'total_reviews', cd.total_reviews,
+                    'services_offered', COALESCE(cd.services_offered, '[]'::jsonb),
+                    'operating_hours', cd.operating_hours,
+                    -- ✅ NEW: Calculate is_open based on clinic timezone
+                    'is_open', (
+                        SELECT CASE
+                            WHEN cd.operating_hours IS NULL THEN false
+                            ELSE (
+                                WITH current_time_info AS (
+                                    SELECT 
+                                        LOWER(to_char(NOW() AT TIME ZONE COALESCE(cd.timezone, 'Asia/Manila'), 'Day')) as day_name,
+                                        to_char(NOW() AT TIME ZONE COALESCE(cd.timezone, 'Asia/Manila'), 'HH24:MI') as current_time
+                                ),
+                                day_hours AS (
+                                    SELECT 
+                                        cti.current_time,
+                                        -- ✅ FIXED: Handle nested weekdays/weekends structure
+                                        CASE 
+                                            WHEN TRIM(cti.day_name) IN ('saturday', 'sunday') THEN
+                                                cd.operating_hours->'weekends'->TRIM(cti.day_name)
+                                            ELSE
+                                                cd.operating_hours->'weekdays'->TRIM(cti.day_name)
+                                        END as hours_for_day
+                                    FROM current_time_info cti
+                                )
+                                SELECT 
+                                    CASE 
+                                        WHEN dh.hours_for_day IS NULL THEN false
+                                        WHEN dh.hours_for_day->>'start' IS NULL OR dh.hours_for_day->>'end' IS NULL THEN false
+                                        ELSE dh.current_time >= (dh.hours_for_day->>'start') 
+                                             AND dh.current_time <= (dh.hours_for_day->>'end')
+                                    END
+                                FROM day_hours dh
+                            )
+                        END
+                    ),
+                    -- ✅ NEW: Add position coordinates for map display
+                    'position', jsonb_build_object(
+                        'lat', ST_Y(cd.location::geometry),
+                        'lng', ST_X(cd.location::geometry)
+                    ),
+                    'appointment_limit_per_patient', cd.appointment_limit_per_patient,
+                    'cancellation_policy_hours', cd.cancellation_policy_hours,
+                    'badges', COALESCE(cb.badges, '[]'::jsonb),
+                    'stats', jsonb_build_object(
+                        'total_appointments', COALESCE(cs.total_appointments, 0),
+                        'completed_appointments', COALESCE(cs.completed_appointments, 0),
+                        'recent_appointments', COALESCE(cs.recent_appointments, 0),
+                        'completion_rate', CASE 
+                            WHEN COALESCE(cs.total_appointments, 0) = 0 THEN 0
+                            ELSE ROUND((COALESCE(cs.completed_appointments, 0)::NUMERIC / cs.total_appointments * 100), 1)
+                        END
+                    ),
+                    'is_available', true,
+                    'created_at', cd.created_at
+                )
+                ORDER BY 
+                    CASE WHEN user_location IS NULL THEN cd.rating ELSE NULL END DESC,
+                    CASE WHEN user_location IS NOT NULL THEN cd.distance_km ELSE NULL END ASC,
+                    cd.rating DESC
+            ), '[]'::jsonb),
+            'search_metadata', jsonb_build_object(
+                'user_location_provided', user_location IS NOT NULL,
+                'max_distance_km', max_distance_km,
+                'services_filter', services_filter,
+                'min_rating', min_rating,
+                'total_found', COUNT(*),
+                'search_center', CASE 
+                    WHEN user_location IS NOT NULL THEN ST_AsText(user_location::geometry)
+                    ELSE 'No location specified'
+                END
+            )
+        )
+    ) INTO result
+    FROM clinic_data cd
+    LEFT JOIN clinic_badges cb ON cd.id = cb.clinic_id
+    LEFT JOIN clinic_stats cs ON cd.id = cs.clinic_id
+    LIMIT limit_count;
+    
+    -- ✅ Always return valid result
+    RETURN COALESCE(result, jsonb_build_object(
+        'success', true,
+        'data', jsonb_build_object(
+            'clinics', '[]'::jsonb,
+            'search_metadata', jsonb_build_object(
+                'total_found', 0,
+                'user_location_provided', false
+            )
+        )
+    ));
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE LOG 'find_nearest_clinics error: %', SQLERRM;
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Clinic search failed',
+            'data', jsonb_build_object('clinics', '[]'::jsonb)
+        );
+END;$function$
+;
 
 CREATE OR REPLACE FUNCTION public.geocode_clinic_address(p_address text, p_city text DEFAULT 'San Jose Del Monte'::text, p_province text DEFAULT 'Bulacan'::text, p_country text DEFAULT 'Philippines'::text)
  RETURNS extensions.geography
@@ -7031,6 +7350,107 @@ END;
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.get_doctor_feedback(
+    p_doctor_id uuid, 
+    p_limit integer DEFAULT 20, 
+    p_offset integer DEFAULT 0
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_catalog', 'extensions'
+AS $function$
+DECLARE
+  result JSONB;
+BEGIN
+  IF p_doctor_id IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Doctor ID is required');
+  END IF;
+  
+  SET LOCAL row_security = off;
+  
+  WITH doctor_feedback AS (
+    SELECT 
+      f.id,
+      f.doctor_rating,
+      f.comment,
+      f.is_anonymous,
+      f.feedback_type,
+      f.created_at,
+      f.response,
+      f.responded_at,
+      CASE 
+        WHEN f.is_anonymous THEN NULL
+        ELSE up.first_name || ' ' || up.last_name
+      END as patient_name,
+      CASE 
+        WHEN f.is_anonymous THEN NULL
+        ELSE up.profile_image_url
+      END as patient_image,
+      c.name as clinic_name,
+      (SELECT jsonb_agg(s.name) 
+       FROM appointment_services aps 
+       JOIN services s ON aps.service_id = s.id 
+       WHERE aps.appointment_id = f.appointment_id
+      ) as services
+    FROM feedback f
+    -- ✅ FIXED: Join users first, then user_profiles
+    LEFT JOIN users u ON f.patient_id = u.id
+    LEFT JOIN user_profiles up ON u.id = up.user_id
+    LEFT JOIN clinics c ON f.clinic_id = c.id
+    WHERE f.doctor_id = p_doctor_id
+    AND f.doctor_rating IS NOT NULL
+    AND f.is_public = true
+    ORDER BY f.created_at DESC
+    LIMIT p_limit
+    OFFSET p_offset
+  ),
+  doctor_stats AS (
+    SELECT
+      d.rating,
+      d.total_reviews,
+      COUNT(*) FILTER (WHERE f.doctor_rating = 5) as five_star,
+      COUNT(*) FILTER (WHERE f.doctor_rating = 4) as four_star,
+      COUNT(*) FILTER (WHERE f.doctor_rating = 3) as three_star,
+      COUNT(*) FILTER (WHERE f.doctor_rating = 2) as two_star,
+      COUNT(*) FILTER (WHERE f.doctor_rating = 1) as one_star
+    FROM doctors d
+    LEFT JOIN feedback f ON f.doctor_id = d.id AND f.doctor_rating IS NOT NULL
+    WHERE d.id = p_doctor_id
+    GROUP BY d.rating, d.total_reviews
+  ),
+  total_count AS (
+    SELECT COUNT(*) as count
+    FROM feedback
+    WHERE doctor_id = p_doctor_id
+    AND doctor_rating IS NOT NULL
+    AND is_public = true
+  )
+  SELECT jsonb_build_object(
+    'success', true,
+    'data', jsonb_build_object(
+      'feedback', COALESCE((SELECT jsonb_agg(row_to_json(doctor_feedback)) FROM doctor_feedback), '[]'::jsonb),
+      'statistics', (SELECT row_to_json(doctor_stats) FROM doctor_stats),
+      'pagination', jsonb_build_object(
+        'total_count', (SELECT count FROM total_count),
+        'limit', p_limit,
+        'offset', p_offset
+      )
+    )
+  ) INTO result;
+  
+  RETURN result;
+  
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Failed to fetch doctor feedback',
+      'details', SQLERRM
+    );
+END;
+$function$;
+
 CREATE OR REPLACE FUNCTION public.get_incomplete_staff_signups(p_limit integer DEFAULT 50, p_offset integer DEFAULT 0)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -7484,79 +7904,76 @@ BEGIN
     SELECT 
       f.id,
       f.rating,
+      f.clinic_rating,
+      f.doctor_rating,
       f.comment,
       f.is_anonymous,
       f.is_public,
+      f.feedback_type,
       f.response,
       f.responded_at,
       f.created_at,
       f.appointment_id,
       f.clinic_id,
       f.doctor_id,
-      -- Appointment details
       a.appointment_date,
       a.appointment_time,
-      -- Clinic details
       c.name as clinic_name,
       c.address as clinic_address,
-      -- Doctor details
-      d.first_name || ' ' || d.last_name as doctor_name,
+      c.rating as current_clinic_rating,
+      c.total_reviews as clinic_total_reviews,
+      CASE 
+        WHEN f.doctor_id IS NOT NULL 
+        THEN d.first_name || ' ' || d.last_name 
+        ELSE NULL 
+      END as doctor_name,
       d.specialization as doctor_specialization,
-      -- Services
-      (SELECT jsonb_agg(s.name) FROM appointment_services aps 
+      d.rating as current_doctor_rating,
+      d.total_reviews as doctor_total_reviews,
+      CASE 
+        WHEN f.responded_by IS NOT NULL 
+        THEN resp_up.first_name || ' ' || resp_up.last_name 
+        ELSE NULL 
+      END as responder_name,
+      (SELECT jsonb_agg(s.name) 
+       FROM appointment_services aps 
        JOIN services s ON aps.service_id = s.id 
-       WHERE aps.appointment_id = f.appointment_id) as services
+       WHERE aps.appointment_id = f.appointment_id
+      ) as services
     FROM feedback f
     LEFT JOIN appointments a ON f.appointment_id = a.id
     LEFT JOIN clinics c ON f.clinic_id = c.id
     LEFT JOIN doctors d ON f.doctor_id = d.id
+    LEFT JOIN user_profiles resp_up ON f.responded_by = resp_up.user_id
     WHERE f.patient_id = patient_id_val
     ORDER BY f.created_at DESC
-    LIMIT p_limit OFFSET p_offset
+    LIMIT p_limit
+    OFFSET p_offset
+  ),
+  total_count AS (
+    SELECT COUNT(*) as count
+    FROM feedback
+    WHERE patient_id = patient_id_val
   )
   SELECT jsonb_build_object(
     'success', true,
     'data', jsonb_build_object(
-      'feedback_history', COALESCE(jsonb_agg(
-        jsonb_build_object(
-          'id', id,
-          'rating', rating,
-          'message', comment,
-          'is_anonymous', is_anonymous,
-          'clinic_response', response,
-          'responded_at', responded_at,
-          'created_at', created_at,
-          'appointment', jsonb_build_object(
-            'id', appointment_id,
-            'date', appointment_date,
-            'time', appointment_time,
-            'services', services
-          ),
-          'clinic', jsonb_build_object(
-            'id', clinic_id,
-            'name', clinic_name,
-            'address', clinic_address
-          ),
-          'doctor', CASE WHEN doctor_name IS NOT NULL THEN
-            jsonb_build_object(
-              'id', doctor_id,
-              'name', doctor_name,
-              'specialization', doctor_specialization
-            )
-          ELSE NULL END
-        )
-        ORDER BY created_at DESC
-      ), '[]'::jsonb),
-      'total_count', (SELECT COUNT(*) FROM feedback WHERE patient_id = patient_id_val)
+      'feedback_history', (SELECT jsonb_agg(row_to_json(feedback_data)) FROM feedback_data),
+      'total_count', (SELECT count FROM total_count),
+      'limit', p_limit,
+      'offset', p_offset
     )
-  ) INTO result
-  FROM feedback_data;
+  ) INTO result;
   
   RETURN result;
   
 EXCEPTION
   WHEN OTHERS THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Failed to fetch feedback history');
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Failed to fetch feedback history',
+      'details', SQLERRM
+    );
 END;
 $function$
 ;
@@ -7809,11 +8226,16 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.get_staff_feedback_list(p_clinic_id uuid DEFAULT NULL::uuid, p_include_responses boolean DEFAULT true, p_limit integer DEFAULT 50, p_offset integer DEFAULT 0)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public', 'pg_catalog', 'extensions'
+CREATE OR REPLACE FUNCTION public.get_staff_feedback_list(
+    p_clinic_id uuid DEFAULT NULL::uuid, 
+    p_include_responses boolean DEFAULT true, 
+    p_limit integer DEFAULT 50, 
+    p_offset integer DEFAULT 0
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_catalog', 'extensions'
 AS $function$
 DECLARE
     current_context JSONB;
@@ -7822,31 +8244,46 @@ DECLARE
 BEGIN
     current_context := get_current_user_context();
     
-    -- Only staff and admin can access
-    IF NOT (current_context->>'authenticated')::boolean OR 
-       (current_context->>'user_type') NOT IN ('staff', 'admin') THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Staff or Admin access required');
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'User not authenticated'
+        );
     END IF;
     
-    -- Get staff clinic ID if not provided
+    IF (current_context->>'user_type') NOT IN ('staff', 'admin') THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Staff or Admin access required'
+        );
+    END IF;
+    
     IF p_clinic_id IS NULL THEN
         SELECT sp.clinic_id INTO staff_clinic_id
         FROM staff_profiles sp
         JOIN user_profiles up ON sp.user_profile_id = up.id
         WHERE up.user_id = (current_context->>'user_id')::UUID
-        AND sp.is_active = true;
+        AND sp.is_active = true
+        LIMIT 1;
         
         IF staff_clinic_id IS NULL THEN
-            RETURN jsonb_build_object('success', false, 'error', 'No clinic association found');
+            RETURN jsonb_build_object(
+                'success', false, 
+                'error', 'No active clinic association found'
+            );
         END IF;
     ELSE
         staff_clinic_id := p_clinic_id;
     END IF;
     
+    SET LOCAL row_security = off;
+    
     WITH feedback_data AS (
         SELECT 
             f.id,
             f.rating,
+            f.clinic_rating,
+            f.doctor_rating,
             f.comment,
             f.is_anonymous,
             f.is_public,
@@ -7858,82 +8295,101 @@ BEGIN
             f.appointment_id,
             f.clinic_id,
             f.doctor_id,
-            -- Patient info (respecting anonymity)
+            f.patient_id,
+            -- ✅ FIXED: Join users AND user_profiles to get both email and profile data
             CASE 
                 WHEN f.is_anonymous THEN NULL
-                ELSE p.first_name || ' ' || p.last_name
+                ELSE COALESCE(up.first_name || ' ' || up.last_name, 'Anonymous Patient')
             END as patient_name,
             CASE 
                 WHEN f.is_anonymous THEN NULL
-                ELSE p.email
+                ELSE u.email  -- ✅ Get email from users table
             END as patient_email,
             CASE 
                 WHEN f.is_anonymous THEN NULL
-                ELSE p.profile_image
+                ELSE up.profile_image_url  -- ✅ Get image from user_profiles table
             END as patient_image,
-            -- Appointment details
             a.appointment_date,
             a.appointment_time,
-            -- Doctor details
-            d.first_name || ' ' || d.last_name as doctor_name,
+            CASE 
+                WHEN f.doctor_id IS NOT NULL 
+                THEN d.first_name || ' ' || d.last_name 
+                ELSE NULL 
+            END as doctor_name,
             d.specialization as doctor_specialization,
-            -- Responder details
-            resp.first_name || ' ' || resp.last_name as responder_name,
-            -- Services
-            (SELECT jsonb_agg(s.name) FROM appointment_services aps 
+            d.rating as current_doctor_rating,
+            d.total_reviews as doctor_total_reviews,
+            CASE 
+                WHEN f.responded_by IS NOT NULL 
+                THEN resp_up.first_name || ' ' || resp_up.last_name 
+                ELSE NULL 
+            END as responder_name,
+            (SELECT jsonb_agg(s.name) 
+             FROM appointment_services aps 
              JOIN services s ON aps.service_id = s.id 
-             WHERE aps.appointment_id = f.appointment_id) as services
+             WHERE aps.appointment_id = f.appointment_id
+            ) as services
         FROM feedback f
         LEFT JOIN appointments a ON f.appointment_id = a.id
-        LEFT JOIN patient_profiles pp ON f.patient_id = pp.user_profile_id
-        LEFT JOIN user_profiles p ON pp.user_profile_id = p.id
+        -- ✅ CRITICAL FIX: Join both users AND user_profiles
+        LEFT JOIN users u ON f.patient_id = u.id
+        LEFT JOIN user_profiles up ON u.id = up.user_id
         LEFT JOIN doctors d ON f.doctor_id = d.id
-        LEFT JOIN user_profiles resp ON f.responded_by = resp.user_id
+        LEFT JOIN user_profiles resp_up ON f.responded_by = resp_up.user_id
         WHERE f.clinic_id = staff_clinic_id
         ORDER BY f.created_at DESC
-        LIMIT p_limit OFFSET p_offset
+        LIMIT p_limit
+        OFFSET p_offset
     ),
-    feedback_stats AS (
-        SELECT 
-            COUNT(*) as total_count,
+    statistics AS (
+        SELECT
+            COUNT(*) as total_feedback,
+            COUNT(*) FILTER (WHERE clinic_rating IS NOT NULL) as clinic_ratings_count,
+            COUNT(*) FILTER (WHERE doctor_rating IS NOT NULL) as doctor_ratings_count,
+            ROUND(AVG(COALESCE(clinic_rating, 0))::NUMERIC, 2) as avg_clinic_rating,
+            ROUND(AVG(COALESCE(doctor_rating, 0))::NUMERIC, 2) as avg_doctor_rating,
             COUNT(*) FILTER (WHERE response IS NOT NULL) as responded_count,
-            AVG(rating) as average_rating,
-            COUNT(*) FILTER (WHERE rating >= 4) as positive_count,
-            COUNT(*) FILTER (WHERE rating <= 2) as negative_count
-        FROM feedback 
+            COUNT(*) FILTER (WHERE response IS NULL) as pending_responses
+        FROM feedback
+        WHERE clinic_id = staff_clinic_id
+    ),
+    total_count AS (
+        SELECT COUNT(*) as count
+        FROM feedback
         WHERE clinic_id = staff_clinic_id
     )
     SELECT jsonb_build_object(
         'success', true,
         'data', jsonb_build_object(
-            'feedback_list', (SELECT jsonb_agg(row_to_json(fd)) FROM feedback_data fd),
+            'feedback_list', COALESCE((SELECT jsonb_agg(row_to_json(feedback_data)) FROM feedback_data), '[]'::jsonb),
+            'statistics', (SELECT row_to_json(statistics) FROM statistics),
             'pagination', jsonb_build_object(
+                'total_count', (SELECT count FROM total_count),
                 'limit', p_limit,
                 'offset', p_offset,
-                'total_count', (SELECT total_count FROM feedback_stats)
+                'has_more', (SELECT count FROM total_count) > (p_offset + p_limit)
             ),
-            'statistics', jsonb_build_object(
-                'total_feedback', (SELECT total_count FROM feedback_stats),
-                'response_rate', CASE 
-                    WHEN (SELECT total_count FROM feedback_stats) > 0 
-                    THEN ROUND((SELECT responded_count FROM feedback_stats)::numeric / (SELECT total_count FROM feedback_stats) * 100, 1)
-                    ELSE 0 
-                END,
-                'average_rating', ROUND((SELECT average_rating FROM feedback_stats), 1),
-                'positive_feedback', (SELECT positive_count FROM feedback_stats),
-                'negative_feedback', (SELECT negative_count FROM feedback_stats)
-            )
+            'clinic_id', staff_clinic_id
         )
     ) INTO result;
     
     RETURN result;
-
+    
 EXCEPTION
     WHEN OTHERS THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Failed to fetch feedback list');
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Failed to fetch feedback list',
+            'details', SQLERRM,
+            'sqlstate', SQLSTATE
+        );
 END;
-$function$
-;
+$function$;
+
+-- 3️⃣ Grant permissions
+GRANT EXECUTE ON FUNCTION get_staff_feedback_list TO authenticated;
+GRANT EXECUTE ON FUNCTION get_doctor_feedback TO authenticated;
+GRANT EXECUTE ON FUNCTION respond_to_feedback TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.get_staff_invitation_status(p_invitation_id uuid)
  RETURNS jsonb
@@ -10862,52 +11318,44 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.respond_to_feedback(p_feedback_id uuid, p_response text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public', 'pg_catalog', 'extensions'
+CREATE OR REPLACE FUNCTION public.respond_to_feedback(
+    p_feedback_id uuid,
+    p_response text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_catalog', 'extensions'
 AS $function$
 DECLARE
     current_context JSONB;
     staff_clinic_id UUID;
     feedback_record RECORD;
-    responder_id UUID;
 BEGIN
     current_context := get_current_user_context();
     
-    -- Only staff and admin can respond
     IF NOT (current_context->>'authenticated')::boolean OR 
        (current_context->>'user_type') NOT IN ('staff', 'admin') THEN
         RETURN jsonb_build_object('success', false, 'error', 'Staff or Admin access required');
     END IF;
     
-    responder_id := (current_context->>'user_id')::UUID;
-    
-    -- Validate response
-    IF p_response IS NULL OR TRIM(p_response) = '' OR LENGTH(p_response) > 1000 THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Response is required and must be under 1000 characters');
-    END IF;
-    
-    -- Get staff clinic ID
     SELECT sp.clinic_id INTO staff_clinic_id
     FROM staff_profiles sp
     JOIN user_profiles up ON sp.user_profile_id = up.id
-    WHERE up.user_id = responder_id
+    WHERE up.user_id = (current_context->>'user_id')::UUID
     AND sp.is_active = true;
     
     IF staff_clinic_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'No clinic association found');
     END IF;
     
-    -- Get and validate feedback
+    SET LOCAL row_security = off;
+    
     SELECT 
-        f.id,
-        f.clinic_id,
         f.patient_id,
-        f.response as existing_response,
-        f.rating,
-        f.comment
+        f.appointment_id,
+        f.clinic_id,
+        f.doctor_id
     INTO feedback_record
     FROM feedback f
     WHERE f.id = p_feedback_id;
@@ -10916,69 +11364,53 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Feedback not found');
     END IF;
     
-    -- Check if staff can respond to this feedback (same clinic)
     IF feedback_record.clinic_id != staff_clinic_id THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Cannot respond to feedback from different clinic');
-    END IF;
-    
-    -- Check if already responded
-    IF feedback_record.existing_response IS NOT NULL THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Feedback already has a response');
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied - feedback belongs to different clinic');
     END IF;
     
     -- Update feedback with response
-    UPDATE feedback SET
-        response = TRIM(p_response),
-        responded_by = responder_id,
+    UPDATE feedback
+    SET 
+        response = p_response,
+        responded_by = (current_context->>'user_id')::UUID,
         responded_at = NOW()
     WHERE id = p_feedback_id;
     
-    -- Create notification for patient
+    -- ✅ FIXED: Use correct column names
     INSERT INTO notifications (
         user_id,
-        notification_type,
+        notification_type,    -- ✅ FIXED: was 'type'
         title,
-        message
+        message,
+        related_appointment_id
+        -- ✅ REMOVED: metadata column doesn't exist
     ) VALUES (
         feedback_record.patient_id,
-        'feedback_request',
+        'feedback_response',
         'Response to Your Feedback',
-        format('We have responded to your %s-star feedback. Thank you for helping us improve our services.', feedback_record.rating)
-    );
-    
-    -- Analytics event
-    INSERT INTO analytics_events (
-        clinic_id,
-        user_id,
-        event_type,
-        metadata
-    ) VALUES (
-        staff_clinic_id,
-        responder_id,
-        'feedback_responded',
-        jsonb_build_object(
-            'feedback_id', p_feedback_id,
-            'response_length', LENGTH(TRIM(p_response)),
-            'original_rating', feedback_record.rating
-        )
+        'The clinic has responded to your feedback. Check it out!',
+        feedback_record.appointment_id
     );
     
     RETURN jsonb_build_object(
         'success', true,
-        'message', 'Response submitted successfully',
-        'data', jsonb_build_object(
-            'feedback_id', p_feedback_id,
-            'responded_at', NOW(),
-            'responder_id', responder_id
-        )
+        'message', 'Response sent successfully',
+        'patient_notified', true
     );
-
+    
 EXCEPTION
     WHEN OTHERS THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Failed to submit response');
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Failed to respond to feedback',
+            'details', SQLERRM,
+            'sqlstate', SQLSTATE
+        );
 END;
-$function$
-;
+$function$;
+
+-- Grant permissions
+GRANT EXECUTE ON FUNCTION respond_to_feedback TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.restrict_notification_updates()
  RETURNS trigger
@@ -11271,6 +11703,160 @@ END;
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.send_reschedule_reminder(p_appointment_id uuid, p_reason text, p_suggested_dates date[] DEFAULT NULL::date[])
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_catalog', 'extensions'
+AS $function$
+DECLARE
+    current_context JSONB;
+    appointment_record RECORD;
+    v_current_role TEXT;
+    clinic_id_val UUID;
+    current_user_id UUID;
+    patient_contact RECORD;
+    reminder_message TEXT;
+BEGIN
+    -- ✅ Get current user context
+    current_context := get_current_user_context();
+    
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Authentication required');
+    END IF;
+    
+    v_current_role := current_context->>'user_type';
+    current_user_id := (current_context->>'user_id')::UUID;
+    
+    -- ✅ Only staff can send reschedule reminders
+    IF v_current_role != 'staff' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Staff only');
+    END IF;
+    
+    clinic_id_val := (current_context->>'clinic_id')::UUID;
+    
+    -- ✅ Input validation
+    IF p_appointment_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Appointment ID is required');
+    END IF;
+    
+    IF p_reason IS NULL OR TRIM(p_reason) = '' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Reason is required');
+    END IF;
+    
+    -- ✅ Get appointment details with patient info
+    SELECT 
+        a.id,
+        a.patient_id,
+        a.clinic_id,
+        a.appointment_date,
+        a.appointment_time,
+        a.status,
+        c.name as clinic_name,
+        c.phone as clinic_phone,
+        c.email as clinic_email,
+        up.first_name || ' ' || up.last_name as patient_name,
+        u.email as patient_email,
+        u.phone as patient_phone,
+        COALESCE(d.first_name || ' ' || d.last_name, 'Dr. ' || d.specialization) as doctor_name
+    INTO appointment_record
+    FROM appointments a
+    JOIN clinics c ON a.clinic_id = c.id
+    JOIN users u ON a.patient_id = u.id
+    JOIN user_profiles up ON u.id = up.user_id
+    LEFT JOIN doctors d ON a.doctor_id = d.id
+    WHERE a.id = p_appointment_id
+    AND a.clinic_id = clinic_id_val;
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Appointment not found or access denied');
+    END IF;
+    
+    -- ✅ Verify appointment is cancelled (can only send reminder for cancelled appointments)
+    IF appointment_record.status != 'cancelled' THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', format('Can only send reschedule reminder for cancelled appointments. Current status: %s', appointment_record.status)
+        );
+    END IF;
+    
+    -- ✅ Build reminder message
+    reminder_message := format(
+        'Your appointment on %s at %s was cancelled. Reason: %s. You can reschedule your appointment at your convenience. Please contact us at %s or book online.',
+        appointment_record.appointment_date::text,
+        appointment_record.appointment_time::text,
+        p_reason,
+        COALESCE(appointment_record.clinic_phone, appointment_record.clinic_email, 'the clinic')
+    );
+    
+    -- ✅ Add suggested dates if provided
+    IF p_suggested_dates IS NOT NULL AND array_length(p_suggested_dates, 1) > 0 THEN
+        reminder_message := reminder_message || E'\n\nSuggested available dates: ' || 
+            array_to_string(p_suggested_dates, ', ');
+    END IF;
+    
+    -- ✅ Create notification for patient
+    BEGIN
+        INSERT INTO notifications (
+            user_id,
+            notification_type,
+            title,
+            message,
+            related_appointment_id,
+            scheduled_for,
+            created_at
+        ) VALUES (
+            appointment_record.patient_id,
+            'appointment_cancelled',
+            'Appointment Cancellation - Reschedule Available',
+            reminder_message,
+            p_appointment_id,
+            NOW(),
+            NOW()
+        );
+        
+        -- ✅ Log analytics event
+        INSERT INTO analytics_events (
+            clinic_id,
+            user_id,
+            event_type,
+            metadata
+        ) VALUES (
+            clinic_id_val,
+            current_user_id,
+            'reschedule_reminder_sent',
+            jsonb_build_object(
+                'appointment_id', p_appointment_id,
+                'patient_id', appointment_record.patient_id,
+                'suggested_dates_count', COALESCE(array_length(p_suggested_dates, 1), 0)
+            )
+        );
+        
+    EXCEPTION WHEN OTHERS THEN
+        RAISE LOG 'Failed to create reschedule reminder notification: %', SQLERRM;
+        RETURN jsonb_build_object('success', false, 'error', 'Failed to send notification: ' || SQLERRM);
+    END;
+    
+    -- ✅ Return success
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Reschedule reminder sent successfully',
+        'data', jsonb_build_object(
+            'appointment_id', p_appointment_id,
+            'patient_name', appointment_record.patient_name,
+            'patient_email', appointment_record.patient_email,
+            'notification_sent', true
+        )
+    );
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE LOG 'Error in send_reschedule_reminder: %', SQLERRM;
+        RETURN jsonb_build_object('success', false, 'error', 'Failed to send reschedule reminder: ' || SQLERRM);
+END;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.send_staff_invitation_email(p_invitation_data jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -11405,7 +11991,7 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.submit_feedback(p_rating integer, p_comment text, p_appointment_id uuid DEFAULT NULL::uuid, p_clinic_id uuid DEFAULT NULL::uuid, p_feedback_type feedback_type DEFAULT 'general'::feedback_type, p_is_anonymous boolean DEFAULT false)
+CREATE OR REPLACE FUNCTION public.submit_feedback(p_clinic_rating integer DEFAULT NULL::integer, p_doctor_rating integer DEFAULT NULL::integer, p_comment text DEFAULT NULL::text, p_appointment_id uuid DEFAULT NULL::uuid, p_feedback_type feedback_type DEFAULT 'general'::feedback_type, p_is_anonymous boolean DEFAULT false)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
@@ -11416,9 +12002,12 @@ DECLARE
     patient_id_val UUID;
     appointment_record RECORD;
     clinic_record RECORD;
+    doctor_record RECORD;
     feedback_id UUID;
     existing_feedback_count INTEGER;
     doctor_id_val UUID;
+    clinic_id_val UUID;
+    avg_rating NUMERIC;
 BEGIN
     current_context := get_current_user_context();
     
@@ -11430,83 +12019,121 @@ BEGIN
     
     patient_id_val := (current_context->>'user_id')::UUID;
     
-    -- ✅ Input validation
-    IF p_rating IS NULL OR p_rating < 1 OR p_rating > 5 THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Rating must be between 1 and 5');
+    -- ✅ REQUIRE APPOINTMENT
+    IF p_appointment_id IS NULL THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Feedback requires a completed appointment. Please select an appointment to review.'
+        );
     END IF;
     
-    IF p_comment IS NULL OR TRIM(p_comment) = '' OR LENGTH(p_comment) > 1000 THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Comment is required and must be under 1000 characters');
+    -- ✅ VALIDATION: At least one rating must be provided
+    IF p_clinic_rating IS NULL AND p_doctor_rating IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'At least one rating (clinic or doctor) is required');
     END IF;
     
-    -- Either appointment_id or clinic_id must be provided
-    IF p_appointment_id IS NULL AND p_clinic_id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Either appointment ID or clinic ID is required');
+    -- Validate clinic rating range
+    IF p_clinic_rating IS NOT NULL AND (p_clinic_rating < 1 OR p_clinic_rating > 5) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Clinic rating must be between 1 and 5');
     END IF;
     
-    -- ✅ Determine clinic and doctor from appointment
-    IF p_appointment_id IS NOT NULL THEN
+    -- Validate doctor rating range
+    IF p_doctor_rating IS NOT NULL AND (p_doctor_rating < 1 OR p_doctor_rating > 5) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Doctor rating must be between 1 and 5');
+    END IF;
+    
+    -- Validate comment
+    IF p_comment IS NULL OR TRIM(p_comment) = '' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Comment is required');
+    END IF;
+    
+    IF LENGTH(p_comment) > 1000 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Comment must be under 1000 characters');
+    END IF;
+    
+    IF LENGTH(TRIM(p_comment)) < 10 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Comment must be at least 10 characters');
+    END IF;
+    
+    -- ✅ GET AND VALIDATE APPOINTMENT
+    SELECT 
+        a.id,
+        a.clinic_id,
+        a.doctor_id,
+        a.status,
+        a.appointment_date,
+        a.appointment_time,
+        c.name as clinic_name,
+        c.is_active as clinic_active,
+        c.rating as clinic_current_rating,
+        c.total_reviews as clinic_total_reviews
+    INTO appointment_record
+    FROM appointments a
+    JOIN clinics c ON a.clinic_id = c.id
+    WHERE a.id = p_appointment_id
+    AND a.patient_id = patient_id_val;
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Appointment not found or you do not have permission to review it'
+        );
+    END IF;
+    
+    -- ✅ ONLY ALLOW FEEDBACK FOR COMPLETED APPOINTMENTS
+    IF appointment_record.status != 'completed' THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Feedback can only be submitted for completed appointments',
+            'current_status', appointment_record.status,
+            'message', 'Please wait until your appointment is marked as completed'
+        );
+    END IF;
+    
+    clinic_id_val := appointment_record.clinic_id;
+    doctor_id_val := appointment_record.doctor_id;
+    
+    -- ✅ VALIDATION: If doctor_rating provided but no doctor in appointment
+    IF p_doctor_rating IS NOT NULL AND doctor_id_val IS NULL THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Cannot rate doctor - no doctor was assigned to this appointment'
+        );
+    END IF;
+    
+    -- ✅ CHECK FOR DUPLICATE FEEDBACK ON SAME APPOINTMENT
+    SELECT COUNT(*) INTO existing_feedback_count
+    FROM feedback
+    WHERE appointment_id = p_appointment_id
+    AND patient_id = patient_id_val;
+    
+    IF existing_feedback_count > 0 THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'You have already submitted feedback for this appointment',
+            'message', 'Each appointment can only be reviewed once'
+        );
+    END IF;
+    
+    -- ✅ Get doctor information if exists
+    IF doctor_id_val IS NOT NULL THEN
         SELECT 
-            a.id,
-            a.clinic_id,
-            a.doctor_id,  -- ✅ Get doctor for feedback
-            a.status,
-            a.appointment_date,
-            c.name as clinic_name
-        INTO appointment_record
-        FROM appointments a
-        JOIN clinics c ON a.clinic_id = c.id
-        WHERE a.id = p_appointment_id
-        AND a.patient_id = patient_id_val;
+            d.id,
+            d.first_name || ' ' || d.last_name as doctor_name,
+            d.specialization,
+            d.rating as current_doctor_rating,
+            d.total_reviews as current_doctor_reviews,
+            d.is_available
+        INTO doctor_record
+        FROM doctors d
+        WHERE d.id = doctor_id_val;
         
         IF NOT FOUND THEN
-            RETURN jsonb_build_object('success', false, 'error', 'Appointment not found or access denied');
-        END IF;
-        
-        -- Only allow feedback for completed appointments
-        IF appointment_record.status != 'completed' THEN
-            RETURN jsonb_build_object(
-                'success', false, 
-                'error', 'Feedback can only be submitted for completed appointments',
-                'current_status', appointment_record.status
-            );
-        END IF;
-        
-        p_clinic_id := appointment_record.clinic_id;
-        doctor_id_val := appointment_record.doctor_id;
-    END IF;
-    
-    -- ✅ Get clinic information
-    SELECT 
-        c.id,
-        c.name,
-        c.rating as current_rating,
-        c.total_reviews as current_review_count,
-        c.is_active
-    INTO clinic_record
-    FROM clinics c
-    WHERE c.id = p_clinic_id;
-    
-    IF NOT FOUND OR NOT clinic_record.is_active THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Clinic not found or inactive');
-    END IF;
-    
-    -- ✅ Check for duplicate feedback
-    IF p_appointment_id IS NOT NULL THEN
-        SELECT COUNT(*) INTO existing_feedback_count
-        FROM feedback
-        WHERE appointment_id = p_appointment_id
-        AND patient_id = patient_id_val;
-        
-        IF existing_feedback_count > 0 THEN
-            RETURN jsonb_build_object(
-                'success', false, 
-                'error', 'Feedback already submitted for this appointment'
-            );
+            RAISE WARNING 'Doctor record not found for doctor_id: %', doctor_id_val;
         END IF;
     END IF;
     
-    -- ✅ Rate limiting check  
+    -- ✅ RATE LIMITING: Max 3 feedback per day (prevent spam)
     SELECT COUNT(*) INTO existing_feedback_count
     FROM feedback
     WHERE patient_id = patient_id_val
@@ -11515,103 +12142,145 @@ BEGIN
     IF existing_feedback_count >= 3 THEN
         RETURN jsonb_build_object(
             'success', false, 
-            'error', 'Maximum 3 feedback submissions per day'
+            'error', 'Maximum 3 feedback submissions per day reached. Please try again tomorrow.'
         );
     END IF;
     
-    -- ✅ FIXED: Insert with correct schema columns
+    -- ✅ Calculate average rating for legacy 'rating' field
+    IF p_clinic_rating IS NOT NULL AND p_doctor_rating IS NOT NULL THEN
+        avg_rating := ROUND((p_clinic_rating + p_doctor_rating) / 2.0);
+    ELSIF p_clinic_rating IS NOT NULL THEN
+        avg_rating := p_clinic_rating;
+    ELSE
+        avg_rating := p_doctor_rating;
+    END IF;
+    
+    -- ✅ INSERT FEEDBACK with dual ratings
     INSERT INTO feedback (
         patient_id,
         clinic_id,
-        doctor_id,       -- ✅ FIXED: Added doctor_id 
+        doctor_id,
         appointment_id,
-        feedback_type,   -- ✅ FIXED: Use feedback_type enum
+        feedback_type,
         rating,
-        comment,         -- ✅ FIXED: comment not feedback_text
+        clinic_rating,
+        doctor_rating,
+        comment,
         is_anonymous,
         is_public
     ) VALUES (
         patient_id_val,
-        p_clinic_id,
-        doctor_id_val,   -- ✅ FIXED: Include doctor
+        clinic_id_val,
+        doctor_id_val,
         p_appointment_id,
-        p_feedback_type, -- ✅ FIXED: Use enum
-        p_rating,
-        p_comment,       -- ✅ FIXED: comment not feedback_text
+        p_feedback_type,
+        avg_rating,
+        p_clinic_rating,
+        p_doctor_rating,
+        TRIM(p_comment),
         COALESCE(p_is_anonymous, false),
-        NOT COALESCE(p_is_anonymous, false)  -- Public unless anonymous
+        NOT COALESCE(p_is_anonymous, false)
     ) RETURNING id INTO feedback_id;
     
-    -- ✅ FIXED: Create notification for clinic staff (correct schema)
+    -- ✅ CORRECTED: CREATE NOTIFICATIONS for clinic staff
     INSERT INTO notifications (
         user_id,
         notification_type,
         title,
-        message
+        message,
+        related_appointment_id  -- ✅ FIXED: Correct column name
     )
     SELECT 
         u.id,
-        'feedback_request', -- ✅ FIXED: Use existing enum value
+        'feedback_request'::notification_type,
         CASE 
-            WHEN p_rating >= 4 THEN 'New Positive Feedback Received'
-            WHEN p_rating = 3 THEN 'New Feedback Received'
-            ELSE 'New Feedback Requires Attention'
+            WHEN avg_rating >= 4 THEN '🌟 New Positive Feedback'
+            WHEN avg_rating = 3 THEN '📝 New Feedback Received'
+            ELSE '⚠️ Feedback Needs Attention'
         END,
-        format('New %s-star feedback received%s: "%s"',
-               p_rating,
-               CASE WHEN p_is_anonymous THEN ' (anonymous)' ELSE format(' from %s', current_context->>'full_name') END,
-               LEFT(p_comment, 100) || CASE WHEN LENGTH(p_comment) > 100 THEN '...' ELSE '' END)
+        format(
+            'New feedback for appointment on %s%s%s: "%s"',
+            TO_CHAR(appointment_record.appointment_date, 'Mon DD, YYYY'),
+            CASE WHEN p_clinic_rating IS NOT NULL THEN format(' | Clinic: %s★', p_clinic_rating) ELSE '' END,
+            CASE WHEN p_doctor_rating IS NOT NULL THEN format(' | Doctor: %s★', p_doctor_rating) ELSE '' END,
+            LEFT(p_comment, 80) || CASE WHEN LENGTH(p_comment) > 80 THEN '...' ELSE '' END
+        ),
+        p_appointment_id  -- ✅ Link to appointment
     FROM staff_profiles sp
     JOIN user_profiles up ON sp.user_profile_id = up.id
     JOIN users u ON up.user_id = u.id
-    WHERE sp.clinic_id = p_clinic_id 
+    WHERE sp.clinic_id = clinic_id_val 
     AND sp.is_active = true;
     
-    -- ✅ FIXED: Analytics event (correct schema)
+    -- ✅ ANALYTICS EVENT
     INSERT INTO analytics_events (
         clinic_id,
         user_id,
         event_type,
-        metadata  -- ✅ FIXED: metadata not event_data
+        metadata
     ) VALUES (
-        p_clinic_id,
+        clinic_id_val,
         patient_id_val,
         'feedback_submitted',
         jsonb_build_object(
             'feedback_id', feedback_id,
-            'rating', p_rating,
             'appointment_id', p_appointment_id,
+            'clinic_rating', p_clinic_rating,
+            'doctor_rating', p_doctor_rating,
+            'average_rating', avg_rating,
+            'doctor_id', doctor_id_val,
             'is_anonymous', COALESCE(p_is_anonymous, false),
             'feedback_type', p_feedback_type,
-            'text_length', LENGTH(p_comment)
+            'comment_length', LENGTH(p_comment),
+            'has_clinic_rating', p_clinic_rating IS NOT NULL,
+            'has_doctor_rating', p_doctor_rating IS NOT NULL,
+            'appointment_date', appointment_record.appointment_date
         )
     );
     
-    -- ✅ Return success response
+    -- ✅ RETURN SUCCESS with detailed information
     RETURN jsonb_build_object(
         'success', true,
-        'message', 'Feedback submitted successfully',
+        'message', 'Thank you for your feedback! Your review helps us improve our service.',
         'data', jsonb_build_object(
             'feedback_id', feedback_id,
             'submitted_at', NOW(),
-            'clinic_info', jsonb_build_object(
-                'id', clinic_record.id,
-                'name', clinic_record.name,
-                'previous_rating', clinic_record.current_rating,
-                'total_reviews', clinic_record.current_review_count
+            'appointment', jsonb_build_object(
+                'id', appointment_record.id,
+                'date', appointment_record.appointment_date,
+                'time', appointment_record.appointment_time
             ),
-            'your_feedback', jsonb_build_object(
-                'rating', p_rating,
-                'feedback_type', p_feedback_type,
-                'is_anonymous', COALESCE(p_is_anonymous, false),
-                'is_public', NOT COALESCE(p_is_anonymous, false)
-            )
+            'clinic_info', jsonb_build_object(
+                'id', clinic_id_val,
+                'name', appointment_record.clinic_name,
+                'previous_rating', appointment_record.clinic_current_rating,
+                'total_reviews', appointment_record.clinic_total_reviews,
+                'your_rating', p_clinic_rating
+            ),
+            'doctor_info', CASE 
+                WHEN doctor_record.id IS NOT NULL THEN jsonb_build_object(
+                    'id', doctor_record.id,
+                    'name', doctor_record.doctor_name,
+                    'specialization', doctor_record.specialization,
+                    'previous_rating', doctor_record.current_doctor_rating,
+                    'total_reviews', doctor_record.current_doctor_reviews,
+                    'your_rating', p_doctor_rating
+                )
+                ELSE NULL
+            END,
+            'average_rating', avg_rating,
+            'staff_notified', true
         )
     );
     
 EXCEPTION
     WHEN OTHERS THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Failed to submit feedback. Please try again.');
+        RAISE WARNING 'Error submitting feedback: %', SQLERRM;
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'An error occurred while submitting feedback',
+            'details', SQLERRM
+        );
 END;
 $function$
 ;
@@ -11731,28 +12400,77 @@ $function$
 CREATE OR REPLACE FUNCTION public.update_clinic_rating()
  RETURNS trigger
  LANGUAGE plpgsql
+ SECURITY DEFINER
  SET search_path TO 'public', 'extensions'
 AS $function$
+DECLARE
+  clinic_uuid UUID;
 BEGIN
-    UPDATE clinics SET
-        rating = (
-            SELECT COALESCE(AVG(rating)::DECIMAL(3,2), 0.00)
-            FROM feedback
-            WHERE clinic_id = COALESCE(NEW.clinic_id, OLD.clinic_id)
-            AND rating IS NOT NULL
-        ),
-        total_reviews = (
-            SELECT COUNT(*)
-            FROM feedback
-            WHERE clinic_id = COALESCE(NEW.clinic_id, OLD.clinic_id)
-            AND rating IS NOT NULL
-        )
-    WHERE id = COALESCE(NEW.clinic_id, OLD.clinic_id);
-    
-    RETURN COALESCE(NEW, OLD);
+  -- Get clinic_id from NEW or OLD record
+  clinic_uuid := COALESCE(NEW.clinic_id, OLD.clinic_id);
+  
+  UPDATE public.clinics 
+  SET
+    rating = (
+      SELECT COALESCE(ROUND(AVG(clinic_rating)::NUMERIC, 2), 0.00)
+      FROM public.feedback
+      WHERE clinic_id = clinic_uuid
+      AND clinic_rating IS NOT NULL
+    ),
+    total_reviews = (
+      SELECT COUNT(*)
+      FROM public.feedback
+      WHERE clinic_id = clinic_uuid
+      AND clinic_rating IS NOT NULL
+    ),
+    updated_at = NOW()
+  WHERE id = clinic_uuid;
+  
+  RETURN COALESCE(NEW, OLD);
 EXCEPTION
-    WHEN OTHERS THEN
-        RAISE EXCEPTION 'Error updating clinic rating: %', SQLERRM;
+  WHEN OTHERS THEN
+    RAISE WARNING 'Error updating clinic rating for clinic_id %: %', clinic_uuid, SQLERRM;
+    RETURN COALESCE(NEW, OLD);
+END;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.update_doctor_rating()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+AS $function$
+DECLARE
+  doctor_uuid UUID;
+BEGIN
+  -- Get doctor_id from NEW or OLD record
+  doctor_uuid := COALESCE(NEW.doctor_id, OLD.doctor_id);
+  
+  -- Only update if doctor_id exists
+  IF doctor_uuid IS NOT NULL THEN
+    UPDATE public.doctors 
+    SET
+      rating = (
+        SELECT COALESCE(ROUND(AVG(doctor_rating)::NUMERIC, 2), 0.00)
+        FROM public.feedback
+        WHERE doctor_id = doctor_uuid
+        AND doctor_rating IS NOT NULL
+      ),
+      total_reviews = (
+        SELECT COUNT(*)
+        FROM public.feedback
+        WHERE doctor_id = doctor_uuid
+        AND doctor_rating IS NOT NULL
+      ),
+      updated_at = NOW()
+    WHERE id = doctor_uuid;
+  END IF;
+  
+  RETURN COALESCE(NEW, OLD);
+EXCEPTION
+  WHEN OTHERS THEN
+    RAISE WARNING 'Error updating doctor rating for doctor_id %: %', doctor_uuid, SQLERRM;
+    RETURN COALESCE(NEW, OLD);
 END;
 $function$
 ;
@@ -13549,166 +14267,6 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.send_reschedule_reminder(
-    p_appointment_id UUID,
-    p_reason TEXT,
-    p_suggested_dates DATE[] DEFAULT NULL
-)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_catalog', 'extensions'
-AS $function$
-DECLARE
-    current_context JSONB;
-    appointment_record RECORD;
-    v_current_role TEXT;
-    clinic_id_val UUID;
-    current_user_id UUID;
-    patient_contact RECORD;
-    reminder_message TEXT;
-BEGIN
-    -- ✅ Get current user context
-    current_context := get_current_user_context();
-    
-    IF NOT (current_context->>'authenticated')::boolean THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Authentication required');
-    END IF;
-    
-    v_current_role := current_context->>'user_type';
-    current_user_id := (current_context->>'user_id')::UUID;
-    
-    -- ✅ Only staff can send reschedule reminders
-    IF v_current_role != 'staff' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Staff only');
-    END IF;
-    
-    clinic_id_val := (current_context->>'clinic_id')::UUID;
-    
-    -- ✅ Input validation
-    IF p_appointment_id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Appointment ID is required');
-    END IF;
-    
-    IF p_reason IS NULL OR TRIM(p_reason) = '' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Reason is required');
-    END IF;
-    
-    -- ✅ Get appointment details with patient info
-    SELECT 
-        a.id,
-        a.patient_id,
-        a.clinic_id,
-        a.appointment_date,
-        a.appointment_time,
-        a.status,
-        c.name as clinic_name,
-        c.phone as clinic_phone,
-        c.email as clinic_email,
-        up.first_name || ' ' || up.last_name as patient_name,
-        u.email as patient_email,
-        u.phone as patient_phone,
-        COALESCE(d.first_name || ' ' || d.last_name, 'Dr. ' || d.specialization) as doctor_name
-    INTO appointment_record
-    FROM appointments a
-    JOIN clinics c ON a.clinic_id = c.id
-    JOIN users u ON a.patient_id = u.id
-    JOIN user_profiles up ON u.id = up.user_id
-    LEFT JOIN doctors d ON a.doctor_id = d.id
-    WHERE a.id = p_appointment_id
-    AND a.clinic_id = clinic_id_val;
-    
-    IF NOT FOUND THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Appointment not found or access denied');
-    END IF;
-    
-    -- ✅ Verify appointment is cancelled (can only send reminder for cancelled appointments)
-    IF appointment_record.status != 'cancelled' THEN
-        RETURN jsonb_build_object(
-            'success', false, 
-            'error', format('Can only send reschedule reminder for cancelled appointments. Current status: %s', appointment_record.status)
-        );
-    END IF;
-    
-    -- ✅ Build reminder message
-    reminder_message := format(
-        'Your appointment on %s at %s was cancelled. Reason: %s. You can reschedule your appointment at your convenience. Please contact us at %s or book online.',
-        appointment_record.appointment_date::text,
-        appointment_record.appointment_time::text,
-        p_reason,
-        COALESCE(appointment_record.clinic_phone, appointment_record.clinic_email, 'the clinic')
-    );
-    
-    -- ✅ Add suggested dates if provided
-    IF p_suggested_dates IS NOT NULL AND array_length(p_suggested_dates, 1) > 0 THEN
-        reminder_message := reminder_message || E'\n\nSuggested available dates: ' || 
-            array_to_string(p_suggested_dates, ', ');
-    END IF;
-    
-    -- ✅ Create notification for patient
-    BEGIN
-        INSERT INTO notifications (
-            user_id,
-            notification_type,
-            title,
-            message,
-            related_appointment_id,
-            scheduled_for,
-            created_at
-        ) VALUES (
-            appointment_record.patient_id,
-            'appointment_cancelled',
-            'Appointment Cancellation - Reschedule Available',
-            reminder_message,
-            p_appointment_id,
-            NOW(),
-            NOW()
-        );
-        
-        -- ✅ Log analytics event
-        INSERT INTO analytics_events (
-            clinic_id,
-            user_id,
-            event_type,
-            metadata
-        ) VALUES (
-            clinic_id_val,
-            current_user_id,
-            'reschedule_reminder_sent',
-            jsonb_build_object(
-                'appointment_id', p_appointment_id,
-                'patient_id', appointment_record.patient_id,
-                'suggested_dates_count', COALESCE(array_length(p_suggested_dates, 1), 0)
-            )
-        );
-        
-    EXCEPTION WHEN OTHERS THEN
-        RAISE LOG 'Failed to create reschedule reminder notification: %', SQLERRM;
-        RETURN jsonb_build_object('success', false, 'error', 'Failed to send notification: ' || SQLERRM);
-    END;
-    
-    -- ✅ Return success
-    RETURN jsonb_build_object(
-        'success', true,
-        'message', 'Reschedule reminder sent successfully',
-        'data', jsonb_build_object(
-            'appointment_id', p_appointment_id,
-            'patient_name', appointment_record.patient_name,
-            'patient_email', appointment_record.patient_email,
-            'notification_sent', true
-        )
-    );
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RAISE LOG 'Error in send_reschedule_reminder: %', SQLERRM;
-        RETURN jsonb_build_object('success', false, 'error', 'Failed to send reschedule reminder: ' || SQLERRM);
-END;
-$function$;
-
--- ✅ Add helpful comment
-COMMENT ON FUNCTION public.send_reschedule_reminder IS 'Staff sends reschedule reminder notification to patient after cancelling appointment. Only works for cancelled appointments.';
-
 CREATE OR REPLACE FUNCTION public.validate_partnership_request()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -14685,6 +15243,8 @@ CREATE TRIGGER update_doctors_updated_at BEFORE UPDATE ON public.doctors FOR EAC
 CREATE TRIGGER protect_email_fields_trigger BEFORE UPDATE ON public.email_communications FOR EACH ROW EXECUTE FUNCTION protect_email_communications_fields();
 
 CREATE TRIGGER clinic_rating_trigger AFTER INSERT OR UPDATE ON public.feedback FOR EACH ROW EXECUTE FUNCTION update_clinic_rating();
+
+CREATE TRIGGER doctor_rating_trigger AFTER INSERT OR DELETE OR UPDATE ON public.feedback FOR EACH ROW EXECUTE FUNCTION update_doctor_rating();
 
 CREATE TRIGGER feedback_core_field_protect BEFORE UPDATE ON public.feedback FOR EACH ROW EXECUTE FUNCTION prevent_feedback_core_field_update();
 

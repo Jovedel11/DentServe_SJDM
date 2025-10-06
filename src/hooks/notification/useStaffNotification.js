@@ -32,7 +32,14 @@ export const useStaffNotifications = () => {
         offset = pagination.offset,
         refresh = false,
         // ✅ FIXED: Use ONLY valid enum values from database schema
-        notificationTypes = ['appointment_confirmed', 'appointment_cancelled', 'appointment_reminder', 'feedback_request', 'partnership_request']
+        notificationTypes = [
+          'appointment_confirmed', 
+          'appointment_cancelled', 
+          'appointment_reminder', 
+          'feedback_request',       // ✅ Primary notification for staff
+          'feedback_response',      // ✅ If staff are also patients
+          'partnership_request'
+        ]
       } = options;
 
       const { data, error } = await supabase.rpc('get_user_notifications', {
@@ -144,6 +151,7 @@ export const useStaffNotifications = () => {
       appointment_cancelled: notifications.filter(n => n.type === 'appointment_cancelled').length,
       appointment_reminder: notifications.filter(n => n.type === 'appointment_reminder').length,
       feedback_request: notifications.filter(n => n.type === 'feedback_request').length,
+      feedback_response: notifications.filter(n => n.type === 'feedback_response').length,
       partnership_request: notifications.filter(n => n.type === 'partnership_request').length
     };
 

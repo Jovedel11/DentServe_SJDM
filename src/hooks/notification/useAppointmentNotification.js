@@ -36,8 +36,9 @@ export const useAppointmentNotifications = () => {
       const appointmentNotificationTypes = [
         'appointment_confirmed',
         'appointment_cancelled', 
-        'appointment_reminder'
-        // ❌ REMOVED: 'appointment_completed', 'appointment_rescheduled' (not in enum)
+        'appointment_reminder',
+        'feedback_request',      // ✅ Staff receives this
+        'feedback_response'      // ✅ NEW: Patient receives this
       ];
 
       const { data, error } = await supabase.rpc('get_user_notifications', {
@@ -203,7 +204,7 @@ export const useAppointmentNotifications = () => {
     );
   }, [notifications]);
 
-  // ✅ FIXED: Updated stats with correct enum values
+  // ✅ FIXED: Updated stats with correct enum values including feedback_response
   const getStats = useCallback(() => {
     const today = new Date().toISOString().split('T')[0];
     
@@ -214,14 +215,16 @@ export const useAppointmentNotifications = () => {
       todayCount: notifications.filter(notif => 
         notif.created_at?.split('T')[0] === today
       ).length,
+      // ✅ FIXED: Use related_appointment_id instead of appointment_id
       appointmentRelated: notifications.filter(notif => 
-        notif.appointment_id !== null
+        notif.related_appointment_id !== null
       ).length,
       byType: {
         appointment_confirmed: getNotificationsByType('appointment_confirmed').length,
         appointment_cancelled: getNotificationsByType('appointment_cancelled').length,
         appointment_reminder: getNotificationsByType('appointment_reminder').length,
         feedback_request: getNotificationsByType('feedback_request').length,
+        feedback_response: getNotificationsByType('feedback_response').length,
         partnership_request: getNotificationsByType('partnership_request').length
       }
     };

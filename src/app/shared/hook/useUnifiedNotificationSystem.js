@@ -301,6 +301,47 @@ const { data, error } = await supabase
   }
 }, []);
 
+const getNotificationNavigationPath = useCallback((notification) => {
+  if (!notification) return null;
+
+  const userBasePath = isPatient ? '/patient' : (isStaff || isAdmin) ? '/staff' : '';
+
+  switch (notification.type) {
+    case 'appointment_confirmed':
+    case 'appointment_cancelled':
+    case 'appointment_reminder':
+      // Navigate to appointments page
+      if (notification.related_appointment_id) {
+        return `${userBasePath}/appointments`;
+      }
+      return `${userBasePath}/appointments`;
+
+    case 'feedback_request':
+      // Staff: Navigate to feedback management
+      if (isStaff || isAdmin) {
+        return `/staff/feedback`;
+      }
+      return null;
+
+    case 'feedback_response':
+      // Patient: Navigate to their feedback history
+      if (isPatient) {
+        return `/patient/feedback`;
+      }
+      return null;
+
+    case 'partnership_request':
+      // Admin only
+      if (isAdmin) {
+        return `/admin/partnerships`;
+      }
+      return null;
+
+    default:
+      return userBasePath;
+  }
+}, [isPatient, isStaff, isAdmin]);
+
 
   // ✅ REAL-TIME SUBSCRIPTION SETUP
   useEffect(() => {
@@ -460,6 +501,7 @@ const { data, error } = await supabase
     // Role-based capabilities
     canRespondToFeedback: isStaff || isAdmin,
     canModerate: isAdmin,
+    getNotificationNavigationPath,
     
     // Getters
     getNotificationById: (id) => state.allNotifications.find(n => n.id === id),

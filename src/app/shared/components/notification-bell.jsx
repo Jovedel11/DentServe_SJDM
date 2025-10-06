@@ -20,6 +20,8 @@ import {
   Clock,
   Eye,
   MoreHorizontal,
+  Building2,
+  Stethoscope,
 } from "lucide-react";
 import { Button } from "@/core/components/ui/button";
 import { Badge } from "@/core/components/ui/badge";
@@ -167,38 +169,53 @@ const UnifiedNotificationBell = ({
     feedbackNotifications,
   ]);
 
-  // ✅ NOTIFICATION TYPE MAPPING
+  // ✅ NOTIFICATION TYPE MAPPING WITH DUAL RATINGS SUPPORT
   const getNotificationConfig = (type, metadata = {}) => {
     const configs = {
       appointment_reminder: {
         icon: <Clock className="h-4 w-4" />,
         color: "text-orange-600",
-        bgColor: "bg-orange-50 border-orange-200",
-        urgentBg: "bg-orange-100",
+        bgColor:
+          "bg-orange-50 border-orange-200 dark:bg-orange-900/10 dark:border-orange-800",
+        urgentBg: "bg-orange-100 dark:bg-orange-900/20",
       },
       appointment_confirmed: {
         icon: <CheckCheck className="h-4 w-4" />,
         color: "text-green-600",
-        bgColor: "bg-green-50 border-green-200",
-        urgentBg: "bg-green-100",
+        bgColor:
+          "bg-green-50 border-green-200 dark:bg-green-900/10 dark:border-green-800",
+        urgentBg: "bg-green-100 dark:bg-green-900/20",
       },
       appointment_cancelled: {
         icon: <X className="h-4 w-4" />,
         color: "text-red-600",
-        bgColor: "bg-red-50 border-red-200",
-        urgentBg: "bg-red-100",
+        bgColor:
+          "bg-red-50 border-red-200 dark:bg-red-900/10 dark:border-red-800",
+        urgentBg: "bg-red-100 dark:bg-red-900/20",
       },
       feedback_request: {
         icon: <MessageSquare className="h-4 w-4" />,
         color: "text-blue-600",
-        bgColor: "bg-blue-50 border-blue-200",
-        urgentBg: metadata?.rating <= 2 ? "bg-red-100" : "bg-blue-100",
+        bgColor:
+          "bg-blue-50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800",
+        urgentBg:
+          metadata?.rating <= 2
+            ? "bg-red-100 dark:bg-red-900/20"
+            : "bg-blue-100 dark:bg-blue-900/20",
+      },
+      feedback_response: {
+        icon: <Reply className="h-4 w-4" />,
+        color: "text-purple-600",
+        bgColor:
+          "bg-purple-50 border-purple-200 dark:bg-purple-900/10 dark:border-purple-800",
+        urgentBg: "bg-purple-100 dark:bg-purple-900/20",
       },
       partnership_request: {
         icon: <User className="h-4 w-4" />,
-        color: "text-purple-600",
-        bgColor: "bg-purple-50 border-purple-200",
-        urgentBg: "bg-purple-100",
+        color: "text-indigo-600",
+        bgColor:
+          "bg-indigo-50 border-indigo-200 dark:bg-indigo-900/10 dark:border-indigo-800",
+        urgentBg: "bg-indigo-100 dark:bg-indigo-900/20",
       },
     };
 
@@ -206,8 +223,9 @@ const UnifiedNotificationBell = ({
       configs[type] || {
         icon: <Bell className="h-4 w-4" />,
         color: "text-gray-600",
-        bgColor: "bg-gray-50 border-gray-200",
-        urgentBg: "bg-gray-100",
+        bgColor:
+          "bg-gray-50 border-gray-200 dark:bg-gray-900/10 dark:border-gray-800",
+        urgentBg: "bg-gray-100 dark:bg-gray-900/20",
       }
     );
   };
@@ -336,25 +354,60 @@ const UnifiedNotificationBell = ({
     return [...baseFilters, ...roleSpecificFilters];
   };
 
-  // ✅ GET NOTIFICATION PRIORITY INDICATOR
+  // ✅ GET NOTIFICATION PRIORITY INDICATOR WITH DUAL RATINGS
   const getPriorityIndicator = (notification) => {
     const isUrgent = urgentNotifications.some((n) => n.id === notification.id);
     const isFeedback = notification.type === "feedback_request";
-    const rating = notification.metadata?.rating;
+    const isFeedbackResponse = notification.type === "feedback_response";
+
+    // ✅ Extract dual ratings from metadata or message
+    const clinicRating = notification.metadata?.clinic_rating;
+    const doctorRating = notification.metadata?.doctor_rating;
+    const legacyRating = notification.metadata?.rating;
 
     if (isUrgent) {
+      if (
+        isFeedback &&
+        (clinicRating <= 2 || doctorRating <= 2 || legacyRating <= 2)
+      ) {
+        return (
+          <Badge variant="destructive" className="text-xs">
+            {clinicRating && `🏥${clinicRating}★`}{" "}
+            {doctorRating && `👨‍⚕️${doctorRating}★`} Urgent
+          </Badge>
+        );
+      }
       return (
         <Badge variant="destructive" className="text-xs">
-          {isFeedback && rating <= 2 ? `${rating}★ Urgent` : "Urgent"}
+          Urgent
         </Badge>
       );
     }
 
-    if (isFeedback && rating) {
-      const stars = Array.from({ length: rating }, (_, i) => "★").join("");
+    if (isFeedback) {
       return (
-        <Badge variant="outline" className="text-xs">
-          {stars}
+        <div className="flex items-center gap-1">
+          {clinicRating && (
+            <Badge variant="outline" className="text-xs">
+              <Building2 className="w-3 h-3 mr-1" />
+              {clinicRating}★
+            </Badge>
+          )}
+          {doctorRating && (
+            <Badge variant="outline" className="text-xs">
+              <Stethoscope className="w-3 h-3 mr-1" />
+              {doctorRating}★
+            </Badge>
+          )}
+        </div>
+      );
+    }
+
+    if (isFeedbackResponse) {
+      return (
+        <Badge variant="secondary" className="text-xs">
+          <Reply className="w-3 h-3 mr-1" />
+          Staff Replied
         </Badge>
       );
     }
@@ -385,14 +438,14 @@ const UnifiedNotificationBell = ({
           onClick={() => setIsOpen(!isOpen)}
         >
           {hasUnread ? (
-            <BellRing className="h-4 w-4 text-orange-600" />
+            <BellRing className="h-4 w-4 text-orange-600 animate-wiggle" />
           ) : (
             <Bell className="h-4 w-4" />
           )}
 
           {/* Unread Badge */}
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium animate-pulse">
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
