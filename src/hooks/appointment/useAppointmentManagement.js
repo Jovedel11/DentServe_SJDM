@@ -3,6 +3,21 @@ import { useAuth } from '../../auth/context/AuthProvider';
 import { supabase } from '../../lib/supabaseClient';
 import { useAppointmentCancellation } from './useAppointmentCancellation';
 
+/**
+ * ✅ ENHANCED Appointment Management Hook - Staff & Patient
+ * 
+ * STAFF ACTIONS:
+ * - Approve appointments
+ * - Reject appointments  
+ * - Complete appointments
+ * - Mark no-show
+ * - Send reschedule reminders (NEW)
+ * - Bulk approve (NEW)
+ * 
+ * PATIENT ACTIONS:
+ * - View appointments
+ * - Cancel appointments (via useAppointmentCancellation)
+ */
 export const useAppointmentManagement = (options = {}) => {
   const { user, profile, isPatient, isStaff, isAdmin } = useAuth();
   const cancellation = useAppointmentCancellation();
@@ -47,7 +62,6 @@ export const useAppointmentManagement = (options = {}) => {
       const filters = { ...state.filters, ...customFilters };
       const offset = loadMore ? state.pagination.offset : 0;
 
-      // ✅ Use centralized RPC function
       const { data, error } = await supabase.rpc('get_appointments_by_role', {
         p_status: filters.status ? [filters.status] : null,
         p_date_from: filters.dateFrom,
@@ -101,7 +115,7 @@ export const useAppointmentManagement = (options = {}) => {
     }
   }, [state.filters, state.pagination.limit, state.pagination.offset, isPatient, includeStats]);
 
-  // ✅ STAFF ACTIONS - Approve appointment
+  // ✅ STAFF - Approve appointment
   const approveAppointment = useCallback(async (appointmentId, staffNotes = '') => {
     if (!isStaff && !isAdmin) return { success: false, error: 'Access denied' };
 
@@ -116,7 +130,6 @@ export const useAppointmentManagement = (options = {}) => {
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Approval failed');
 
-      // ✅ Optimistic update
       setState(prev => ({
         ...prev,
         loading: false,
@@ -135,7 +148,7 @@ export const useAppointmentManagement = (options = {}) => {
     }
   }, [isStaff, isAdmin]);
 
-  // ✅ STAFF ACTIONS - Reject appointment  
+  // ✅ STAFF - Reject appointment  
   const rejectAppointment = useCallback(async (appointmentId, rejectionData) => {
     if (!isStaff && !isAdmin) return { success: false, error: 'Access denied' };
 
@@ -155,7 +168,6 @@ export const useAppointmentManagement = (options = {}) => {
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Rejection failed');
 
-      // ✅ Optimistic update
       setState(prev => ({
         ...prev,
         loading: false,
@@ -174,7 +186,7 @@ export const useAppointmentManagement = (options = {}) => {
     }
   }, [isStaff, isAdmin]);
 
-  // ✅ STAFF ACTIONS - Complete appointment
+  // ✅ STAFF - Complete appointment
   const completeAppointment = useCallback(async (appointmentId, completionData = {}) => {
     if (!isStaff && !isAdmin) return { success: false, error: 'Access denied' };
 
@@ -192,7 +204,6 @@ export const useAppointmentManagement = (options = {}) => {
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Completion failed');
 
-      // ✅ Optimistic update
       setState(prev => ({
         ...prev,
         loading: false,
@@ -211,7 +222,7 @@ export const useAppointmentManagement = (options = {}) => {
     }
   }, [isStaff, isAdmin]);
 
-  // STAFF ACTIONS - Mark no-show
+  // ✅ STAFF - Mark no-show
   const markNoShow = useCallback(async (appointmentId, staffNotes = '') => {
     if (!isStaff && !isAdmin) return { success: false, error: 'Access denied' };
 
@@ -226,7 +237,6 @@ export const useAppointmentManagement = (options = {}) => {
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Failed to mark no-show');
 
-      // ✅ Optimistic update
       setState(prev => ({
         ...prev,
         loading: false,
@@ -245,12 +255,85 @@ export const useAppointmentManagement = (options = {}) => {
     }
   }, [isStaff, isAdmin]);
 
+  // ✅ NEW: STAFF - Send Reschedule Reminder
+  const sendRescheduleReminder = useCallback(async (appointmentId, reason, suggestedDates = []) => {
+    if (!isStaff && !isAdmin) return { success: false, error: 'Access denied' };
+
+    try {
+      setState(prev => ({ ...prev, loading: true }));
+
+      const { data, error } = await supabase.rpc('send_reschedule_reminder', {
+        p_appointment_id: appointmentId,
+        p_reason: reason,
+        p_suggested_dates: suggestedDates.length > 0 ? suggestedDates : null
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed to send reminder');
+
+      setState(prev => ({ ...prev, loading: false }));
+
+      return { success: true, data: data.data, message: data.message };
+
+    } catch (err) {
+      setState(prev => ({ ...prev, loading: false, error: err.message }));
+      return { success: false, error: err.message };
+    }
+  }, [isStaff, isAdmin]);
+
+  // ✅ NEW: STAFF - Bulk Approve Appointments
+  const bulkApproveAppointments = useCallback(async (appointmentIds, staffNotes = '') => {
+    if (!isStaff && !isAdmin) return { success: false, error: 'Access denied' };
+
+    try {
+      setState(prev => ({ ...prev, loading: true }));
+
+      const results = await Promise.allSettled(
+        appointmentIds.map(id => 
+          supabase.rpc('approve_appointment', {
+            p_appointment_id: id,
+            p_staff_notes: staffNotes
+          })
+        )
+      );
+
+      const successful = results.filter(r => r.status === 'fulfilled' && r.value.data?.success);
+      const failed = results.filter(r => r.status === 'rejected' || !r.value.data?.success);
+
+      setState(prev => ({
+        ...prev,
+        loading: false,
+        appointments: prev.appointments.map(apt => {
+          const wasApproved = successful.some(s => {
+            const appointmentId = s.value?.data?.data?.appointment_id;
+            return appointmentId === apt.id;
+          });
+          return wasApproved 
+            ? { ...apt, status: 'confirmed', notes: staffNotes || apt.notes }
+            : apt;
+        })
+      }));
+
+      return {
+        success: successful.length > 0,
+        approved: successful.length,
+        failed: failed.length,
+        total: appointmentIds.length,
+        message: `${successful.length}/${appointmentIds.length} appointments approved`
+      };
+
+    } catch (err) {
+      setState(prev => ({ ...prev, loading: false, error: err.message }));
+      return { success: false, error: err.message };
+    }
+  }, [isStaff, isAdmin]);
+
   // ✅ FILTER MANAGEMENT
   const updateFilters = useCallback((newFilters) => {
     setState(prev => ({
       ...prev,
       filters: { ...prev.filters, ...newFilters },
-      pagination: { ...prev.pagination, offset: 0 } // Reset pagination
+      pagination: { ...prev.pagination, offset: 0 }
     }));
   }, []);
 
@@ -277,12 +360,17 @@ export const useAppointmentManagement = (options = {}) => {
       return true;
     });
 
+    // ✅ NEW: Today's appointments helper
+    const todayDate = new Date().toISOString().split('T')[0];
+    const todayAppointments = filteredAppointments.filter(apt => 
+      apt.appointment_date === todayDate
+    );
+
     return {
       filteredAppointments,
       isEmpty: filteredAppointments.length === 0,
       hasAppointments: state.appointments.length > 0,
       
-      // Role-specific computed data
       ...(isPatient && {
         upcomingAppointments: filteredAppointments.filter(apt => 
           new Date(apt.appointment_date) > new Date() && apt.status === 'confirmed'
@@ -292,10 +380,10 @@ export const useAppointmentManagement = (options = {}) => {
 
       ...(isStaff && {
         pendingAppointments: filteredAppointments.filter(apt => apt.status === 'pending'),
-        todayAppointments: filteredAppointments.filter(apt => {
-          const today = new Date().toISOString().split('T')[0];
-          return apt.appointment_date === today;
-        })
+        confirmedAppointments: filteredAppointments.filter(apt => apt.status === 'confirmed'),
+        todayAppointments,
+        todayCount: todayAppointments.length,
+        pendingCount: filteredAppointments.filter(apt => apt.status === 'pending').length
       })
     };
   }, [state.appointments, state.filters, isPatient, isStaff]);
@@ -322,13 +410,16 @@ export const useAppointmentManagement = (options = {}) => {
     rejectAppointment, 
     completeAppointment,
     markNoShow,
+    sendRescheduleReminder, // ✅ NEW
+    bulkApproveAppointments, // ✅ NEW
 
-    // Cancellation (from existing hook)
+    // Cancellation
     ...cancellation,
 
     // Utilities
     refreshData: () => fetchAppointments({}, false),
     getAppointmentById: (id) => state.appointments.find(apt => apt.id === id),
-    getAppointmentsByStatus: (status) => state.appointments.filter(apt => apt.status === status)
+    getAppointmentsByStatus: (status) => state.appointments.filter(apt => apt.status === status),
+    getTodaysAppointments: () => computedData.todayAppointments || [] // ✅ NEW
   };
 };

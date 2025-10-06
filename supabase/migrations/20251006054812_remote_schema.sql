@@ -3074,6 +3074,96 @@ END;
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.check_appointments_feedback_status(
+    p_appointment_ids uuid[]
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_catalog', 'extensions'
+AS $function$
+DECLARE
+    current_auth_id UUID;
+    current_user_id UUID;
+    result JSONB;
+BEGIN
+    -- Get current auth user
+    current_auth_id := auth.uid();
+    
+    IF current_auth_id IS NULL THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Not authenticated'
+        );
+    END IF;
+    
+    -- ✅ CRITICAL FIX: Convert auth.uid() to public.users.id
+    SELECT id INTO current_user_id
+    FROM public.users
+    WHERE auth_user_id = current_auth_id;
+    
+    IF current_user_id IS NULL THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'User profile not found',
+            'debug_auth_id', current_auth_id
+        );
+    END IF;
+    
+    -- Bypass RLS
+    SET LOCAL row_security = off;
+    
+    -- Get feedback status for these appointments
+    WITH feedback_check AS (
+        SELECT 
+            f.appointment_id,
+            f.id as feedback_id,
+            f.clinic_rating,
+            f.doctor_rating,
+            f.created_at,
+            TRUE as has_feedback
+        FROM feedback f
+        WHERE f.appointment_id = ANY(p_appointment_ids)
+        AND f.patient_id = current_user_id  -- ✅ Now using correct public.users.id
+    )
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', COALESCE(
+            jsonb_object_agg(
+                appointment_id::text,
+                jsonb_build_object(
+                    'id', feedback_id,
+                    'clinic_rating', clinic_rating,
+                    'doctor_rating', doctor_rating,
+                    'created_at', created_at,
+                    'has_feedback', has_feedback
+                )
+            ),
+            '{}'::jsonb
+        ),
+        'debug', jsonb_build_object(
+            'auth_id', current_auth_id,
+            'user_id', current_user_id,
+            'appointments_checked', array_length(p_appointment_ids, 1)
+        )
+    ) INTO result
+    FROM feedback_check;
+    
+    RETURN result;
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Failed to check feedback status',
+            'details', SQLERRM
+        );
+END;
+$function$;
+
+-- Grant permissions
+GRANT EXECUTE ON FUNCTION check_appointments_feedback_status TO authenticated;
+
 CREATE OR REPLACE FUNCTION public.check_staff_profile_completion_status(p_user_id uuid DEFAULT NULL::uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -3757,77 +3847,6 @@ EXCEPTION
 END;
 $function$
 ;
-
-CREATE OR REPLACE FUNCTION public.check_appointments_feedback_status(
-    p_appointment_ids uuid[]
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_catalog', 'extensions'
-AS $function$
-DECLARE
-    current_user_id UUID;
-    result JSONB;
-BEGIN
-    -- Get current user
-    current_user_id := auth.uid();
-    
-    IF current_user_id IS NULL THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Not authenticated'
-        );
-    END IF;
-    
-    -- Bypass RLS
-    SET LOCAL row_security = off;
-    
-    -- Get feedback status for these appointments
-    WITH feedback_check AS (
-        SELECT 
-            f.appointment_id,
-            f.id as feedback_id,
-            f.clinic_rating,
-            f.doctor_rating,
-            f.created_at,
-            TRUE as has_feedback
-        FROM feedback f
-        WHERE f.appointment_id = ANY(p_appointment_ids)
-        AND f.patient_id = current_user_id  -- ✅ Only patient's own feedback
-    )
-    SELECT jsonb_build_object(
-        'success', true,
-        'data', COALESCE(
-            jsonb_object_agg(
-                appointment_id::text,
-                jsonb_build_object(
-                    'id', feedback_id,
-                    'clinic_rating', clinic_rating,
-                    'doctor_rating', doctor_rating,
-                    'created_at', created_at,
-                    'has_feedback', has_feedback
-                )
-            ),
-            '{}'::jsonb
-        )
-    ) INTO result
-    FROM feedback_check;
-    
-    RETURN result;
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Failed to check feedback status',
-            'details', SQLERRM
-        );
-END;
-$function$;
-
--- Grant permissions
-GRANT EXECUTE ON FUNCTION check_appointments_feedback_status TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.create_appointment_notification(p_user_id uuid, p_notification_type notification_type, p_appointment_id uuid, p_custom_message text DEFAULT NULL::text)
  RETURNS jsonb

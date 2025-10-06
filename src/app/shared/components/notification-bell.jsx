@@ -1,9 +1,16 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { useUnifiedNotificationSystem } from "@/app/shared/hook/useUnifiedNotificationSystem";
 import { useAppointmentRealtime } from "@/core/hooks/useAppointmentRealtime";
 import FeedbackReplyModal from "@/app/staff/components/feedback-reply-modal";
-import NotificationDetailsModal from "@/app/staff/components/notification-details-modal";
+import NotificationDetailsModal from "@/app/shared/components/notification-details-modal";
 import AllNotificationsModal from "@/app/staff/components/all-notification-modal";
 import {
   Bell,
@@ -33,6 +40,7 @@ const UnifiedNotificationBell = ({
   showPreview = true,
   maxPreviewItems = 8,
 }) => {
+  const navigate = useNavigate();
   const { user, isPatient, isStaff, isAdmin, profile } = useAuth();
 
   // ✅ UNIFIED NOTIFICATION SYSTEM
@@ -48,6 +56,7 @@ const UnifiedNotificationBell = ({
     markAsRead,
     respondToFeedback,
     getFeedbackDetails,
+    getNotificationNavigationPath,
     hasUnread,
     urgentNotifications,
     todayNotifications,
@@ -119,8 +128,8 @@ const UnifiedNotificationBell = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ✅ FILTERED NOTIFICATIONS (Preview only)
-  const filteredNotifications = React.useMemo(() => {
+  // ✅ ENHANCED: FILTERED AND SORTED NOTIFICATIONS (Preview only - Sorted by time, newest first)
+  const filteredNotifications = useMemo(() => {
     let filtered = notifications;
 
     // Apply filter
@@ -157,6 +166,18 @@ const UnifiedNotificationBell = ({
       );
     }
 
+    // ✅ ENHANCED: Explicit time-based sorting - Newest first (by created_at timestamp)
+    // Sort by: 1) Unread first, 2) Newest first (created_at DESC)
+    filtered.sort((a, b) => {
+      // Unread notifications first
+      if (a.is_read !== b.is_read) {
+        return a.is_read ? 1 : -1;
+      }
+      // Then by newest first (descending order)
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+
+    // Limit to preview items (default 8)
     return filtered.slice(0, maxPreviewItems);
   }, [
     notifications,
@@ -237,7 +258,7 @@ const UnifiedNotificationBell = ({
       await markAsRead([notification.id]);
     }
 
-    // ✅ NEW: Open details modal instead of direct navigation
+    // Open details modal
     setNotificationDetailsModal({
       isOpen: true,
       notification,
@@ -286,6 +307,15 @@ const UnifiedNotificationBell = ({
     });
   };
 
+  // ✅ NAVIGATE TO NOTIFICATION PAGE
+  const handleNavigateToNotification = (notification) => {
+    const path = getNotificationNavigationPath(notification);
+    if (path) {
+      navigate(path);
+      setNotificationDetailsModal({ isOpen: false, notification: null });
+    }
+  };
+
   // ✅ TOAST HELPER
   const showToast = (message, type = "success") => {
     setToastMessage({ message, type });
@@ -327,7 +357,7 @@ const UnifiedNotificationBell = ({
       });
     }
 
-    if (canRespondToFeedback) {
+    if (canRespondToFeedback || isPatient) {
       roleSpecificFilters.push({
         key: "feedback",
         label: "Feedback",
@@ -705,6 +735,7 @@ const UnifiedNotificationBell = ({
         notification={notificationDetailsModal.notification}
         onMarkAsRead={markAsRead}
         onOpenFeedbackReply={handleOpenFeedbackReply}
+        onNavigate={handleNavigateToNotification}
         getFeedbackDetails={getFeedbackDetails}
       />
 

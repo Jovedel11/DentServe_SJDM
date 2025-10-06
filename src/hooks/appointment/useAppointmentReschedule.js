@@ -3,13 +3,16 @@ import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 
 /**
- * Appointment Rescheduling Hook
- * Handles appointment rescheduling with availability checking
- * Note: Database doesn't have dedicated reschedule function,
- * so we implement it as validate + cancel + rebook flow
+ * ✅ ENHANCED Appointment Rescheduling Hook
+ * 
+ * FEATURES:
+ * - Patient can reschedule own appointments (with policy check)
+ * - Staff can reschedule any appointment at their clinic
+ * - Availability checking
+ * - Suggest alternative dates
  */
 export const useAppointmentReschedule = () => {
-  const { user, profile, isPatient, isStaff } = useAuth();
+  const { user, profile, isPatient, isStaff, isAdmin } = useAuth();
 
   const [state, setState] = useState({
     loading: false,
@@ -19,9 +22,7 @@ export const useAppointmentReschedule = () => {
     rescheduleData: null
   });
 
-  // =====================================================
-  // Check if Appointment Can Be Rescheduled
-  // =====================================================
+  // ✅ Check if Appointment Can Be Rescheduled
   const canRescheduleAppointment = useCallback(async (appointmentId) => {
     try {
       // Get appointment details
@@ -33,18 +34,25 @@ export const useAppointmentReschedule = () => {
 
       if (fetchError) throw fetchError;
 
-      // Check if can cancel (required for reschedule)
+      // ✅ Staff can always reschedule
+      if (isStaff || isAdmin) {
+        return {
+          canReschedule: true,
+          reason: 'Staff override',
+          appointment
+        };
+      }
+
+      // ✅ Patient validation
       const { data: canCancel, error: cancelError } = await supabase.rpc('can_cancel_appointment', {
         p_appointment_id: appointmentId
       });
 
       if (cancelError) throw cancelError;
 
-      // Check status
       const validStatuses = ['pending', 'confirmed'];
       const isValidStatus = validStatuses.includes(appointment.status);
 
-      // Check time window
       const policyHours = appointment.clinic?.cancellation_policy_hours || 24;
       const appointmentDateTime = new Date(`${appointment.appointment_date}T${appointment.appointment_time}`);
       const now = new Date();
@@ -73,7 +81,7 @@ export const useAppointmentReschedule = () => {
         error: err.message
       };
     }
-  }, []);
+  }, [isStaff, isAdmin]);
 
   const getNextSevenDays = () => {
     const dates = [];
@@ -88,9 +96,7 @@ export const useAppointmentReschedule = () => {
     return dates;
   };
 
-  // =====================================================
-  // Get Available Slots for Rescheduling
-  // =====================================================
+  // ✅ Get Available Slots for Rescheduling
   const getAvailableSlotsForReschedule = useCallback(async (
     appointmentId,
     newDate = null,
@@ -99,7 +105,6 @@ export const useAppointmentReschedule = () => {
     try {
       setState(prev => ({ ...prev, checkingAvailability: true, error: null }));
   
-      // Get current appointment details
       const { data: appointment, error: fetchError } = await supabase
         .from('appointments')
         .select(`
@@ -110,24 +115,20 @@ export const useAppointmentReschedule = () => {
         .single();
   
       if (fetchError) throw fetchError;
-  
-      // ✅ FIXED: Extract service IDs, handle consultation-only (no services)
+
       const serviceIds = appointment.services?.map(s => s.service_id).filter(Boolean) || [];
-  
-      // Determine dates to check
+
       const datesToCheck = newDate 
         ? [newDate] 
         : alternativeDates.length > 0 
           ? alternativeDates 
           : getNextSevenDays();
   
-      // Check availability for each date
       const availabilityPromises = datesToCheck.map(async (date) => {
         try {
           const { data, error } = await supabase.rpc('get_available_time_slots', {
             p_doctor_id: appointment.doctor_id,
             p_appointment_date: date,
-            // ✅ FIXED: Pass null for consultation-only, array for services
             p_service_ids: serviceIds.length > 0 ? serviceIds : null
           });
   
@@ -156,8 +157,8 @@ export const useAppointmentReschedule = () => {
           currentTime: appointment.appointment_time,
           doctorId: appointment.doctor_id,
           clinicId: appointment.clinic_id,
-          serviceIds,  // ✅ Can be empty array for consultation-only
-          isConsultationOnly: serviceIds.length === 0  // ✅ NEW FLAG
+          serviceIds,
+          isConsultationOnly: serviceIds.length === 0
         }
       }));
   
@@ -173,9 +174,8 @@ export const useAppointmentReschedule = () => {
       return { success: false, error: errorMsg };
     }
   }, []);
-  // =====================================================
-  // Reschedule Appointment
-  // =====================================================
+
+  // ✅ Reschedule Appointment
   const rescheduleAppointment = useCallback(async (
     appointmentId,
     newDate,
@@ -207,13 +207,17 @@ export const useAppointmentReschedule = () => {
         throw new Error('Selected time slot is no longer available');
       }
 
-      // Step 3: Update appointment (direct update since we verified eligibility)
+      // ✅ Step 3: Update with staff/patient context
+      const updateNote = `Rescheduled from ${appointment.appointment_date} ${appointment.appointment_time}. Reason: ${rescheduleReason || (isStaff ? 'Staff adjustment' : 'Patient request')}. By: ${isStaff ? 'Staff' : 'Patient'}`;
+
       const { data: updatedAppointment, error: updateError } = await supabase
         .from('appointments')
         .update({
           appointment_date: newDate,
           appointment_time: newTime,
-          notes: `Rescheduled from ${appointment.appointment_date} ${appointment.appointment_time}. Reason: ${rescheduleReason || 'Patient request'}`,
+          notes: appointment.notes 
+            ? `${appointment.notes}\n---\n${updateNote}` 
+            : updateNote,
           updated_at: new Date().toISOString()
         })
         .eq('id', appointmentId)
@@ -222,13 +226,17 @@ export const useAppointmentReschedule = () => {
 
       if (updateError) throw updateError;
 
-      // Step 4: Create notification about reschedule
-      await supabase.rpc('create_appointment_notification', {
-        p_user_id: appointment.doctor_id,
-        p_notification_type: 'appointment_confirmed',
-        p_appointment_id: appointmentId,
-        p_custom_message: `Appointment rescheduled to ${newDate} at ${newTime}`
-      });
+      // Step 4: Notification (optional - if function exists)
+      try {
+        await supabase.rpc('create_appointment_notification', {
+          p_user_id: appointment.patient_id,
+          p_notification_type: 'appointment_confirmed',
+          p_appointment_id: appointmentId,
+          p_custom_message: `Appointment rescheduled to ${newDate} at ${newTime}`
+        });
+      } catch (notifError) {
+        console.warn('Notification failed:', notifError);
+      }
 
       setState(prev => ({ ...prev, loading: false }));
 
@@ -251,18 +259,15 @@ export const useAppointmentReschedule = () => {
       setState(prev => ({ ...prev, loading: false, error: errorMsg }));
       return { success: false, error: errorMsg };
     }
-  }, [canRescheduleAppointment]);
+  }, [canRescheduleAppointment, isStaff]);
 
-  // =====================================================
-  // Staff: Suggest Reschedule Options
-  // =====================================================
+  // ✅ STAFF: Suggest Reschedule Options
   const suggestRescheduleOptions = useCallback(async (appointmentId, numberOfDays = 7) => {
-    if (!isStaff) {
+    if (!isStaff && !isAdmin) {
       return { success: false, error: 'Only staff can suggest reschedule options' };
     }
 
     try {
-      // Get appointment details
       const { data: appointment, error } = await supabase
         .from('appointments')
         .select('*')
@@ -271,7 +276,6 @@ export const useAppointmentReschedule = () => {
 
       if (error) throw error;
 
-      // Generate alternative dates (next 7 days from original date)
       const originalDate = new Date(appointment.appointment_date);
       const alternativeDates = [];
       
@@ -290,7 +294,7 @@ export const useAppointmentReschedule = () => {
     } catch (err) {
       return { success: false, error: err.message };
     }
-  }, [isStaff, getAvailableSlotsForReschedule]);
+  }, [isStaff, isAdmin, getAvailableSlotsForReschedule]);
 
   return {
     // State

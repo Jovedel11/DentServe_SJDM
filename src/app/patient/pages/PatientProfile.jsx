@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
 import {
   FiUser,
@@ -9,6 +9,8 @@ import {
   FiHeart,
   FiShield,
   FiBell,
+  FiMapPin,
+  FiUsers,
 } from "react-icons/fi";
 
 import { useProfileManager } from "@/app/shared/hook/useProfileManager";
@@ -20,6 +22,7 @@ import { ProfileStats } from "@/app/shared/profile/profile-stats";
 import { AlertMessage } from "@/core/components/ui/alert-message";
 import { FileSizeWarning } from "@/utils/file-size-warning";
 import Loader from "@/core/components/Loader";
+import { supabase } from "@/lib/supabaseClient";
 
 const PatientProfile = () => {
   const {
@@ -38,6 +41,11 @@ const PatientProfile = () => {
     handleEditToggle,
     handleImageUpdate,
   } = useProfileManager();
+
+  // ✅ NEW: State for doctors and location
+  const [availableDoctors, setAvailableDoctors] = useState([]);
+  const [loadingDoctors, setLoadingDoctors] = useState(false);
+  const [selectedDoctors, setSelectedDoctors] = useState([]);
 
   // Stats data
   const statsData = [
@@ -69,6 +77,68 @@ const PatientProfile = () => {
     { value: "Prefer not to say", label: "Prefer not to say" },
   ];
 
+  // ✅ Fetch available doctors
+  useEffect(() => {
+    if (profileData) {
+      fetchAvailableDoctors();
+
+      // Initialize selected doctors from profile data
+      if (profileData?.role_specific_data?.preferred_doctors) {
+        setSelectedDoctors(profileData.role_specific_data.preferred_doctors);
+      }
+    }
+  }, [profileData]);
+
+  const fetchAvailableDoctors = async () => {
+    try {
+      setLoadingDoctors(true);
+
+      // Query doctors directly with RLS (patients can view available doctors)
+      const { data, error } = await supabase
+        .from("doctors")
+        .select(
+          `
+          id,
+          first_name,
+          last_name,
+          specialization,
+          rating,
+          total_reviews,
+          image_url,
+          consultation_fee
+        `
+        )
+        .eq("is_available", true)
+        .order("rating", { ascending: false })
+        .order("first_name", { ascending: true });
+
+      if (error) throw error;
+
+      setAvailableDoctors(data || []);
+    } catch (error) {
+      console.error("❌ Error fetching doctors:", error);
+    } finally {
+      setLoadingDoctors(false);
+    }
+  };
+
+  // ✅ Handle doctor selection
+  const handleDoctorToggle = (doctorId) => {
+    setSelectedDoctors((prev) => {
+      const newSelection = prev.includes(doctorId)
+        ? prev.filter((id) => id !== doctorId)
+        : [...prev, doctorId];
+
+      // Update currentData to sync with form
+      handleInputChange(
+        "role_specific_data",
+        "preferred_doctors",
+        newSelection
+      );
+      return newSelection;
+    });
+  };
+
   if (loading) {
     return <Loader message="Loading your profile... Please wait a moment" />;
   }
@@ -98,7 +168,7 @@ const PatientProfile = () => {
   return (
     <div className="min-h-screen p-4 md:p-6 bg-background rounded-2xl">
       <div className="max-w-6xl mx-auto">
-        {/* Success/Error Messages - FIXED */}
+        {/* Success/Error Messages */}
         <AnimatePresence mode="wait">
           {success && (
             <AlertMessage
@@ -287,7 +357,7 @@ const PatientProfile = () => {
           </div>
         </ProfileCard>
 
-        {/* Medical Information - Fixed array display */}
+        {/* Medical Information */}
         <ProfileCard
           title="Medical Information"
           icon={FiShield}
@@ -353,8 +423,151 @@ const PatientProfile = () => {
           </div>
         </ProfileCard>
 
+        {/* ✅ NEW: Preferred Doctors */}
+        <ProfileCard
+          title="Preferred Doctors"
+          icon={FiUsers}
+          className="mb-6"
+          delay={0.6}
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Select doctors you prefer to consult with. This helps us
+              prioritize your preferred doctors when booking appointments.
+            </p>
+
+            {loadingDoctors ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            ) : isEditing ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto p-2">
+                {availableDoctors.map((doctor) => {
+                  const isSelected = selectedDoctors.includes(doctor.id);
+                  return (
+                    <button
+                      key={doctor.id}
+                      type="button"
+                      onClick={() => handleDoctorToggle(doctor.id)}
+                      className={`flex items-center gap-3 p-4 rounded-xl border-2 transition-all duration-300 text-left ${
+                        isSelected
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-primary/30 hover:bg-muted/50"
+                      }`}
+                    >
+                      {doctor.image_url ? (
+                        <img
+                          src={doctor.image_url}
+                          alt={`Dr. ${doctor.first_name} ${doctor.last_name}`}
+                          className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                          <FiUsers className="text-primary text-xl" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <h5 className="font-semibold text-foreground truncate">
+                          Dr. {doctor.first_name} {doctor.last_name}
+                        </h5>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {doctor.specialization}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="flex items-center gap-1">
+                            <FiHeart className="text-yellow-500 text-xs" />
+                            <span className="text-xs font-medium">
+                              {doctor.rating?.toFixed(1) || "N/A"}
+                            </span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            ({doctor.total_reviews || 0} reviews)
+                          </span>
+                        </div>
+                      </div>
+                      {isSelected && (
+                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                          <svg
+                            className="w-4 h-4 text-primary-foreground"
+                            fill="none"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path d="M5 13l4 4L19 7"></path>
+                          </svg>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {selectedDoctors.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {selectedDoctors.map((doctorId) => {
+                      const doctor = availableDoctors.find(
+                        (d) => d.id === doctorId
+                      );
+                      if (!doctor) return null;
+                      return (
+                        <div
+                          key={doctor.id}
+                          className="flex items-center gap-3 p-4 rounded-xl border border-border bg-muted/20"
+                        >
+                          {doctor.image_url ? (
+                            <img
+                              src={doctor.image_url}
+                              alt={`Dr. ${doctor.first_name} ${doctor.last_name}`}
+                              className="w-12 h-12 rounded-full object-cover flex-shrink-0"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                              <FiUsers className="text-primary text-xl" />
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <h5 className="font-semibold text-foreground truncate">
+                              Dr. {doctor.first_name} {doctor.last_name}
+                            </h5>
+                            <p className="text-sm text-muted-foreground truncate">
+                              {doctor.specialization}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <div className="flex items-center gap-1">
+                                <FiHeart className="text-yellow-500 text-xs" />
+                                <span className="text-xs font-medium">
+                                  {doctor.rating?.toFixed(1) || "N/A"}
+                                </span>
+                              </div>
+                              <span className="text-xs text-muted-foreground">
+                                ({doctor.total_reviews || 0} reviews)
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 px-4 bg-muted/20 rounded-xl border border-border">
+                    <FiUsers className="text-4xl text-muted-foreground mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      No preferred doctors selected. Click edit to choose your
+                      preferred doctors.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </ProfileCard>
+
         {/* Notification Preferences */}
-        <ProfileCard title="Notification Preferences" icon={FiBell} delay={0.6}>
+        <ProfileCard title="Notification Preferences" icon={FiBell} delay={0.8}>
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">

@@ -4,7 +4,7 @@ import {
   IconSettings,
   IconUsers,
 } from "@tabler/icons-react";
-import { ClipboardPen, MessageSquareHeart } from "lucide-react";
+import { ClipboardPen, MessageSquareHeart, NotebookTabs } from "lucide-react";
 
 import { NavMain } from "../navigation/nav-main";
 import { NavSecondary } from "../navigation/nav-secondary";
@@ -32,6 +32,11 @@ const data = {
       url: "/staff/manage-appointments",
       icon: ClipboardPen,
       isActive: true,
+    },
+    {
+      title: "Treatment Plans",
+      url: "/staff/treatment-plans",
+      icon: NotebookTabs,
     },
     {
       title: "Appointment History",

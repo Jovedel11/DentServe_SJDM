@@ -138,14 +138,14 @@ export const usePatientFeedback = () => {
         const canLeave = apt.status === 'completed' && !hasFeedback;
         
         return {
-          id: apt.id,
-          appointment_date: apt.appointment_date,
-          appointment_time: apt.appointment_time,
-          status: apt.status,
-          clinic: {
-            id: apt.clinic?.id,
-            name: apt.clinic?.name || 'Unknown Clinic',
-            address: apt.clinic?.address || '',
+        id: apt.id,
+        appointment_date: apt.appointment_date,
+        appointment_time: apt.appointment_time,
+        status: apt.status,
+        clinic: {
+          id: apt.clinic?.id,
+          name: apt.clinic?.name || 'Unknown Clinic',
+          address: apt.clinic?.address || '',
             phone: apt.clinic?.phone || '',
             rating: apt.clinic?.rating || 0,
             total_reviews: apt.clinic?.total_reviews || 0
@@ -157,10 +157,10 @@ export const usePatientFeedback = () => {
             rating: apt.doctor.rating || 0,
             total_reviews: apt.doctor.total_reviews || 0
           } : null,
-          services: apt.services || [],
-          symptoms: apt.symptoms || '',
-          notes: apt.notes || '',
-          duration_minutes: apt.duration_minutes || 60,
+        services: apt.services || [],
+        symptoms: apt.symptoms || '',
+        notes: apt.notes || '',
+        duration_minutes: apt.duration_minutes || 60,
           // ✅ Feedback tracking
           hasFeedback,
           feedbackId: feedbackInfo?.id || null,
@@ -214,8 +214,8 @@ export const usePatientFeedback = () => {
         // ✅ Group doctors
         if (apt.doctor) {
           if (!clinic.doctors.has(apt.doctor.id)) {
-            clinic.doctors.set(apt.doctor.id, {
-              ...apt.doctor,
+          clinic.doctors.set(apt.doctor.id, {
+            ...apt.doctor,
               appointments: [],
               totalAppointments: 0,
               reviewedAppointments: 0,
@@ -240,8 +240,8 @@ export const usePatientFeedback = () => {
       // ✅ Convert to array and filter
       const availableClinics = Array.from(clinicMap.values())
         .map(clinic => ({
-          ...clinic,
-          doctors: Array.from(clinic.doctors.values())
+        ...clinic,
+        doctors: Array.from(clinic.doctors.values())
             .filter(doc => doc.availableAppointments > 0) // Only doctors with reviewable appointments
         }))
         .filter(clinic => clinic.availableAppointments > 0); // Only clinics with reviewable appointments

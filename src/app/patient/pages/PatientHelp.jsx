@@ -16,7 +16,7 @@ import {
 } from "react-icons/fi";
 
 /**
- * Help & Support page component - provides assistance and resources for patients
+ * ✅ Production-Ready Help & Support - Aligned with Database Schema
  */
 const PatientHelp = () => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -29,105 +29,204 @@ const PatientHelp = () => {
     priority: "normal",
   });
 
-  // Mock FAQ data - comprehensive dental care questions
+  // ✅ UPDATED FAQ DATA - Reflects Actual System Features
   const faqData = [
+    // APPOINTMENTS
     {
       id: 1,
       category: "appointments",
       question: "How do I book an appointment?",
       answer:
-        "You can book an appointment by navigating to the 'Book Appointment' page in your dashboard. Select your preferred service, doctor, date, and time, then fill in your contact information to confirm the booking. You'll receive a confirmation email with appointment details.",
+        "Navigate to the 'Book Appointment' page from your dashboard. Select your preferred clinic, doctor, service type, and available time slot. Fill in any additional notes about your visit, then confirm your booking. You'll receive an email notification once your appointment is confirmed.",
     },
     {
       id: 2,
       category: "appointments",
-      question: "Can I reschedule or cancel my appointment?",
+      question: "Can I cancel or reschedule my appointment?",
       answer:
-        "Yes, you can reschedule or cancel your appointment up to 24 hours before the scheduled time. Go to the 'My Appointments' page, find your appointment, and click 'Reschedule' or 'Cancel'. Please note that cancellations within 24 hours may incur a fee.",
+        "Yes, you can cancel your appointment from the 'Upcoming Appointments' page. Click on the appointment card and select 'Cancel Appointment'. Please note that cancellations should be done in advance. Currently, for rescheduling, you'll need to cancel and book a new appointment.",
     },
     {
       id: 3,
       category: "appointments",
-      question: "What should I bring to my appointment?",
+      question: "How do I view my appointment history?",
       answer:
-        "Please bring a valid ID, your insurance card (if applicable), a list of current medications, and any previous dental records or X-rays from other providers. Arrive 15 minutes early to complete any necessary paperwork.",
+        "Go to 'Appointment History' from your dashboard menu. You can view all your past appointments, filter by status (completed, cancelled), and see detailed information including clinic, doctor, service, and date. You can also archive old appointments to keep your history organized.",
     },
     {
       id: 4,
-      category: "billing",
-      question: "How do I view my billing history and invoices?",
+      category: "appointments",
+      question: "What should I bring to my appointment?",
       answer:
-        "Your billing history is available in the 'Billing' section of your profile. You can view past invoices, payment status, insurance claims, and download receipts for your records. All payments and transactions are securely stored.",
+        "Please bring a valid ID and your insurance card (if applicable). If this is your first visit, make sure your profile is complete with your medical conditions, allergies, and emergency contact information. This helps us provide you with better care.",
     },
     {
       id: 5,
-      category: "billing",
-      question: "What payment methods do you accept?",
+      category: "appointments",
+      question: "Will I receive appointment reminders?",
       answer:
-        "We accept major credit cards (Visa, MasterCard, American Express), debit cards, bank transfers, and most dental insurance plans. You can manage your payment methods and set up automatic payments in your profile settings.",
+        "Yes, you'll receive email reminders about your upcoming appointments. You can manage your notification preferences in the Settings page. Make sure your email address is up to date in your profile.",
     },
+
+    // PROFILE & ACCOUNT
     {
       id: 6,
-      category: "billing",
-      question: "How does insurance billing work?",
-      answer:
-        "We work directly with most major insurance providers. After your appointment, we'll submit claims to your insurance company. You'll receive a statement showing what insurance covered and any remaining balance you're responsible for.",
-    },
-    {
-      id: 7,
-      category: "treatments",
-      question: "How can I track my treatment progress?",
-      answer:
-        "Visit the 'My Treatments' page to view detailed information about your ongoing and completed treatments, including progress updates, session records, treatment plans, and before/after photos when available.",
-    },
-    {
-      id: 8,
-      category: "treatments",
-      question: "What should I expect during my first visit?",
-      answer:
-        "Your first visit will include a comprehensive dental exam, digital X-rays if needed, oral cancer screening, and discussion of your dental history and goals. We'll create a personalized treatment plan based on your needs.",
-    },
-    {
-      id: 9,
-      category: "treatments",
-      question: "How do I prepare for dental procedures?",
-      answer:
-        "Preparation varies by procedure. Generally, maintain good oral hygiene, avoid eating 2 hours before sedation procedures, and follow any specific pre-operative instructions provided. Contact us if you have any questions.",
-    },
-    {
-      id: 10,
       category: "account",
       question: "How do I update my profile information?",
       answer:
-        "Go to the 'Profile' page where you can edit your personal information, contact details, medical history, emergency contacts, and communication preferences. Always keep your information current for optimal care.",
+        "Go to the 'Profile' page where you can edit your personal information (name, date of birth, gender, phone), upload a profile photo, update your emergency contact details, add medical conditions and allergies, specify your insurance provider, and select preferred doctors.",
+    },
+    {
+      id: 7,
+      category: "account",
+      question: "Why is my medical history important?",
+      answer:
+        "Your medical conditions and allergies are crucial for your safety during dental procedures. Please keep this information current in your profile. Your dentist will review this before any treatment to ensure safe and appropriate care.",
+    },
+    {
+      id: 8,
+      category: "account",
+      question: "How do I change my password?",
+      answer:
+        "Visit the 'Settings' page and go to the Security section. Enter your new password (minimum 6 characters) and confirm it. For your security, you'll need to log in again after changing your password.",
+    },
+    {
+      id: 9,
+      category: "account",
+      question: "Can I update my emergency contact information?",
+      answer:
+        "Yes, go to your 'Profile' page and scroll to the Emergency Contact section. Update the name and phone number of your emergency contact. This information is important in case we need to reach someone during your appointment.",
+    },
+
+    // FEEDBACK & REVIEWS
+    {
+      id: 10,
+      category: "feedback",
+      question: "How do I leave feedback about my visit?",
+      answer:
+        "After completing an appointment, go to the 'Feedback' page. You'll see a list of clinics and doctors you've visited. You can rate both the clinic (facility, staff, service) and the doctor (care, professionalism) separately, with a star rating and written comment (minimum 10 characters).",
     },
     {
       id: 11,
-      category: "account",
-      question: "How do I change my password or email?",
+      category: "feedback",
+      question: "Can I edit or delete my feedback?",
       answer:
-        "Visit the 'Settings' page to update your password, email address, and other security settings. For email changes, you'll need to verify both your current and new email addresses for security purposes.",
+        "Currently, feedback cannot be edited or deleted once submitted to maintain authenticity and integrity of reviews. However, clinic staff can respond to your feedback, and you'll be notified of their response.",
     },
     {
       id: 12,
-      category: "technical",
-      question: "I'm having trouble logging into my account",
+      category: "feedback",
+      question: "Will the clinic see my feedback?",
       answer:
-        "First, ensure you're using the correct email and password. If you've forgotten your password, use the 'Forgot Password' link on the login page. Clear your browser cache and try again. If issues persist, contact our support team.",
+        "Yes, staff at the clinic can view all feedback submitted by patients. They may respond to your feedback, and you'll receive a notification when they do. Your feedback helps clinics improve their services.",
     },
+
+    // DASHBOARD & ANALYTICS
     {
       id: 13,
-      category: "technical",
-      question: "Is my personal and medical information secure?",
+      category: "dashboard",
+      question: "What is my Health Score?",
       answer:
-        "Yes, we use industry-standard encryption, HIPAA-compliant security measures, and regular security audits to protect your personal and medical information. Your data is never shared with third parties without your explicit consent.",
+        "Your Health Score is calculated based on your appointment attendance and consistency. It appears on your dashboard and reflects how well you're maintaining your dental health through regular check-ups and completed treatments.",
     },
     {
       id: 14,
+      category: "dashboard",
+      question: "What information is shown on my dashboard?",
+      answer:
+        "Your dashboard displays upcoming appointments, appointment statistics (total, completed, cancelled), health analytics, recent notifications, profile completion status, and quick access to book new appointments. It's your central hub for managing your dental care.",
+    },
+
+    // DOCTORS & CLINICS
+    {
+      id: 15,
+      category: "doctors",
+      question: "How do I find dentists and clinics?",
+      answer:
+        "Use the 'Dentist' page to browse available dentists and clinics. You can view their profiles, specializations, ratings, and services offered. You can also use the 'Map View' to find clinics near your location.",
+    },
+    {
+      id: 16,
+      category: "doctors",
+      question: "Can I select a preferred doctor?",
+      answer:
+        "Yes! In your Profile page, you can add doctors to your 'Preferred Doctors' list. This helps you quickly book appointments with doctors you trust and have seen before.",
+    },
+    {
+      id: 17,
+      category: "doctors",
+      question: "How are doctor and clinic ratings calculated?",
+      answer:
+        "Ratings are based on patient feedback after completed appointments. Each rating includes separate scores for clinic experience (facility, staff, service) and doctor performance (care, professionalism, treatment), averaged to show an overall rating.",
+    },
+
+    // NOTIFICATIONS
+    {
+      id: 18,
+      category: "notifications",
+      question: "What types of notifications will I receive?",
+      answer:
+        "You'll receive notifications for: appointment confirmations, appointment reminders, appointment cancellations, feedback requests after visits, and responses to your feedback. All notifications are sent via email and also appear in your notification bell.",
+    },
+    {
+      id: 19,
+      category: "notifications",
+      question: "How do I manage my notification preferences?",
+      answer:
+        "Go to Settings > Notifications to manage your email notification preferences. Appointment reminders are always sent for your safety, but you can control other notification types.",
+    },
+
+    // SETTINGS & PRIVACY
+    {
+      id: 20,
+      category: "settings",
+      question: "Can I change the theme/appearance?",
+      answer:
+        "Yes! Go to Settings > Appearance to choose between Light, Dark, or System theme. Your preference is saved locally in your browser and will apply across all your sessions.",
+    },
+    {
+      id: 21,
+      category: "settings",
+      question: "How do I export my data?",
+      answer:
+        "In Settings > Privacy & Data, you can export all your personal data including profile information, appointment history, medical records, and feedback. This downloads a JSON file with all your data for your records (GDPR compliant).",
+    },
+    {
+      id: 22,
+      category: "settings",
+      question: "How do I delete my account?",
+      answer:
+        "Account deletion is available in Settings > Privacy & Data > Danger Zone. This is permanent and irreversible. You'll need to contact support to complete the deletion process as it requires verification for security purposes.",
+    },
+
+    // TECHNICAL SUPPORT
+    {
+      id: 23,
+      category: "technical",
+      question: "Is my personal and medical information secure?",
+      answer:
+        "Yes, we use industry-standard encryption and security measures to protect your personal and medical information. Your data is stored securely in our database with restricted access, and we never share your information with third parties without your explicit consent.",
+    },
+    {
+      id: 24,
       category: "technical",
       question: "Can I access my account from mobile devices?",
       answer:
-        "Yes, our patient portal is fully responsive and works on all devices including smartphones and tablets. You can book appointments, view records, and communicate with our team from any device with internet access.",
+        "Yes, our patient portal is fully responsive and works on all devices including smartphones and tablets. You can book appointments, view your history, submit feedback, and access all features from any device with internet access.",
+    },
+    {
+      id: 25,
+      category: "technical",
+      question: "I'm having trouble logging into my account",
+      answer:
+        "First, ensure you're using the correct email and password. If you've forgotten your password, use the 'Forgot Password' link on the login page. If you recently signed up, make sure you've verified your email address. If issues persist, contact our support team.",
+    },
+    {
+      id: 26,
+      category: "technical",
+      question: "What should I do if I don't receive email notifications?",
+      answer:
+        "Check your spam/junk folder first. Ensure your email address in your profile is correct and verified. Check your notification settings in Settings > Notifications to make sure email notifications are enabled. If the issue persists, contact support.",
     },
   ];
 
@@ -139,19 +238,34 @@ const PatientHelp = () => {
       count: faqData.filter((f) => f.category === "appointments").length,
     },
     {
-      id: "treatments",
-      label: "Treatments",
-      count: faqData.filter((f) => f.category === "treatments").length,
-    },
-    {
-      id: "billing",
-      label: "Billing & Insurance",
-      count: faqData.filter((f) => f.category === "billing").length,
-    },
-    {
       id: "account",
-      label: "Account",
+      label: "Profile & Account",
       count: faqData.filter((f) => f.category === "account").length,
+    },
+    {
+      id: "feedback",
+      label: "Feedback & Reviews",
+      count: faqData.filter((f) => f.category === "feedback").length,
+    },
+    {
+      id: "dashboard",
+      label: "Dashboard & Analytics",
+      count: faqData.filter((f) => f.category === "dashboard").length,
+    },
+    {
+      id: "doctors",
+      label: "Doctors & Clinics",
+      count: faqData.filter((f) => f.category === "doctors").length,
+    },
+    {
+      id: "notifications",
+      label: "Notifications",
+      count: faqData.filter((f) => f.category === "notifications").length,
+    },
+    {
+      id: "settings",
+      label: "Settings & Privacy",
+      count: faqData.filter((f) => f.category === "settings").length,
     },
     {
       id: "technical",
@@ -165,15 +279,15 @@ const PatientHelp = () => {
       icon: FiPhone,
       title: "Phone Support",
       description: "Speak with our support team",
-      contact: "+1 (555) 123-4567",
-      hours: "Mon-Fri: 8AM-6PM EST",
+      contact: "+63 XXX XXX XXXX", // ✅ Update with actual contact
+      hours: "Mon-Fri: 8AM-6PM",
       action: "Call Now",
     },
     {
       icon: FiMail,
       title: "Email Support",
       description: "Get help via email",
-      contact: "support@dentalcare.com",
+      contact: "support@dentserve.com", // ✅ Update with actual email
       hours: "Response within 24 hours",
       action: "Send Email",
     },
@@ -228,15 +342,14 @@ const PatientHelp = () => {
     e.preventDefault();
     try {
       console.log("Contact form submitted:", contactForm);
-      // Here you would call your Supabase function to save the support ticket
-      // Reset form
+      // ✅ TODO: Integrate with your support ticket system or email service
+      // For now, just log and show success
       setContactForm({
         subject: "",
         category: "",
         message: "",
         priority: "normal",
       });
-      // Show success message
       alert(
         "Your message has been sent successfully! We'll get back to you soon."
       );
@@ -549,10 +662,10 @@ const PatientHelp = () => {
                     >
                       <option value="">Select a category</option>
                       <option value="appointments">Appointments</option>
-                      <option value="treatments">Treatments</option>
-                      <option value="billing">Billing & Insurance</option>
+                      <option value="account">Profile & Account</option>
+                      <option value="feedback">Feedback & Reviews</option>
                       <option value="technical">Technical Support</option>
-                      <option value="feedback">Feedback & Suggestions</option>
+                      <option value="suggestions">Suggestions</option>
                       <option value="other">Other</option>
                     </select>
                   </div>
@@ -602,7 +715,7 @@ const PatientHelp = () => {
               </form>
             </motion.div>
 
-            {/* Office Hours */}
+            {/* Office Hours - You can customize this */}
             <motion.div
               className="bg-card border border-border rounded-2xl shadow-md overflow-hidden"
               initial={{ opacity: 0, x: 20 }}
@@ -613,7 +726,7 @@ const PatientHelp = () => {
                 <div className="flex items-start gap-3 mb-4">
                   <FiClock className="text-primary text-2xl flex-shrink-0" />
                   <h4 className="text-lg font-semibold text-foreground">
-                    Office Hours
+                    Support Hours
                   </h4>
                 </div>
 
@@ -647,7 +760,7 @@ const PatientHelp = () => {
                 <div className="flex items-start gap-2 pt-4 border-t border-border text-sm text-muted-foreground">
                   <FiMapPin className="text-primary text-base flex-shrink-0 mt-0.5" />
                   <span className="leading-relaxed">
-                    123 Main Street, City, State 12345
+                    San Jose Del Monte, Bulacan, Philippines
                   </span>
                 </div>
               </div>

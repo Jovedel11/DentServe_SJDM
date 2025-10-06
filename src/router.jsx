@@ -91,6 +91,9 @@ const StaffDashboard = lazy(() => import("@/app/staff/pages/StaffDashboard"));
 const ManageAppointments = lazy(() =>
   import("@/app/staff/pages/ManageAppointments")
 );
+const StaffTreatmentPlans = lazy(() =>
+  import("@/app/staff/pages/CreateTreatmentPlan")
+);
 const StaffHistory = lazy(() =>
   import("@/app/staff/pages/StaffAppointmentHistory")
 );
@@ -189,6 +192,10 @@ export const router = createBrowserRouter([
           {
             path: "manage-appointments",
             element: withSuspense(ManageAppointments),
+          },
+          {
+            path: "treatment-plans",
+            element: withSuspense(StaffTreatmentPlans),
           },
           {
             path: "appointment-history",

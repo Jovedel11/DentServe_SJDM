@@ -396,45 +396,45 @@ const PatientFeedback = () => {
                       </p>
 
                       <div className="ml-11 grid gap-4 md:grid-cols-2">
-                        <div className="ml-11 grid gap-4 md:grid-cols-2">
-                          {availableClinics.map((clinic) => (
-                            <div
-                              key={clinic.id}
-                              className={`border rounded-xl p-4 cursor-pointer transition-all duration-200 ${
-                                selectedClinic?.id === clinic.id
-                                  ? "border-primary bg-primary/5 shadow-md"
-                                  : "border-border hover:border-primary/50 hover:bg-muted/30"
-                              }`}
-                              onClick={() => selectClinic(clinic)}
-                            >
-                              <div className="flex items-start space-x-4">
-                                <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center">
-                                  <FaBuilding className="w-8 h-8 text-muted-foreground" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <h3 className="font-semibold text-foreground text-base mb-1">
-                                    {clinic.name}
-                                  </h3>
-                                  <div className="flex items-center text-xs text-muted-foreground mb-2">
-                                    <FiMapPin className="w-3 h-3 mr-1" />
+                      <div className="ml-11 grid gap-4 md:grid-cols-2">
+                        {availableClinics.map((clinic) => (
+                          <div
+                            key={clinic.id}
+                            className={`border rounded-xl p-4 cursor-pointer transition-all duration-200 ${
+                              selectedClinic?.id === clinic.id
+                                ? "border-primary bg-primary/5 shadow-md"
+                                : "border-border hover:border-primary/50 hover:bg-muted/30"
+                            }`}
+                            onClick={() => selectClinic(clinic)}
+                          >
+                            <div className="flex items-start space-x-4">
+                              <div className="w-16 h-16 rounded-lg bg-muted flex items-center justify-center">
+                                <FaBuilding className="w-8 h-8 text-muted-foreground" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h3 className="font-semibold text-foreground text-base mb-1">
+                                  {clinic.name}
+                                </h3>
+                                <div className="flex items-center text-xs text-muted-foreground mb-2">
+                                  <FiMapPin className="w-3 h-3 mr-1" />
                                     <span className="truncate">
-                                      {clinic.address}
+                                  {clinic.address}
                                     </span>
-                                  </div>
+                                </div>
 
                                   {/* ✅ ENHANCED: Detailed feedback status */}
-                                  <div className="flex items-center justify-between text-xs">
+                                <div className="flex items-center justify-between text-xs">
                                     <div className="flex flex-col gap-1">
-                                      <span className="text-primary font-medium">
+                                  <span className="text-primary font-medium">
                                         {clinic.availableAppointments === 1
                                           ? "1 appointment to review"
                                           : `${clinic.availableAppointments} appointments to review`}
-                                      </span>
+                                  </span>
                                       <span className="text-muted-foreground text-[10px]">
                                         {clinic.reviewedAppointments} already
                                         reviewed • {clinic.totalAppointments}{" "}
                                         total visits
-                                      </span>
+                                  </span>
                                     </div>
                                     <div className="flex flex-col items-end gap-1">
                                       <div className="flex items-center">
@@ -448,18 +448,18 @@ const PatientFeedback = () => {
                                         {clinic.total_reviews} reviews
                                       </span>
                                     </div>
-                                  </div>
                                 </div>
-                                <input
-                                  type="radio"
-                                  name="clinic"
-                                  checked={selectedClinic?.id === clinic.id}
-                                  onChange={() => {}}
-                                  className="w-5 h-5 text-primary mt-2 flex-shrink-0"
-                                />
                               </div>
+                              <input
+                                type="radio"
+                                name="clinic"
+                                checked={selectedClinic?.id === clinic.id}
+                                onChange={() => {}}
+                                  className="w-5 h-5 text-primary mt-2 flex-shrink-0"
+                              />
                             </div>
-                          ))}
+                          </div>
+                        ))}
 
                           {/* No clinics available message */}
                           {availableClinics.length === 0 && (
@@ -604,11 +604,11 @@ const PatientFeedback = () => {
                               <div className="flex items-center justify-between">
                                 <div className="flex-1">
                                   <div className="flex items-center space-x-2">
-                                    <h4 className="font-medium text-foreground">
-                                      {appointment.services
-                                        ?.map((s) => s.name || s)
-                                        .join(", ") || "General Appointment"}
-                                    </h4>
+                                  <h4 className="font-medium text-foreground">
+                                    {appointment.services
+                                      ?.map((s) => s.name || s)
+                                      .join(", ") || "General Appointment"}
+                                  </h4>
                                     {appointment.hasFeedback && (
                                       <span className="inline-flex items-center px-2 py-1 bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-full text-xs font-medium">
                                         <FiCheckCircle className="w-3 h-3 mr-1" />
@@ -630,15 +630,15 @@ const PatientFeedback = () => {
                                   </div>
                                 </div>
                                 {!appointment.hasFeedback && (
-                                  <input
-                                    type="radio"
-                                    name="appointment"
-                                    checked={
-                                      selectedAppointment?.id === appointment.id
-                                    }
-                                    onChange={() => {}}
-                                    className="w-5 h-5 text-primary"
-                                  />
+                                <input
+                                  type="radio"
+                                  name="appointment"
+                                  checked={
+                                    selectedAppointment?.id === appointment.id
+                                  }
+                                  onChange={() => {}}
+                                  className="w-5 h-5 text-primary"
+                                />
                                 )}
                               </div>
                             </div>
@@ -824,7 +824,7 @@ const PatientFeedback = () => {
                               {feedbackForm.comment.trim().length === 0 ? (
                                 <span className="text-muted-foreground">
                                   ℹ️ Please enter at least 10 characters
-                                </span>
+                            </span>
                               ) : feedbackForm.comment.trim().length < 10 ? (
                                 <span className="text-red-600 dark:text-red-400 font-medium">
                                   ⚠️ {10 - feedbackForm.comment.trim().length}{" "}
@@ -971,13 +971,13 @@ const PatientFeedback = () => {
                     You haven't submitted any feedback yet. Share your
                     experience to help us improve!
                   </p>
-                  <button
-                    className="inline-flex items-center space-x-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors"
-                    onClick={() => setActiveTab("new")}
-                  >
-                    <FiSend className="w-4 h-4" />
-                    <span>Write Your First Review</span>
-                  </button>
+                    <button
+                      className="inline-flex items-center space-x-2 px-6 py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors"
+                      onClick={() => setActiveTab("new")}
+                    >
+                      <FiSend className="w-4 h-4" />
+                      <span>Write Your First Review</span>
+                    </button>
                 </div>
               ) : (
                 feedbackHistory.map((review, index) => (
@@ -1006,15 +1006,15 @@ const PatientFeedback = () => {
                                 .join(", ") || review.clinic.name}
                             </h3>
                             {review.doctor && (
-                              <div className="flex items-center space-x-2 text-primary">
-                                <span className="font-medium">
+                            <div className="flex items-center space-x-2 text-primary">
+                              <span className="font-medium">
                                   {review.doctor.name}
-                                </span>
-                                <span className="text-muted-foreground">•</span>
-                                <span className="text-sm text-muted-foreground">
+                              </span>
+                              <span className="text-muted-foreground">•</span>
+                              <span className="text-sm text-muted-foreground">
                                   {review.doctor.specialization}
-                                </span>
-                              </div>
+                              </span>
+                            </div>
                             )}
                             <div className="flex items-center space-x-4 mt-2 text-sm text-muted-foreground">
                               <div className="flex items-center">
@@ -1023,16 +1023,16 @@ const PatientFeedback = () => {
                               </div>
                               {review.appointment && (
                                 <>
-                                  <div className="flex items-center">
-                                    <FiCalendar className="w-4 h-4 mr-1" />
-                                    {new Date(
-                                      review.appointment.date
-                                    ).toLocaleDateString()}
-                                  </div>
-                                  <div className="flex items-center">
-                                    <FiClock className="w-4 h-4 mr-1" />
-                                    {review.appointment.time}
-                                  </div>
+                              <div className="flex items-center">
+                                <FiCalendar className="w-4 h-4 mr-1" />
+                                {new Date(
+                                  review.appointment.date
+                                ).toLocaleDateString()}
+                              </div>
+                              <div className="flex items-center">
+                                <FiClock className="w-4 h-4 mr-1" />
+                                {review.appointment.time}
+                              </div>
                                 </>
                               )}
                             </div>
@@ -1069,31 +1069,31 @@ const PatientFeedback = () => {
                                 <span className="text-sm font-medium text-foreground">
                                   Clinic Experience
                                 </span>
-                              </div>
+                          </div>
                               <span className="font-bold text-purple-600 dark:text-purple-400">
                                 {review.clinic_rating}/5
-                              </span>
-                            </div>
+                          </span>
+                        </div>
                             <div className="flex items-center">
                               {renderStars(
                                 review.clinic_rating,
                                 false,
                                 "small"
                               )}
-                            </div>
-                          </div>
+                        </div>
+                      </div>
                         )}
 
                         {/* Doctor Rating */}
                         {review.doctor_rating && (
                           <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-4">
                             <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-2">
                                 <FaUserMd className="w-4 h-4 text-green-600 dark:text-green-400" />
                                 <span className="text-sm font-medium text-foreground">
                                   Doctor Performance
                                 </span>
-                              </div>
+                            </div>
                               <span className="font-bold text-green-600 dark:text-green-400">
                                 {review.doctor_rating}/5
                               </span>
@@ -1103,10 +1103,10 @@ const PatientFeedback = () => {
                                 review.doctor_rating,
                                 false,
                                 "small"
-                              )}
+                          )}
                             </div>
-                          </div>
-                        )}
+                        </div>
+                      )}
                       </div>
 
                       {/* Overall Rating (Legacy) */}
@@ -1114,14 +1114,14 @@ const PatientFeedback = () => {
                         <div className="flex items-center space-x-3">
                           <span className="text-muted-foreground">
                             Overall:
-                          </span>
+                            </span>
                           <div className="flex items-center space-x-1">
                             {renderStars(review.rating, false, "small")}
                           </div>
                           <span className="font-medium text-foreground">
                             {review.rating}/5 • {getRatingText(review.rating)}
-                          </span>
-                        </div>
+                              </span>
+                          </div>
                         <div className="text-muted-foreground">
                           {new Date(review.created_at).toLocaleDateString()}
                         </div>
@@ -1151,7 +1151,7 @@ const PatientFeedback = () => {
                             <div className="flex-1">
                               <div className="flex items-center justify-between mb-2">
                                 <div className="font-medium text-primary">
-                                  Response from {review.clinic.name}
+                                Response from {review.clinic.name}
                                 </div>
                                 {review.responder_name && (
                                   <span className="text-xs text-muted-foreground">
