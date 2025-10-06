@@ -150,32 +150,32 @@ export const useBookingFlow = () => {
         const maxClinicPending = limitData.data.max_pending_per_clinic || 2;
         
         // ✅ FIX: Account for same-day conflict in remaining calculation
-    const hasSameDayConflict = !limitData.allowed && limitData.reason === 'daily_appointment_exists';
-
-    setBookingLimitsInfo({
-      // Total pending limits
-      totalPending,
-      maxTotalPending,
+        const hasSameDayConflict = !limitData.allowed && limitData.reason === 'daily_appointment_exists';
+        
+        setBookingLimitsInfo({
+          // Total pending limits
+          totalPending,
+          maxTotalPending,
       // ✅ FIXED: Correct calculation - if at limit, show 0
       totalRemaining: Math.max(0, maxTotalPending - totalPending),
-      
-      // Per-clinic pending limits
-      clinicPending,
-      maxClinicPending,
-      clinicRemaining: Math.max(0, maxClinicPending - clinicPending),
-      
-      // Booking window
-      maxAdvanceDays: limitData.data.max_advance_days || 60,
-      latestBookableDate: limitData.data.latest_bookable_date,
-      
-      // Historical limits
-      clinicHistoricalCount: limitData.data.clinic_current_count || 0,
-      clinicHistoricalLimit: limitData.data.clinic_limit || 0,
-      clinicHistoricalRemaining: limitData.data.clinic_remaining || 0,
-      
-      // ✅ NEW: Same-day conflict flag
-      hasSameDayConflict,
-    });
+          
+          // Per-clinic pending limits
+          clinicPending,
+          maxClinicPending,
+          clinicRemaining: Math.max(0, maxClinicPending - clinicPending),
+          
+          // Booking window
+          maxAdvanceDays: limitData.data.max_advance_days || 60,
+          latestBookableDate: limitData.data.latest_bookable_date,
+          
+          // Historical limits
+          clinicHistoricalCount: limitData.data.clinic_current_count || 0,
+          clinicHistoricalLimit: limitData.data.clinic_limit || 0,
+          clinicHistoricalRemaining: limitData.data.clinic_remaining || 0,
+          
+          // ✅ NEW: Same-day conflict flag
+          hasSameDayConflict,
+        });
       }
 
       if (!limitData.allowed && limitData.reason === 'daily_appointment_exists') {

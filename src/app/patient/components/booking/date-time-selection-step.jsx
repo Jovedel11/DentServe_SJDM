@@ -316,72 +316,72 @@ const DateTimeSelectionStep = ({
             <div className="mt-2 space-y-1">
               {bookingLimitsInfo.totalPending >=
               bookingLimitsInfo.maxTotalPending ? (
-                <div className="text-destructive font-semibold flex items-start gap-2">
-                  <Ban className="w-4 h-4 mt-0.5 shrink-0" />
-                  <div>
-                    <strong>Booking limit reached:</strong>
-                    <div className="text-xs font-normal mt-1">
+                  <div className="text-destructive font-semibold flex items-start gap-2">
+                    <Ban className="w-4 h-4 mt-0.5 shrink-0" />
+                    <div>
+                      <strong>Booking limit reached:</strong>
+                      <div className="text-xs font-normal mt-1">
                       You have{" "}
                       <strong>
                         {bookingLimitsInfo.totalPending} pending appointment(s)
                       </strong>
                       . You cannot book more until at least one is confirmed or
                       canceled.
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-2"
+                        onClick={() =>
+                          (window.location.href =
+                            "/patient/appointments/upcoming")
+                        }
+                      >
+                        View My Appointments
+                      </Button>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-2"
-                      onClick={() =>
-                        (window.location.href =
-                          "/patient/appointments/upcoming")
-                      }
-                    >
-                      View My Appointments
-                    </Button>
                   </div>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">
+                ) : (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">
                       <strong>Current:</strong> {bookingLimitsInfo.totalPending}
                       /{bookingLimitsInfo.maxTotalPending} pending
-                    </span>
-                  </div>
+                        </span>
+                      </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">
+                        <span className="text-sm text-muted-foreground">
                       <strong>After this:</strong>{" "}
-                      {bookingLimitsInfo.totalPending + 1}/
-                      {bookingLimitsInfo.maxTotalPending}
-                    </span>
-                  </div>
+                            {bookingLimitsInfo.totalPending + 1}/
+                            {bookingLimitsInfo.maxTotalPending}
+                        </span>
+                      </div>
                   {bookingLimitsInfo.totalPending + 1 >=
                   bookingLimitsInfo.maxTotalPending ? (
                     <div className="flex items-center gap-2 text-warning">
-                      <AlertTriangle className="w-4 h-4" />
-                      <span className="text-sm font-semibold">
+                          <AlertTriangle className="w-4 h-4" />
+                          <span className="text-sm font-semibold">
                         ⚠️ This will be your last available slot
-                      </span>
-                    </div>
-                  ) : (
+                          </span>
+                        </div>
+                      ) : (
                     <div className="flex items-center gap-2 text-success">
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span className="text-sm">
-                        You can book{" "}
-                        <strong>
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span className="text-sm">
+                            You can book{" "}
+                            <strong>
                           {bookingLimitsInfo.maxTotalPending -
                             bookingLimitsInfo.totalPending -
                             1}{" "}
                           more
-                        </strong>{" "}
-                        after this
-                      </span>
+                            </strong>{" "}
+                            after this
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
               )}
-            </div>
+                  </div>
           </div>
         </Alert>
       )}

@@ -349,18 +349,18 @@ const StaffAppointmentHistory = () => {
               )}
 
               {isArchived && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleUnarchive(appointment.id)}
-                  disabled={archiveManager.loading}
-                >
-                  {archiveManager.loading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <RotateCcw className="w-4 h-4" />
-                  )}
-                </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleUnarchive(appointment.id)}
+                    disabled={archiveManager.loading}
+                  >
+                    {archiveManager.loading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <RotateCcw className="w-4 h-4" />
+                    )}
+                  </Button>
               )}
             </div>
           </div>
@@ -381,18 +381,18 @@ const StaffAppointmentHistory = () => {
             </div>
             <div className="flex items-center gap-2 col-span-2">
               <User className="w-4 h-4" />
-              {appointment.doctor?.name || "Unassigned"}
+                {appointment.doctor?.name || "Unassigned"}
             </div>
           </div>
 
           {/* Services */}
           {appointment.services?.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {appointment.services.map((service, idx) => (
-                <Badge key={idx} variant="outline" className="text-xs">
-                  {service.name}
-                </Badge>
-              ))}
+              <div className="flex flex-wrap gap-1">
+                {appointment.services.map((service, idx) => (
+                  <Badge key={idx} variant="outline" className="text-xs">
+                    {service.name}
+                  </Badge>
+                ))}
             </div>
           )}
 
@@ -515,32 +515,32 @@ const StaffAppointmentHistory = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-sm text-muted-foreground">Completed</p>
-              <p className="text-2xl font-bold">
-                {appointmentManager.stats?.completed || 0}
-              </p>
+                  <p className="text-sm text-muted-foreground">Completed</p>
+                  <p className="text-2xl font-bold">
+                    {appointmentManager.stats?.completed || 0}
+                  </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-sm text-muted-foreground">Cancelled</p>
-              <p className="text-2xl font-bold">
-                {appointmentManager.stats?.cancelled || 0}
-              </p>
+                  <p className="text-sm text-muted-foreground">Cancelled</p>
+                  <p className="text-2xl font-bold">
+                    {appointmentManager.stats?.cancelled || 0}
+                  </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-sm text-muted-foreground">Archived</p>
-              <p className="text-2xl font-bold">
-                {archiveManager.stats.appointmentsArchived}
-              </p>
+                  <p className="text-sm text-muted-foreground">Archived</p>
+                  <p className="text-2xl font-bold">
+                    {archiveManager.stats.appointmentsArchived}
+                  </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-sm text-muted-foreground">Selected</p>
-              <p className="text-2xl font-bold">{selectedItems.size}</p>
+                  <p className="text-sm text-muted-foreground">Selected</p>
+                  <p className="text-2xl font-bold">{selectedItems.size}</p>
             </CardContent>
           </Card>
         </div>
@@ -560,19 +560,19 @@ const StaffAppointmentHistory = () => {
                 }
               >
                 <CardContent className="pt-6 flex items-center gap-3">
-                  {toast.type === "error" ? (
-                    <AlertCircle className="w-5 h-5 text-red-600" />
-                  ) : (
-                    <CheckCircle className="w-5 h-5 text-green-600" />
-                  )}
-                  <p className="text-sm">{toast.message}</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setToast({ ...toast, show: false })}
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
+                    {toast.type === "error" ? (
+                      <AlertCircle className="w-5 h-5 text-red-600" />
+                    ) : (
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                    )}
+                    <p className="text-sm">{toast.message}</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setToast({ ...toast, show: false })}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
                 </CardContent>
               </Card>
             </motion.div>
@@ -580,28 +580,28 @@ const StaffAppointmentHistory = () => {
         </AnimatePresence>
 
         {/* Filters */}
-        <div className="flex gap-4">
-          <Input
+            <div className="flex gap-4">
+                <Input
             className="flex-1"
-            placeholder="Search by patient, doctor, or symptoms..."
-            value={filters.search}
+                  placeholder="Search by patient, doctor, or symptoms..."
+                  value={filters.search}
             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-          />
-          <Select
-            value={filters.status}
+                />
+              <Select
+                value={filters.status}
             onValueChange={(value) => setFilters({ ...filters, status: value })}
-          >
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
-              <SelectItem value="no_show">No Show</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="no_show">No Show</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
         {/* ✅ Bulk Actions - FIXED */}
         {selectedItems.size > 0 && viewMode === "active" && (
@@ -667,9 +667,9 @@ const StaffAppointmentHistory = () => {
             {displayedAppointments.map((appointment) => (
               <AppointmentCard
                 key={appointment.id}
-                appointment={appointment}
-                isArchived={viewMode === "archived"}
-              />
+                  appointment={appointment}
+                  isArchived={viewMode === "archived"}
+                />
             ))}
           </div>
         )}

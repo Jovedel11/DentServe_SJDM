@@ -4969,20 +4969,37 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.find_nearest_clinics(user_location extensions.geography DEFAULT NULL::extensions.geography, max_distance_km double precision DEFAULT 50.0, limit_count integer DEFAULT 20, services_filter text[] DEFAULT NULL::text[], min_rating numeric DEFAULT NULL::numeric)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public', 'pg_catalog', 'extensions'
-AS $function$
+CREATE OR REPLACE FUNCTION public.find_nearest_clinics(
+    p_latitude double precision DEFAULT NULL,
+    p_longitude double precision DEFAULT NULL,
+    max_distance_km double precision DEFAULT 50.0,
+    limit_count integer DEFAULT 20,
+    services_filter text[] DEFAULT NULL,
+    min_rating numeric DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_catalog', 'extensions'
+AS $$
 DECLARE
     result JSONB;
     current_context JSONB;
     current_user_id UUID;
+    user_location geography;
 BEGIN
     -- ✅ Input validation with safe bounds
     max_distance_km := LEAST(GREATEST(COALESCE(max_distance_km, 50.0), 1.0), 200.0);
     limit_count := LEAST(GREATEST(COALESCE(limit_count, 20), 1), 50);
+    
+    -- ✅ Construct geography from lat/lng parameters
+    IF p_latitude IS NOT NULL AND p_longitude IS NOT NULL THEN
+        user_location := ST_SetSRID(ST_MakePoint(p_longitude, p_latitude), 4326)::geography;
+        RAISE LOG 'User location constructed: lat=%, lng=%', p_latitude, p_longitude;
+    ELSE
+        user_location := NULL;
+        RAISE LOG 'No user location provided';
+    END IF;
     
     -- ✅ Get current user using existing function
     current_context := get_current_user_context();
@@ -5051,7 +5068,7 @@ BEGIN
             -- ✅ Safe distance calculation
             CASE 
                 WHEN user_location IS NULL THEN 0::FLOAT
-                ELSE ST_Distance(c.location::geometry, user_location::geometry) / 1000.0
+                ELSE ROUND((ST_Distance(c.location::geography, user_location) / 1000.0)::NUMERIC, 2)
             END AS distance_km
         FROM clinics c
         LEFT JOIN clinic_services cs ON c.id = cs.clinic_id
@@ -5059,7 +5076,7 @@ BEGIN
             c.is_active = true
             -- ✅ Distance filter
             AND (user_location IS NULL OR 
-                 ST_DWithin(c.location::geometry, user_location::geometry, max_distance_km * 1000))
+                 ST_DWithin(c.location::geography, user_location, max_distance_km * 1000))
             -- Rating filter
             AND (min_rating IS NULL OR c.rating >= min_rating)
             -- ✅ FIXED: Services filter using actual services table
@@ -5114,70 +5131,48 @@ BEGIN
                     'website_url', cd.website_url,
                     'image_url', cd.image_url,
                     'timezone', cd.timezone,
-                    -- ✅ FIXED: Always provide distance (0 if no user location)
-                    'distance_km', CASE 
-                        WHEN cd.distance_km IS NULL OR cd.distance_km = 0 THEN NULL
-                        ELSE ROUND(cd.distance_km::NUMERIC, 2)
-                    END,
-                    'distance_numeric', cd.distance_km,
-                    'distance', CASE 
-                        WHEN cd.distance_km IS NULL OR cd.distance_km = 0 THEN 'N/A'
-                        ELSE ROUND(cd.distance_km::NUMERIC, 1)::TEXT || ' km'
-                    END,
-                    -- ✅ NEW: Add position object for map markers
-                    'position', jsonb_build_object(
-                        'lat', ST_Y(cd.location::geometry),
-                        'lng', ST_X(cd.location::geometry)
-                    ),
-                    -- ✅ NEW: Add lat/lng at top level for backwards compatibility
-                    'latitude', ST_Y(cd.location::geometry),
-                    'longitude', ST_X(cd.location::geometry),
+                    'distance_km', cd.distance_km,
                     'rating', cd.rating,
                     'total_reviews', cd.total_reviews,
-                    'reviews', cd.total_reviews,  -- Alias for compatibility
                     'services_offered', COALESCE(cd.services_offered, '[]'::jsonb),
-                    'services', COALESCE(cd.services_offered, '[]'::jsonb),  -- Alias
                     'operating_hours', cd.operating_hours,
-                    'hours', cd.operating_hours,  -- Alias for compatibility
-                    -- ✅ NEW: Calculate if clinic is currently open
+                    -- ✅ Calculate is_open based on clinic timezone
                     'is_open', (
                         SELECT CASE
                             WHEN cd.operating_hours IS NULL THEN false
                             ELSE (
+                                WITH current_time_info AS (
+                                    SELECT 
+                                        LOWER(to_char(NOW() AT TIME ZONE COALESCE(cd.timezone, 'Asia/Manila'), 'Day')) as day_name,
+                                        to_char(NOW() AT TIME ZONE COALESCE(cd.timezone, 'Asia/Manila'), 'HH24:MI') as current_time
+                                ),
+                                day_hours AS (
+                                    SELECT 
+                                        cti.current_time,
+                                        -- ✅ Handle nested weekdays/weekends structure
+                                        CASE 
+                                            WHEN TRIM(cti.day_name) IN ('saturday', 'sunday') THEN
+                                                cd.operating_hours->'weekends'->TRIM(cti.day_name)
+                                            ELSE
+                                                cd.operating_hours->'weekdays'->TRIM(cti.day_name)
+                                        END as hours_for_day
+                                    FROM current_time_info cti
+                                )
                                 SELECT 
                                     CASE 
-                                        WHEN day_hours IS NULL THEN false
-                                        WHEN (day_hours->>'closed')::BOOLEAN IS TRUE THEN false
-                                        WHEN (day_hours->>'is_closed')::BOOLEAN IS TRUE THEN false
-                                        ELSE (
-                                            -- Parse time strings and check if current time is within range
-                                            SELECT 
-                                                CASE
-                                                    WHEN day_hours->>'open' IS NULL OR day_hours->>'close' IS NULL THEN false
-                                                    ELSE (
-                                                        -- Convert current time to minutes since midnight
-                                                        (EXTRACT(HOUR FROM CURRENT_TIME AT TIME ZONE COALESCE(cd.timezone, 'Asia/Manila')) * 60 + 
-                                                         EXTRACT(MINUTE FROM CURRENT_TIME AT TIME ZONE COALESCE(cd.timezone, 'Asia/Manila')))::INTEGER
-                                                        BETWEEN
-                                                        -- Convert open time to minutes
-                                                        (EXTRACT(HOUR FROM (day_hours->>'open')::TIME) * 60 + 
-                                                         EXTRACT(MINUTE FROM (day_hours->>'open')::TIME))::INTEGER
-                                                        AND
-                                                        -- Convert close time to minutes
-                                                        (EXTRACT(HOUR FROM (day_hours->>'close')::TIME) * 60 + 
-                                                         EXTRACT(MINUTE FROM (day_hours->>'close')::TIME))::INTEGER
-                                                    )
-                                                END
-                                        )
+                                        WHEN dh.hours_for_day IS NULL THEN false
+                                        WHEN dh.hours_for_day->>'start' IS NULL OR dh.hours_for_day->>'end' IS NULL THEN false
+                                        ELSE dh.current_time >= (dh.hours_for_day->>'start') 
+                                             AND dh.current_time <= (dh.hours_for_day->>'end')
                                     END
-                                FROM (
-                                    SELECT cd.operating_hours->(
-                                        ARRAY['sunday','monday','tuesday','wednesday','thursday','friday','saturday']
-                                        [EXTRACT(DOW FROM CURRENT_DATE AT TIME ZONE COALESCE(cd.timezone, 'Asia/Manila'))::INTEGER]
-                                    ) as day_hours
-                                ) hours_check
+                                FROM day_hours dh
                             )
                         END
+                    ),
+                    -- ✅ Add position coordinates for map display
+                    'position', jsonb_build_object(
+                        'lat', ST_Y(cd.location::geometry),
+                        'lng', ST_X(cd.location::geometry)
                     ),
                     'appointment_limit_per_patient', cd.appointment_limit_per_patient,
                     'cancellation_policy_hours', cd.cancellation_policy_hours,
@@ -5201,6 +5196,8 @@ BEGIN
             ), '[]'::jsonb),
             'search_metadata', jsonb_build_object(
                 'user_location_provided', user_location IS NOT NULL,
+                'user_latitude', p_latitude,
+                'user_longitude', p_longitude,
                 'max_distance_km', max_distance_km,
                 'services_filter', services_filter,
                 'min_rating', min_rating,
@@ -5234,12 +5231,12 @@ EXCEPTION
         RAISE LOG 'find_nearest_clinics error: %', SQLERRM;
         RETURN jsonb_build_object(
             'success', false, 
-            'error', 'Clinic search failed',
+            'error', 'Clinic search failed: ' || SQLERRM,
             'data', jsonb_build_object('clinics', '[]'::jsonb)
         );
 END;
-$function$
-;
+$$;
+
 
 CREATE OR REPLACE FUNCTION public.geocode_clinic_address(p_address text, p_city text DEFAULT 'San Jose Del Monte'::text, p_province text DEFAULT 'Bulacan'::text, p_country text DEFAULT 'Philippines'::text)
  RETURNS extensions.geography

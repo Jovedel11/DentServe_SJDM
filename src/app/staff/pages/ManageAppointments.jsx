@@ -347,7 +347,7 @@ const ManageAppointments = () => {
       <Badge className={className}>
         <Icon className="w-3 h-3 mr-1" />
         {label}
-      </Badge>
+                </Badge>
     );
   };
 
@@ -370,28 +370,28 @@ const ManageAppointments = () => {
             <div>
               <strong>Name:</strong> {patientInfo?.name}
             </div>
-            <div>
+                <div>
               <strong>Email:</strong> {patientInfo?.email}
-            </div>
-            <div>
+                </div>
+                <div>
               <strong>Phone:</strong> {patientInfo?.phone || "N/A"}
-            </div>
-          </CardContent>
-        </Card>
+                </div>
+            </CardContent>
+          </Card>
 
         {/* Reliability */}
         {reliability && (
           <Card>
-            <CardHeader>
+        <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
                 <Shield className="w-4 h-4" />
                 Patient Reliability
-              </CardTitle>
-            </CardHeader>
+          </CardTitle>
+        </CardHeader>
             <CardContent className="space-y-2 text-sm">
-              <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between">
                 <span>Risk Level:</span>
-                <Badge
+            <Badge
                   className={
                     reliability.risk_level === "reliable"
                       ? "bg-green-100 text-green-800"
@@ -401,89 +401,89 @@ const ManageAppointments = () => {
                   }
                 >
                   {reliability.risk_level?.replace("_", " ").toUpperCase()}
-                </Badge>
-              </div>
+            </Badge>
+          </div>
               <div className="grid grid-cols-3 gap-2 pt-2">
                 <div className="text-center">
                   <p className="text-xs text-muted-foreground">Completion</p>
                   <p className="text-lg font-bold">
                     {reliability.statistics?.completion_rate || 0}%
-                  </p>
-                </div>
+              </p>
+            </div>
                 <div className="text-center">
-                  <p className="text-xs text-muted-foreground">Completed</p>
+              <p className="text-xs text-muted-foreground">Completed</p>
                   <p className="text-lg font-bold text-green-600">
                     {reliability.statistics?.completed_count || 0}
-                  </p>
-                </div>
+              </p>
+            </div>
                 <div className="text-center">
-                  <p className="text-xs text-muted-foreground">No-Shows</p>
+              <p className="text-xs text-muted-foreground">No-Shows</p>
                   <p className="text-lg font-bold text-red-600">
                     {reliability.statistics?.no_show_count || 0}
-                  </p>
-                </div>
-              </div>
+              </p>
+            </div>
+          </div>
               {reliability.recommendations?.length > 0 && (
                 <div className="mt-2 p-2 bg-yellow-50 rounded text-xs">
                   <p className="font-semibold mb-1">⚠️ Recommendations:</p>
                   <ul className="list-disc list-inside space-y-1">
                     {reliability.recommendations.map((rec, idx) => (
                       <li key={idx}>{rec}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                ))}
+              </ul>
+            </div>
+          )}
+        </CardContent>
+      </Card>
         )}
 
         {/* Services */}
         {appointment.services?.length > 0 && (
           <Card>
-            <CardHeader>
+        <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
                 <Stethoscope className="w-4 h-4" />
                 Services
-              </CardTitle>
-            </CardHeader>
+          </CardTitle>
+        </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 {appointment.services.map((service, idx) => (
                   <div key={idx} className="p-2 bg-muted/50 rounded">
                     <div className="flex items-center justify-between">
                       <span className="font-medium">{service.name}</span>
-                      {service.requires_multiple_visits && (
-                        <Badge
-                          variant="outline"
+                  {service.requires_multiple_visits && (
+                    <Badge
+                      variant="outline"
                           className="text-xs bg-purple-50"
-                        >
+                    >
                           Multi-visit
-                        </Badge>
-                      )}
-                    </div>
+                    </Badge>
+                  )}
+                </div>
                     <p className="text-xs text-muted-foreground">
                       {service.duration_minutes} min
                     </p>
-                  </div>
-                ))}
               </div>
-            </CardContent>
-          </Card>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
         )}
 
         {/* Symptoms */}
         {appointment.symptoms && (
-          <Card>
+            <Card>
             <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <MessageSquare className="w-4 h-4" />
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4" />
                 Symptoms
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
               <p className="text-sm">{appointment.symptoms}</p>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
         )}
       </div>
     );
@@ -542,7 +542,7 @@ const ManageAppointments = () => {
             </div>
             <div className="flex items-center gap-2 col-span-2">
               <Stethoscope className="w-4 h-4" />
-              {appointment.doctor?.name || "Unassigned"}
+                {appointment.doctor?.name || "Unassigned"}
             </div>
           </div>
 
@@ -560,7 +560,7 @@ const ManageAppointments = () => {
           {/* Symptoms */}
           {appointment.symptoms && (
             <div className="text-sm bg-muted/50 rounded p-2">
-              <MessageSquare className="w-3 h-3 inline mr-1" />
+                <MessageSquare className="w-3 h-3 inline mr-1" />
               <span className="line-clamp-2">{appointment.symptoms}</span>
             </div>
           )}
@@ -691,34 +691,34 @@ const ManageAppointments = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-sm text-muted-foreground">Pending</p>
-              <p className="text-2xl font-bold">
-                {appointmentManager.stats?.pending || 0}
-              </p>
+                  <p className="text-sm text-muted-foreground">Pending</p>
+                  <p className="text-2xl font-bold">
+                    {appointmentManager.stats?.pending || 0}
+                  </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-sm text-muted-foreground">Confirmed</p>
-              <p className="text-2xl font-bold">
-                {appointmentManager.stats?.confirmed || 0}
-              </p>
+                  <p className="text-sm text-muted-foreground">Confirmed</p>
+                  <p className="text-2xl font-bold">
+                    {appointmentManager.stats?.confirmed || 0}
+                  </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-sm text-muted-foreground">Completed</p>
-              <p className="text-2xl font-bold">
-                {appointmentManager.stats?.completed || 0}
-              </p>
+                  <p className="text-sm text-muted-foreground">Completed</p>
+                  <p className="text-2xl font-bold">
+                    {appointmentManager.stats?.completed || 0}
+                  </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-6 text-center">
-              <p className="text-sm text-muted-foreground">Total</p>
-              <p className="text-2xl font-bold">
-                {appointmentManager.stats?.total || 0}
-              </p>
+                  <p className="text-sm text-muted-foreground">Total</p>
+                  <p className="text-2xl font-bold">
+                    {appointmentManager.stats?.total || 0}
+                  </p>
             </CardContent>
           </Card>
         </div>
@@ -738,19 +738,19 @@ const ManageAppointments = () => {
                 }
               >
                 <CardContent className="pt-6 flex items-center gap-3">
-                  {toast.type === "error" ? (
-                    <AlertCircle className="w-5 h-5 text-red-600" />
-                  ) : (
-                    <CheckCircle className="w-5 h-5 text-green-600" />
-                  )}
+                    {toast.type === "error" ? (
+                      <AlertCircle className="w-5 h-5 text-red-600" />
+                    ) : (
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                    )}
                   <p className="text-sm">{toast.message}</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setToast({ ...toast, show: false })}
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setToast({ ...toast, show: false })}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
                 </CardContent>
               </Card>
             </motion.div>
@@ -948,7 +948,7 @@ const ManageAppointments = () => {
                     >
                       Send reschedule reminder to patient
                     </label>
-                  </div>
+                </div>
                 </>
               )}
 
@@ -1008,18 +1008,18 @@ const ManageAppointments = () => {
 
               {/* No Show Form */}
               {actionModal.type === "no_show" && (
-                <div>
-                  <label className="text-sm font-medium mb-2 block">
-                    Staff Notes (Optional)
-                  </label>
-                  <Textarea
-                    value={actionForm.notes}
-                    onChange={(e) =>
-                      setActionForm({ ...actionForm, notes: e.target.value })
-                    }
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">
+                      Staff Notes (Optional)
+                    </label>
+                    <Textarea
+                      value={actionForm.notes}
+                      onChange={(e) =>
+                        setActionForm({ ...actionForm, notes: e.target.value })
+                      }
                     placeholder="Any additional context..."
-                    rows={3}
-                  />
+                      rows={3}
+                    />
                 </div>
               )}
             </div>
