@@ -1,6 +1,5 @@
 import React from "react";
-import { Filter, X } from "lucide-react";
-import { Badge } from "@/core/components/ui/badge";
+import { Filter, Calendar, Clock, Activity, Stethoscope } from "lucide-react";
 
 const FilterSection = ({
   statusFilter,
@@ -9,114 +8,169 @@ const FilterSection = ({
   setBookingTypeFilter,
   stats,
 }) => {
-  const hasActiveFilters =
-    statusFilter !== "all" || bookingTypeFilter !== "all";
-
-  const clearFilters = () => {
-    setStatusFilter("all");
-    setBookingTypeFilter("all");
-  };
-
   return (
-    <div className="mt-6 p-6 bg-card rounded-xl border">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Filter className="w-5 h-5 text-primary" />
-          <h3 className="font-semibold text-foreground">Filters</h3>
-        </div>
-        {hasActiveFilters && (
-          <button
-            onClick={clearFilters}
-            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <X className="w-4 h-4" />
-            Clear All
-          </button>
-        )}
+    <div className="glass-effect rounded-xl border p-6 space-y-4">
+      <div className="flex items-center gap-2 mb-4">
+        <Filter className="w-5 h-5 text-primary" />
+        <h3 className="font-semibold text-lg">Filters</h3>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Status Filter */}
-        <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-2">
-            Status
+        <div className="space-y-3">
+          <label className="text-sm font-medium text-muted-foreground">
+            Appointment Status
           </label>
-          <div className="flex flex-wrap gap-2">
-            <Badge
-              variant={statusFilter === "all" ? "default" : "outline"}
-              className="cursor-pointer hover:bg-primary/10 transition-colors"
+          <div className="grid grid-cols-3 gap-2">
+            <button
               onClick={() => setStatusFilter("all")}
+              className={`px-4 py-2 rounded-lg border transition-all ${
+                statusFilter === "all"
+                  ? "bg-primary text-primary-foreground border-primary shadow-md"
+                  : "bg-background border-border hover:bg-muted"
+              }`}
             >
-              All ({stats.total})
-            </Badge>
-            <Badge
-              variant={statusFilter === "pending" ? "default" : "outline"}
-              className="cursor-pointer hover:bg-warning/10 transition-colors"
+              <div className="flex flex-col items-center">
+                <Activity className="w-4 h-4 mb-1" />
+                <span className="text-xs font-medium">All</span>
+                <span className="text-xs opacity-75">({stats.total})</span>
+              </div>
+            </button>
+
+            <button
               onClick={() => setStatusFilter("pending")}
+              className={`px-4 py-2 rounded-lg border transition-all ${
+                statusFilter === "pending"
+                  ? "bg-warning text-warning-foreground border-warning shadow-md"
+                  : "bg-background border-border hover:bg-muted"
+              }`}
             >
-              Pending ({stats.pending})
-            </Badge>
-            <Badge
-              variant={statusFilter === "confirmed" ? "default" : "outline"}
-              className="cursor-pointer hover:bg-success/10 transition-colors"
+              <div className="flex flex-col items-center">
+                <Clock className="w-4 h-4 mb-1" />
+                <span className="text-xs font-medium">Pending</span>
+                <span className="text-xs opacity-75">({stats.pending})</span>
+              </div>
+            </button>
+
+            <button
               onClick={() => setStatusFilter("confirmed")}
+              className={`px-4 py-2 rounded-lg border transition-all ${
+                statusFilter === "confirmed"
+                  ? "bg-success text-success-foreground border-success shadow-md"
+                  : "bg-background border-border hover:bg-muted"
+              }`}
             >
-              Confirmed ({stats.confirmed})
-            </Badge>
+              <div className="flex flex-col items-center">
+                <Calendar className="w-4 h-4 mb-1" />
+                <span className="text-xs font-medium">Confirmed</span>
+                <span className="text-xs opacity-75">({stats.confirmed})</span>
+              </div>
+            </button>
           </div>
         </div>
 
-        {/* Booking Type Filter */}
-        <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-2">
-            Booking Type
+        {/* ✅ ONLY UPDATED: Changed stat reference */}
+        <div className="space-y-3">
+          <label className="text-sm font-medium text-muted-foreground">
+            Appointment Type
           </label>
-          <div className="flex flex-wrap gap-2">
-            <Badge
-              variant={bookingTypeFilter === "all" ? "default" : "outline"}
-              className="cursor-pointer hover:bg-primary/10 transition-colors"
+          <div className="grid grid-cols-2 gap-2">
+            <button
               onClick={() => setBookingTypeFilter("all")}
+              className={`px-4 py-2.5 rounded-lg border transition-all ${
+                bookingTypeFilter === "all"
+                  ? "bg-primary text-primary-foreground border-primary shadow-md"
+                  : "bg-background border-border hover:bg-muted"
+              }`}
             >
-              All ({stats.total})
-            </Badge>
-            <Badge
-              variant={
-                bookingTypeFilter === "consultation_only"
-                  ? "default"
-                  : "outline"
-              }
-              className="cursor-pointer hover:bg-blue-500/10 transition-colors"
+              <div className="flex flex-col items-center gap-1">
+                <Activity className="w-4 h-4" />
+                <span className="text-xs font-medium">All Types</span>
+                <span className="text-xs opacity-75">({stats.total})</span>
+              </div>
+            </button>
+
+            <button
               onClick={() => setBookingTypeFilter("consultation_only")}
+              className={`px-4 py-2.5 rounded-lg border transition-all ${
+                bookingTypeFilter === "consultation_only"
+                  ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                  : "bg-background border-border hover:bg-muted"
+              }`}
             >
-              Consultation ({stats.consultationOnly})
-            </Badge>
-            <Badge
-              variant={
-                ["consultation_with_service", "service_only"].includes(
-                  bookingTypeFilter
-                )
-                  ? "default"
-                  : "outline"
-              }
-              className="cursor-pointer hover:bg-purple-500/10 transition-colors"
+              <div className="flex flex-col items-center gap-1">
+                <Stethoscope className="w-4 h-4" />
+                <span className="text-xs font-medium">Consultation</span>
+                <span className="text-xs opacity-75">
+                  ({stats.consultationOnly})
+                </span>
+              </div>
+            </button>
+
+            <button
               onClick={() => setBookingTypeFilter("consultation_with_service")}
+              className={`px-4 py-2.5 rounded-lg border transition-all ${
+                bookingTypeFilter === "consultation_with_service"
+                  ? "bg-purple-600 text-white border-purple-600 shadow-md"
+                  : "bg-background border-border hover:bg-muted"
+              }`}
             >
-              With Treatment ({stats.withTreatment})
-            </Badge>
-            <Badge
-              variant={
-                bookingTypeFilter === "treatment_plan_follow_up"
-                  ? "default"
-                  : "outline"
-              }
-              className="cursor-pointer hover:bg-green-500/10 transition-colors"
+              <div className="flex flex-col items-center gap-1">
+                <Activity className="w-4 h-4" />
+                <span className="text-xs font-medium">With Service</span>
+                {/* ✅ CHANGED: from withTreatment to withServices */}
+                <span className="text-xs opacity-75">
+                  ({stats.withServices})
+                </span>
+              </div>
+            </button>
+
+            <button
               onClick={() => setBookingTypeFilter("treatment_plan_follow_up")}
+              className={`px-4 py-2.5 rounded-lg border transition-all ${
+                bookingTypeFilter === "treatment_plan_follow_up"
+                  ? "bg-green-600 text-white border-green-600 shadow-md"
+                  : "bg-background border-border hover:bg-muted"
+              }`}
             >
-              Follow-up ({stats.treatmentPlanLinked})
-            </Badge>
+              <div className="flex flex-col items-center gap-1">
+                <Calendar className="w-4 h-4" />
+                <span className="text-xs font-medium">Treatment Plan</span>
+                {/* ✅ CHANGED: from treatmentPlanLinked to linkedToTreatmentPlan */}
+                <span className="text-xs opacity-75">
+                  ({stats.linkedToTreatmentPlan})
+                </span>
+              </div>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Active Filters Indicator */}
+      {(statusFilter !== "all" || bookingTypeFilter !== "all") && (
+        <div className="pt-4 border-t border-border">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Active filters:{" "}
+              <span className="font-medium text-foreground">
+                {statusFilter !== "all" && `Status: ${statusFilter}`}
+                {statusFilter !== "all" && bookingTypeFilter !== "all" && " • "}
+                {bookingTypeFilter !== "all" &&
+                  `Type: ${bookingTypeFilter.replace(/_/g, " ")}`}
+              </span>
+            </p>
+            <button
+              onClick={() => {
+                setStatusFilter("all");
+                setBookingTypeFilter("all");
+              }}
+              className="text-sm text-primary hover:underline font-medium"
+            >
+              Clear All
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

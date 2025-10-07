@@ -360,14 +360,14 @@ Consultation Fee: ₱${appointment.consultation_fee_charged || 0}
               color="blue-600"
             />
             <StatsCard
-              title="With Treatment"
-              value={stats.withTreatment}
+              title="With Services" // ✅ CHANGED from "With Treatment"
+              value={stats.withServices} // ✅ CHANGED from "withTreatment"
               icon={<Activity className="w-5 h-5 text-purple-600" />}
               color="purple-600"
             />
             <StatsCard
-              title="Treatment Follow-ups"
-              value={stats.treatmentPlanLinked}
+              title="Treatment Plan Linked" // ✅ CLEARER NAME
+              value={stats.linkedToTreatmentPlan} // ✅ CHANGED from "treatmentPlanLinked"
               icon={<Calendar className="w-5 h-5 text-green-600" />}
               color="green-600"
             />

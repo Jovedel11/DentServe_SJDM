@@ -1,26 +1,28 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/auth/context/AuthProvider';
 
 export const useStaffPerformanceAnalytics = () => {
+  // State
   const [performanceData, setPerformanceData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
-  const { isStaff, isAdmin, user, profile } = useAuth();
+  // Auth context
+  const { isStaff, isAdmin, user } = useAuth();
 
   const fetchStaffPerformanceAnalytics = useCallback(async (options = {}) => {
-    // ✅ Access control
+    // Validation
     if (!user) {
-      const error = 'Authentication required';
-      setError(error);
-      return { success: false, error };
+      const errorMsg = 'Authentication required';
+      setError(errorMsg);
+      return { success: false, error: errorMsg };
     }
 
     if (!isStaff && !isAdmin) {
-      const error = 'Access denied: Staff or Admin required';
-      setError(error);
-      return { success: false, error };
+      const errorMsg = 'Access denied: Staff or Admin required';
+      setError(errorMsg);
+      return { success: false, error: errorMsg };
     }
 
     try {
@@ -34,12 +36,16 @@ export const useStaffPerformanceAnalytics = () => {
         includeComparisons = false
       } = options;
 
-      // ✅ Use current user ID for staff, require explicit ID for admin
       let targetStaffId = staffId;
       if (isStaff && !targetStaffId) {
         targetStaffId = user.id;
       }
 
+      if (!targetStaffId && isAdmin) {
+        throw new Error('Staff ID is required for admin');
+      }
+
+      // Call database function
       const { data, error: rpcError } = await supabase.rpc('get_staff_performance_analytics', {
         p_staff_id: targetStaffId,
         p_date_from: dateFrom,
@@ -51,12 +57,10 @@ export const useStaffPerformanceAnalytics = () => {
         throw new Error(rpcError.message);
       }
 
-      // ✅ Handle authentication response
       if (data?.authenticated === false) {
         throw new Error('Authentication required');
       }
 
-      // ✅ Handle current stub implementation
       if (!data || !data.success) {
         throw new Error(data?.error || 'Failed to fetch staff performance analytics');
       }
@@ -66,18 +70,17 @@ export const useStaffPerformanceAnalytics = () => {
       return {
         success: true,
         data: data,
-        // ✅ WARNING: These may not exist until function is fully implemented
         staff_info: data.staff_info || null,
         performance_metrics: data.performance_metrics || null,
         comparisons: data.comparisons || null,
-        recommendations: data.recommendations || null,
-        message: data.message // Current stub response
+        recommendations: data.recommendations || []
       };
 
     } catch (err) {
       const errorMessage = err.message || 'Failed to fetch staff performance analytics';
       setError(errorMessage);
-      console.error('Staff performance analytics error:', err);
+      console.error('[useStaffPerformanceAnalytics] Error:', err);
+      
       return {
         success: false,
         error: errorMessage
@@ -87,28 +90,52 @@ export const useStaffPerformanceAnalytics = () => {
     }
   }, [isStaff, isAdmin, user]);
 
-  // ✅ Check if function is implemented
-  const isImplemented = useCallback(() => {
-    return !!(performanceData?.staff_info || performanceData?.performance_metrics);
-  }, [performanceData]);
+
+  const refresh = useCallback((options = {}) => {
+    return fetchStaffPerformanceAnalytics(options);
+  }, [fetchStaffPerformanceAnalytics]);
+
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
+  const reset = useCallback(() => {
+    setPerformanceData(null);
+    setError(null);
+    setLoading(false);
+  }, []);
+
+  // Derived state
+  const staffInfo = useMemo(() => performanceData?.staff_info || null, [performanceData]);
+  const performanceMetrics = useMemo(() => performanceData?.performance_metrics || null, [performanceData]);
+  const comparisons = useMemo(() => performanceData?.comparisons || null, [performanceData]);
+  const recommendations = useMemo(() => performanceData?.recommendations || [], [performanceData]);
+  
+  // Check if data is available
+  const hasData = useMemo(() => 
+    !!(performanceData?.staff_info || performanceData?.performance_metrics), 
+    [performanceData]
+  );
 
   return {
-    // State
+    // Raw data
     performanceData,
+    
+    // State
     loading,
     error,
+    hasData,
     
-    // Derived data (may be null until function is implemented)
-    staffInfo: performanceData?.staff_info || null,
-    performanceMetrics: performanceData?.performance_metrics || null,
-    comparisons: performanceData?.comparisons || null,
-    
-    // Status
-    isImplemented: isImplemented(),
+    // Derived data
+    staffInfo,
+    performanceMetrics,
+    comparisons,
+    recommendations,
     
     // Actions
     fetchStaffPerformanceAnalytics,
-    refresh: () => fetchStaffPerformanceAnalytics(),
-    clearError: () => setError(null)
+    refresh,
+    clearError,
+    reset
   };
 };

@@ -92,7 +92,7 @@ const ManageAppointments = lazy(() =>
   import("@/app/staff/pages/ManageAppointments")
 );
 const StaffTreatmentPlans = lazy(() =>
-  import("@/app/staff/pages/CreateTreatmentPlan")
+  import("@/app/staff/pages/TreatmentPlan")
 );
 const StaffHistory = lazy(() =>
   import("@/app/staff/pages/StaffAppointmentHistory")

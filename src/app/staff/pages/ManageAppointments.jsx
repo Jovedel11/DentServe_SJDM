@@ -146,7 +146,7 @@ const ManageAppointments = () => {
     resetForm();
   };
 
-  // ✅ APPROVE with treatment plan check
+  // ✅ APPROVE
   const handleApprove = async () => {
     if (!actionModal.appointment) return;
 
@@ -164,18 +164,16 @@ const ManageAppointments = () => {
     }
   };
 
-  // ✅ Handle treatment plan decision
+  // ✅ Treatment Plan Decision
   const handleTreatmentDecision = (needsTreatment) => {
     const appointment = treatmentModal.appointment;
     setTreatmentModal({ isOpen: false, appointment: null });
 
     if (needsTreatment) {
-      // Navigate to treatment plan creation with appointment data
-      navigate("/staff/treatment-plans/create", {
+      navigate("/staff/treatment-plan", {
         state: {
+          fromAppointment: true,
           appointment,
-          patientId: appointment.patient_id,
-          patientName: appointment.patient?.name,
         },
       });
     }
@@ -243,18 +241,13 @@ const ManageAppointments = () => {
       closeModal();
       appointmentManager.refreshData();
 
-      // Check if treatment plan prompt needed
-      const hasMultiVisitServices = actionModal.appointment.services?.some(
-        (s) => s.requires_multiple_visits
-      );
-
       // Always show treatment plan option after completion
-      setTimeout(() => {
-        setTreatmentModal({
-          isOpen: true,
-          appointment: actionModal.appointment,
-        });
-      }, 500);
+        setTimeout(() => {
+          setTreatmentModal({
+            isOpen: true,
+            appointment: actionModal.appointment,
+          });
+        }, 500);
     } else {
       showToast(result.error || "Failed to complete appointment", "error");
     }
@@ -278,7 +271,7 @@ const ManageAppointments = () => {
     }
   };
 
-  // ✅ Helper: Check if appointment is past (including time)
+  // ✅ Helper: Check if appointment is past
   const isAppointmentPast = (appointment) => {
     const appointmentDate = new Date(appointment.appointment_date);
     const appointmentTime = appointment.appointment_time;
@@ -308,7 +301,7 @@ const ManageAppointments = () => {
     return "overdue";
   };
 
-  // Filtered appointments
+  // ✅ FIXED: Filtered appointments
   const filteredAppointments = useMemo(() => {
     const {
       pendingAppointments,
@@ -317,8 +310,9 @@ const ManageAppointments = () => {
       appointments,
     } = appointmentManager;
 
-    // Only show active appointments (exclude completed, cancelled, no_show)
-    const activeAppointments = appointments.filter(
+    // Helper: Filter out completed/cancelled/no_show
+    const filterActiveOnly = (list) =>
+      (list || []).filter(
       (apt) => !["completed", "cancelled", "no_show"].includes(apt.status)
     );
 
@@ -328,11 +322,33 @@ const ManageAppointments = () => {
       case "confirmed":
         return confirmedAppointments || [];
       case "today":
-        return todayAppointments || [];
+        return filterActiveOnly(todayAppointments);
       default:
-        return activeAppointments;
+        return filterActiveOnly(appointments);
     }
   }, [activeTab, appointmentManager]);
+
+  // ✅ NEW: Active counts (excludes completed/cancelled/no_show)
+  const activeCounts = useMemo(() => {
+    const {
+      pendingAppointments,
+      confirmedAppointments,
+      todayAppointments,
+      appointments,
+    } = appointmentManager;
+
+    const filterActive = (list) =>
+      (list || []).filter(
+        (apt) => !["completed", "cancelled", "no_show"].includes(apt.status)
+      );
+
+    return {
+      pending: (pendingAppointments || []).length,
+      confirmed: (confirmedAppointments || []).length,
+      today: filterActive(todayAppointments).length,
+      total: filterActive(appointments).length,
+    };
+  }, [appointmentManager]);
 
   // Status Badge Component
   const StatusBadge = ({ status }) => {
@@ -355,7 +371,7 @@ const ManageAppointments = () => {
       <Badge className={`${className} border font-medium`}>
         <Icon className="w-3 h-3 mr-1" />
         {label}
-      </Badge>
+                </Badge>
     );
   };
 
@@ -412,7 +428,7 @@ const ManageAppointments = () => {
 
     return (
       <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-        {/* Patient Reliability Warning - TOP PRIORITY */}
+        {/* Patient Reliability Warning */}
         {reliability && reliability.risk_level !== "reliable" && (
           <ReliabilityAlert reliability={reliability} />
         )}
@@ -427,18 +443,18 @@ const ManageAppointments = () => {
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div className="grid grid-cols-2 gap-3">
-              <div>
+            <div>
                 <p className="text-xs text-muted-foreground mb-1">Full Name</p>
                 <p className="font-medium">{patientInfo?.name || "N/A"}</p>
-              </div>
-              <div>
+            </div>
+                <div>
                 <p className="text-xs text-muted-foreground mb-1">Email</p>
                 <p className="font-medium flex items-center gap-1">
                   <Mail className="w-3 h-3" />
                   {patientInfo?.email || "N/A"}
                 </p>
-              </div>
-              <div>
+                </div>
+                <div>
                 <p className="text-xs text-muted-foreground mb-1">Phone</p>
                 <p className="font-medium flex items-center gap-1">
                   <Phone className="w-3 h-3" />
@@ -449,18 +465,18 @@ const ManageAppointments = () => {
                 <p className="text-xs text-muted-foreground mb-1">Age</p>
                 <p className="font-medium">{patientInfo?.age || "N/A"}</p>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+                </div>
+            </CardContent>
+          </Card>
 
         {/* Appointment Details */}
-        <Card>
+          <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm flex items-center gap-2">
+              <CardTitle className="text-sm flex items-center gap-2">
               <Calendar className="w-4 h-4 text-primary" />
               Appointment Details
-            </CardTitle>
-          </CardHeader>
+          </CardTitle>
+        </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -476,28 +492,28 @@ const ManageAppointments = () => {
                     }
                   )}
                 </p>
-              </div>
+          </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Time</p>
                 <p className="font-medium flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   {appointment.appointment_time}
-                </p>
-              </div>
+              </p>
+            </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Doctor</p>
                 <p className="font-medium flex items-center gap-1">
                   <Stethoscope className="w-3 h-3" />
                   {appointment.doctor?.name || "Unassigned"}
-                </p>
-              </div>
+              </p>
+            </div>
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Duration</p>
                 <p className="font-medium">
                   {appointment.duration_minutes || 30} minutes
-                </p>
-              </div>
+              </p>
             </div>
+          </div>
 
             {appointment.booking_type && (
               <div className="pt-2 border-t">
@@ -507,10 +523,10 @@ const ManageAppointments = () => {
                 <Badge variant="outline" className="text-xs">
                   {appointment.booking_type.replace(/_/g, " ").toUpperCase()}
                 </Badge>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
         {/* Services */}
         {appointment.services?.length > 0 && (
@@ -519,8 +535,8 @@ const ManageAppointments = () => {
               <CardTitle className="text-sm flex items-center gap-2">
                 <Activity className="w-4 h-4 text-primary" />
                 Requested Services
-              </CardTitle>
-            </CardHeader>
+          </CardTitle>
+        </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 {appointment.services.map((service, idx) => (
@@ -529,19 +545,19 @@ const ManageAppointments = () => {
                       <span className="font-medium text-sm">
                         {service.name}
                       </span>
-                      {service.requires_multiple_visits && (
-                        <Badge
+                  {service.requires_multiple_visits && (
+                    <Badge
                           variant="secondary"
                           className="text-xs bg-purple-100 text-purple-700"
-                        >
+                    >
                           Multi-Visit Required
-                        </Badge>
-                      )}
-                    </div>
+                    </Badge>
+                  )}
+                </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        {service.duration_minutes} min
+                      {service.duration_minutes} min
                       </span>
                       {service.min_price && (
                         <span>
@@ -549,23 +565,23 @@ const ManageAppointments = () => {
                         </span>
                       )}
                     </div>
-                  </div>
-                ))}
               </div>
-            </CardContent>
-          </Card>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
         )}
 
         {/* Symptoms */}
         {appointment.symptoms && (
-          <Card>
+            <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center gap-2">
+                  <CardTitle className="text-sm flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-primary" />
                 Patient Symptoms / Concerns
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
               <p className="text-sm bg-muted/50 p-3 rounded-lg border">
                 {appointment.symptoms}
               </p>
@@ -590,7 +606,7 @@ const ManageAppointments = () => {
           </Card>
         )}
 
-        {/* Reliability Details (Full) */}
+        {/* Reliability Details */}
         {reliability && (
           <Card>
             <CardHeader className="pb-3">
@@ -639,8 +655,8 @@ const ManageAppointments = () => {
                   </p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
         )}
       </div>
     );
@@ -658,7 +674,6 @@ const ManageAppointments = () => {
     const reliability = appointment.patient_reliability;
     const isRisky = reliability && reliability.risk_level !== "reliable";
 
-    // Show Complete/No Show buttons for confirmed appointments that have passed
     const showCompletionButtons = isConfirmed && isPast;
 
     return (
@@ -675,9 +690,9 @@ const ManageAppointments = () => {
           <div className="flex items-start justify-between mb-2">
             <div className="space-y-2 flex-1">
               <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-lg">
+              <h3 className="font-semibold text-lg">
                   {appointment.patient?.name || "Unknown Patient"}
-                </h3>
+              </h3>
                 {isRisky && (
                   <Badge variant="destructive" className="text-xs">
                     <AlertTriangle className="w-3 h-3 mr-1" />
@@ -711,7 +726,6 @@ const ManageAppointments = () => {
             </Button>
           </div>
 
-          {/* Quick Reliability Warning */}
           {isRisky && isPending && (
             <Alert variant="destructive" className="py-2 px-3">
               <AlertTriangle className="h-3 w-3" />
@@ -724,12 +738,11 @@ const ManageAppointments = () => {
         </CardHeader>
 
         <CardContent className="space-y-3">
-          {/* Details */}
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Calendar className="w-4 h-4 shrink-0" />
               <span className="truncate">
-                {appointmentDate.toLocaleDateString()}
+              {appointmentDate.toLocaleDateString()}
               </span>
             </div>
             <div className="flex items-center gap-2 text-muted-foreground">
@@ -740,15 +753,13 @@ const ManageAppointments = () => {
 
           <Separator />
 
-          {/* Doctor */}
           <div className="flex items-center gap-2 text-sm">
             <Stethoscope className="w-4 h-4 text-muted-foreground shrink-0" />
             <span className="font-medium">
-              {appointment.doctor?.name || "Unassigned"}
+                {appointment.doctor?.name || "Unassigned"}
             </span>
           </div>
 
-          {/* Services */}
           {appointment.services?.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {appointment.services.slice(0, 2).map((service, idx) => (
@@ -764,7 +775,6 @@ const ManageAppointments = () => {
             </div>
           )}
 
-          {/* Symptoms Preview */}
           {appointment.symptoms && (
             <div className="text-xs bg-muted/50 rounded p-2 border">
               <MessageSquare className="w-3 h-3 inline mr-1 text-muted-foreground" />
@@ -776,7 +786,6 @@ const ManageAppointments = () => {
 
           <Separator />
 
-          {/* Actions */}
           <div className="flex gap-2 pt-1">
             {isPending && (
               <>
@@ -907,7 +916,7 @@ const ManageAppointments = () => {
           </Button>
         </div>
 
-        {/* Stats Cards */}
+        {/* ✅ FIXED: Stats Cards - Use activeCounts */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="border-l-4 border-l-yellow-500">
             <CardContent className="pt-6">
@@ -917,7 +926,7 @@ const ManageAppointments = () => {
                     Pending Review
                   </p>
                   <p className="text-3xl font-bold text-yellow-600">
-                    {appointmentManager.pendingCount || 0}
+                    {activeCounts.pending}
                   </p>
                 </div>
                 <Clock className="w-8 h-8 text-yellow-500 opacity-50" />
@@ -933,7 +942,7 @@ const ManageAppointments = () => {
                     Confirmed
                   </p>
                   <p className="text-3xl font-bold text-blue-600">
-                    {appointmentManager.stats?.confirmed || 0}
+                    {activeCounts.confirmed}
                   </p>
                 </div>
                 <CheckCircle className="w-8 h-8 text-blue-500 opacity-50" />
@@ -949,7 +958,7 @@ const ManageAppointments = () => {
                     Today's Schedule
                   </p>
                   <p className="text-3xl font-bold text-orange-600">
-                    {appointmentManager.todayCount || 0}
+                    {activeCounts.today}
                   </p>
                 </div>
                 <Bell className="w-8 h-8 text-orange-500 opacity-50" />
@@ -964,9 +973,7 @@ const ManageAppointments = () => {
                   <p className="text-sm font-medium text-muted-foreground">
                     Total Active
                   </p>
-                  <p className="text-3xl font-bold">
-                    {appointmentManager.stats?.total || 0}
-                  </p>
+                  <p className="text-3xl font-bold">{activeCounts.total}</p>
                 </div>
                 <Activity className="w-8 h-8 text-primary opacity-50" />
               </div>
@@ -987,7 +994,7 @@ const ManageAppointments = () => {
                 variant={toast.type === "error" ? "destructive" : "default"}
                 className="shadow-lg border-2"
               >
-                {toast.type === "error" ? (
+                    {toast.type === "error" ? (
                   <AlertCircle className="h-4 w-4" />
                 ) : (
                   <CheckCircle className="h-4 w-4" />
@@ -997,21 +1004,21 @@ const ManageAppointments = () => {
                 </AlertTitle>
                 <AlertDescription className="flex items-center justify-between">
                   {toast.message}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setToast({ ...toast, show: false })}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setToast({ ...toast, show: false })}
                     className="ml-2"
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
                 </AlertDescription>
               </Alert>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Tabs */}
+        {/* ✅ FIXED: Tabs - Use activeCounts */}
         <Tabs
           value={activeTab}
           onValueChange={setActiveTab}
@@ -1026,7 +1033,7 @@ const ManageAppointments = () => {
                 <Clock className="w-4 h-4 mb-1" />
                 <span className="font-medium">Pending</span>
                 <span className="text-xs text-muted-foreground">
-                  ({appointmentManager.pendingAppointments?.length || 0})
+                  ({activeCounts.pending})
                 </span>
               </div>
             </TabsTrigger>
@@ -1039,7 +1046,7 @@ const ManageAppointments = () => {
                 <CheckCircle className="w-4 h-4 mb-1" />
                 <span className="font-medium">Confirmed</span>
                 <span className="text-xs text-muted-foreground">
-                  ({appointmentManager.stats?.confirmed || 0})
+                  ({activeCounts.confirmed})
                 </span>
               </div>
             </TabsTrigger>
@@ -1052,7 +1059,7 @@ const ManageAppointments = () => {
                 <Bell className="w-4 h-4 mb-1" />
                 <span className="font-medium">Today</span>
                 <span className="text-xs text-muted-foreground">
-                  ({appointmentManager.todayAppointments?.length || 0})
+                  ({activeCounts.today})
                 </span>
               </div>
             </TabsTrigger>
@@ -1065,12 +1072,7 @@ const ManageAppointments = () => {
                 <Activity className="w-4 h-4 mb-1" />
                 <span className="font-medium">All Active</span>
                 <span className="text-xs text-muted-foreground">
-                  (
-                  {appointmentManager.appointments?.filter(
-                    (a) =>
-                      !["completed", "cancelled", "no_show"].includes(a.status)
-                  ).length || 0}
-                  )
+                  ({activeCounts.total})
                 </span>
               </div>
             </TabsTrigger>
@@ -1271,20 +1273,20 @@ const ManageAppointments = () => {
                     </Alert>
                   )}
 
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      Staff Notes (Optional)
-                    </label>
-                    <Textarea
-                      value={actionForm.notes}
-                      onChange={(e) =>
-                        setActionForm({ ...actionForm, notes: e.target.value })
-                      }
+                <div>
+                  <label className="text-sm font-medium mb-2 block">
+                    Staff Notes (Optional)
+                  </label>
+                  <Textarea
+                    value={actionForm.notes}
+                    onChange={(e) =>
+                      setActionForm({ ...actionForm, notes: e.target.value })
+                    }
                       placeholder="Add any notes, special instructions, or reminders for the appointment..."
                       rows={4}
                       className="resize-none"
-                    />
-                  </div>
+                  />
+                </div>
                 </>
               )}
 
@@ -1352,18 +1354,18 @@ const ManageAppointments = () => {
                       }
                     />
                     <div className="flex-1">
-                      <label
-                        htmlFor="sendReminder"
+                    <label
+                      htmlFor="sendReminder"
                         className="text-sm font-medium cursor-pointer"
-                      >
-                        Send reschedule reminder to patient
-                      </label>
+                    >
+                      Send reschedule reminder to patient
+                    </label>
                       <p className="text-xs text-muted-foreground mt-1">
                         Patient will receive an email with alternative booking
                         options
                       </p>
                     </div>
-                  </div>
+                </div>
                 </>
               )}
 
@@ -1409,8 +1411,8 @@ const ManageAppointments = () => {
                         htmlFor="followUp"
                         className="text-sm font-medium cursor-pointer"
                       >
-                        Follow-up appointment required
-                      </label>
+                      Follow-up appointment required
+                    </label>
                       <p className="text-xs text-muted-foreground mt-1">
                         Mark if patient needs a follow-up visit
                       </p>
@@ -1470,7 +1472,7 @@ const ManageAppointments = () => {
                       rows={3}
                       className="resize-none"
                     />
-                  </div>
+                </div>
                 </>
               )}
             </div>

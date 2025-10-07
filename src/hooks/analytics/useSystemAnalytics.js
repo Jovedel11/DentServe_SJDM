@@ -1,26 +1,28 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/auth/context/AuthProvider';
 
 export const useSystemAnalytics = () => {
+  // State
   const [systemData, setSystemData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
+  // Auth context
   const { isAdmin, user } = useAuth();
 
   const fetchSystemAnalytics = useCallback(async (options = {}) => {
-    // ✅ ENHANCED: Better validation
+    // Validation
     if (!user) {
-      const error = 'Authentication required';
-      setError(error);
-      return { success: false, error };
+      const errorMsg = 'Authentication required';
+      setError(errorMsg);
+      return { success: false, error: errorMsg };
     }
 
     if (!isAdmin) {
-      const error = 'Access denied: Admin required';
-      setError(error);
-      return { success: false, error };
+      const errorMsg = 'Access denied: Admin required';
+      setError(errorMsg);
+      return { success: false, error: errorMsg };
     }
 
     try {
@@ -45,12 +47,10 @@ export const useSystemAnalytics = () => {
         throw new Error(rpcError.message);
       }
 
-      // ✅ FIXED: Handle authentication response from function
       if (data?.authenticated === false) {
         throw new Error('Authentication required');
       }
 
-      // ✅ CORRECTED: Check success properly
       if (!data || !data.success) {
         throw new Error(data?.error || 'Failed to fetch system analytics');
       }
@@ -70,7 +70,8 @@ export const useSystemAnalytics = () => {
     } catch (err) {
       const errorMessage = err.message || 'Failed to fetch system analytics';
       setError(errorMessage);
-      console.error('System analytics error:', err);
+      console.error('[useSystemAnalytics] Error:', err);
+      
       return {
         success: false,
         error: errorMessage
@@ -80,8 +81,22 @@ export const useSystemAnalytics = () => {
     }
   }, [isAdmin, user]);
 
-  // ✅ ENHANCED: Better system health calculation with null checks
-  const getSystemHealthScore = useCallback(() => {
+  const refresh = useCallback((options = {}) => {
+    return fetchSystemAnalytics(options);
+  }, [fetchSystemAnalytics]);
+
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
+  const reset = useCallback(() => {
+    setSystemData(null);
+    setError(null);
+    setLoading(false);
+  }, []);
+
+  // Derived state - System health score
+  const systemHealthScore = useMemo(() => {
     if (!systemData?.system_overview) return 0;
 
     const overview = systemData.system_overview;
@@ -120,8 +135,8 @@ export const useSystemAnalytics = () => {
     return Math.min(score, 100);
   }, [systemData]);
 
-  // ✅ NEW: Get formatted period info
-  const getPeriodInfo = useCallback(() => {
+  // Derived state - Period info
+  const periodInfo = useMemo(() => {
     if (!systemData?.period) return null;
     
     return {
@@ -131,8 +146,8 @@ export const useSystemAnalytics = () => {
     };
   }, [systemData]);
 
-  // ✅ NEW: Get growth trends summary
-  const getGrowthSummary = useCallback(() => {
+  // Derived state - Growth summary
+  const growthSummary = useMemo(() => {
     if (!systemData?.growth_analytics) return null;
     
     const growth = systemData.growth_analytics;
@@ -143,23 +158,30 @@ export const useSystemAnalytics = () => {
     };
   }, [systemData]);
 
+  // Check if data is available
+  const hasData = useMemo(() => !!systemData?.system_overview, [systemData]);
+
   return {
-    // State
+    // Raw data
     systemData,
+    
+    // State
     loading,
     error,
+    hasData,
     
     // Derived data
     systemOverview: systemData?.system_overview,
     growthAnalytics: systemData?.growth_analytics,
     performanceMetrics: systemData?.performance_metrics,
-    systemHealthScore: getSystemHealthScore(),
-    periodInfo: getPeriodInfo(),
-    growthSummary: getGrowthSummary(),
+    systemHealthScore,
+    periodInfo,
+    growthSummary,
     
     // Actions
     fetchSystemAnalytics,
-    refresh: () => fetchSystemAnalytics(),
-    clearError: () => setError(null)
+    refresh,
+    clearError,
+    reset
   };
 };
