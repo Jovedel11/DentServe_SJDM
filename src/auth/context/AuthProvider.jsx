@@ -53,6 +53,24 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
+    // Listen for storage changes (when another tab logs out)
+    const handleStorageChange = (e) => {
+      // If the Supabase session was cleared in another tab
+      if (e.key === "sb-oswcjyrerzlfsnztqqwf-auth-token" && !e.newValue) {
+        console.log("⚠️ Session cleared in another tab, logging out...");
+        // Force logout in this tab too
+        window.location.href = "/login";
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!user || !isInitialized) return;
     loadProfile(user.id);
   }, [user, isInitialized]);

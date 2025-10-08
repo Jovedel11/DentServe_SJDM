@@ -42,11 +42,6 @@ const data = {
       icon: BarChart3,
     },
     {
-      title: "UI Management",
-      url: "/admin/ui-management",
-      icon: SquareKanban,
-    },
-    {
       title: "Partnership Request Manager",
       url: "/admin/partnership-request-manager",
       icon: Building2,

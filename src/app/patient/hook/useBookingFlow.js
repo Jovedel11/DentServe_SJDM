@@ -9,7 +9,7 @@ export const useBookingFlow = () => {
   // Hook integration
   const appointmentHook = useAppointmentBooking();
   
-  // ✅ FIX: Extract stable references to prevent infinite loops
+  //Extract stable references to prevent infinite loops
   const {
     bookingData,
     updateBookingData,
@@ -350,7 +350,7 @@ export const useBookingFlow = () => {
     bookingData,
     bookingLimitsInfo,
     consultationCheckResult,
-    skipConsultation,  // ✅ ADD DEPENDENCY
+    skipConsultation, 
     sameDayConflict,
     appointmentLimitCheck,
     patientReliability,
@@ -399,11 +399,9 @@ export const useBookingFlow = () => {
           );
           setConsultationCheckResult(result);
           
-          // ✅ Auto-enable skip ONLY if all services allow it
           if (result?.canSkipConsultation) {
             setSkipConsultation(true);
           } else {
-            // ✅ IMPORTANT: If cannot skip, must charge consultation
             setSkipConsultation(false);
           }
         } catch (error) {
@@ -420,7 +418,7 @@ export const useBookingFlow = () => {
     checkConsultation();
   }, [bookingData.services, bookingData.clinic?.id, checkConsultationRequirement]);
 
-  // ✅ FIX: Initial clinic fetch - only once
+  //Initial clinic fetch - only once
   useEffect(() => {
     if (!isInitializedRef.current && isPatient) {
       isInitializedRef.current = true;
@@ -428,7 +426,7 @@ export const useBookingFlow = () => {
     }
   }, [isPatient, fetchClinics]);
 
-  // ✅ FIX: Fetch doctors only when clinic changes
+  // Fetch doctors only when clinic changes
   useEffect(() => {
     const clinicId = bookingData.clinic?.id;
     

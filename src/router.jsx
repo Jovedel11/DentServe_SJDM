@@ -107,7 +107,6 @@ const Help = lazy(() => import("@/app/staff/pages/Help"));
 
 // Admin pages
 const AdminDashboard = lazy(() => import("@/app/admin/pages/AdminDashboard"));
-const UIManagement = lazy(() => import("@/app/admin/pages/UIManagement"));
 const UserManagement = lazy(() => import("@/app/admin/pages/UserManagement"));
 const UserRecords = lazy(() => import("@/app/admin/pages/UserRecords"));
 const PartnershipRequestManager = lazy(() =>
@@ -213,7 +212,6 @@ export const router = createBrowserRouter([
         path: "admin",
         ...createProtectedRoute(["admin"], AdminLayout, [
           { path: "dashboard", element: withSuspense(AdminDashboard) },
-          { path: "ui-management", element: withSuspense(UIManagement) },
           {
             path: "users-management",
             children: [

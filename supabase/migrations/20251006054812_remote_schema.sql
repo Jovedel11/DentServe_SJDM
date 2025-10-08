@@ -3,7 +3,7 @@ create extension if not exists "postgis" with schema "extensions";
 
 create type "public"."appointment_booking_type" as enum ('consultation_only', 'consultation_with_service', 'service_only', 'treatment_plan_follow_up');
 
-create type "public"."appointment_status" as enum ('pending', 'confirmed', 'completed', 'cancelled', 'no_show');
+create type "public"."appointment_status" as enum ('pending', 'confirmed', 'completed', 'cancelled', 'no_show', 'admin_message');
 
 create type "public"."feedback_type" as enum ('general', 'service', 'doctor', 'facility');
 
@@ -1396,6 +1396,341 @@ END;
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION admin_award_badge(
+    p_clinic_id UUID,
+    p_badge_id UUID,
+    p_reason TEXT DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+    current_context JSONB;
+    v_current_role TEXT;
+    v_admin_id UUID;
+BEGIN
+    current_context := get_current_user_context();
+    
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+    
+    v_current_role := current_context->>'user_type';
+    v_admin_id := (current_context->>'user_id')::UUID;
+    
+    IF v_current_role != 'admin' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Admin required');
+    END IF;
+    
+    -- Check if clinic exists
+    IF NOT EXISTS (SELECT 1 FROM clinics WHERE id = p_clinic_id) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Clinic not found');
+    END IF;
+    
+    -- Check if badge exists
+    IF NOT EXISTS (SELECT 1 FROM clinic_badges WHERE id = p_badge_id) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Badge not found');
+    END IF;
+    
+    -- Insert badge award (using 'notes' column instead of 'award_reason')
+    INSERT INTO clinic_badge_awards (
+        clinic_id,
+        badge_id,
+        awarded_by,
+        notes,
+        is_current
+    )
+    VALUES (
+        p_clinic_id,
+        p_badge_id,
+        v_admin_id,
+        p_reason,
+        true
+    );
+    
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Badge awarded successfully'
+    );
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_users_list(
+    p_user_type user_type DEFAULT NULL::user_type, 
+    p_clinic_id uuid DEFAULT NULL::uuid, 
+    p_search_term text DEFAULT NULL::text, 
+    p_limit integer DEFAULT 50, 
+    p_offset integer DEFAULT 0
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $function$
+DECLARE
+    current_context JSONB;
+    v_current_role TEXT;
+    current_clinic_id UUID;
+    result JSONB;
+BEGIN
+    -- Get current user context
+    current_context := get_current_user_context();
+    
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN current_context;
+    END IF;
+    
+    v_current_role := current_context->>'user_type';
+    
+    -- Access control: only staff and admin can list users
+    IF v_current_role NOT IN ('staff', 'admin') THEN
+        RETURN jsonb_build_object('error', 'Access denied');
+    END IF;
+    
+    -- Get clinic ID for staff users
+    IF v_current_role = 'staff' THEN
+        current_clinic_id := (current_context->>'clinic_id')::UUID;
+    END IF;
+    
+    -- Build query based on role
+    WITH filtered_users AS (
+        SELECT 
+            u.id,
+            u.email,
+            u.phone,
+            u.is_active,
+            u.last_login,
+            u.email_verified,
+            u.phone_verified,
+            u.updated_at,
+            up.user_type,
+            up.first_name,
+            up.last_name,
+            up.first_name || ' ' || up.last_name as full_name,
+            up.created_at,
+            CASE up.user_type::text
+                WHEN 'patient' THEN (
+                    SELECT jsonb_build_object(
+                        'total_appointments', COUNT(a.id),
+                        'last_appointment', MAX(a.appointment_date)
+                    )
+                    FROM appointments a 
+                    WHERE a.patient_id = u.id
+                    AND (v_current_role = 'admin' OR a.clinic_id = current_clinic_id)
+                )
+                WHEN 'staff' THEN (
+                    SELECT jsonb_build_object(
+                        'clinic_name', c.name,
+                        'clinic_id', sp.clinic_id,
+                        'position', sp.position,
+                        'is_active', sp.is_active,
+                        -- Clinic appointments managed by this staff
+                        'total_appointments', COALESCE((
+                            SELECT COUNT(a.id)
+                            FROM appointments a
+                            WHERE a.clinic_id = sp.clinic_id
+                            AND a.status IN ('confirmed', 'completed', 'pending')
+                            AND (v_current_role = 'admin' OR a.clinic_id = current_clinic_id)
+                        ), 0),
+                        'last_appointment', (
+                            SELECT MAX(a.appointment_date)
+                            FROM appointments a
+                            WHERE a.clinic_id = sp.clinic_id
+                            AND a.status IN ('confirmed', 'completed')
+                            AND (v_current_role = 'admin' OR a.clinic_id = current_clinic_id)
+                        ),
+                        -- Additional clinic metrics
+                        'pending_appointments', COALESCE((
+                            SELECT COUNT(a.id)
+                            FROM appointments a
+                            WHERE a.clinic_id = sp.clinic_id
+                            AND a.status = 'pending'
+                            AND (v_current_role = 'admin' OR a.clinic_id = current_clinic_id)
+                        ), 0),
+                        'completed_appointments', COALESCE((
+                            SELECT COUNT(a.id)
+                            FROM appointments a
+                            WHERE a.clinic_id = sp.clinic_id
+                            AND a.status = 'completed'
+                            AND (v_current_role = 'admin' OR a.clinic_id = current_clinic_id)
+                        ), 0)
+                    )
+                    FROM staff_profiles sp
+                    LEFT JOIN clinics c ON sp.clinic_id = c.id
+                    WHERE sp.user_profile_id = up.id
+                )
+                ELSE '{}'::jsonb
+            END as role_data
+        FROM users u
+        JOIN user_profiles up ON u.id = up.user_id
+        WHERE 
+            (p_user_type IS NULL OR up.user_type = p_user_type) AND
+            (p_search_term IS NULL OR 
+             up.first_name ILIKE '%' || p_search_term || '%' OR 
+             up.last_name ILIKE '%' || p_search_term || '%' OR 
+             u.email ILIKE '%' || p_search_term || '%') AND
+            (v_current_role = 'admin' OR 
+             (v_current_role = 'staff' AND (
+                up.user_type::text = 'patient' AND u.id IN (
+                    SELECT DISTINCT patient_id FROM appointments 
+                    WHERE clinic_id = current_clinic_id
+                ) OR up.user_type::text = 'staff'
+             ))
+            )
+        ORDER BY up.created_at DESC
+        LIMIT p_limit OFFSET p_offset
+    )
+    SELECT jsonb_build_object(
+        'users', jsonb_agg(to_jsonb(fu)),
+        'total_count', (SELECT COUNT(*) FROM filtered_users)
+    ) INTO result
+    FROM filtered_users fu;
+    
+    RETURN COALESCE(result, jsonb_build_object('users', '[]'::jsonb, 'total_count', 0));
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('error', SQLERRM);
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION admin_award_badge(
+    p_clinic_id UUID,
+    p_badge_id UUID,
+    p_reason TEXT DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+    current_context JSONB;
+    v_current_role TEXT;
+    v_admin_id UUID;
+BEGIN
+    current_context := get_current_user_context();
+    
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+    
+    v_current_role := current_context->>'user_type';
+    v_admin_id := (current_context->>'user_id')::UUID;
+    
+    IF v_current_role != 'admin' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Admin required');
+    END IF;
+    
+    -- Check if clinic exists
+    IF NOT EXISTS (SELECT 1 FROM clinics WHERE id = p_clinic_id) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Clinic not found');
+    END IF;
+    
+    -- Check if badge exists
+    IF NOT EXISTS (SELECT 1 FROM clinic_badges WHERE id = p_badge_id) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Badge not found');
+    END IF;
+    
+    -- Insert badge award
+    INSERT INTO clinic_badge_awards (
+        clinic_id,
+        badge_id,
+        awarded_by,
+        award_reason,
+        is_current
+    )
+    VALUES (
+        p_clinic_id,
+        p_badge_id,
+        v_admin_id,
+        p_reason,
+        true
+    );
+    
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Badge awarded successfully'
+    );
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+-- ✅ NEW: Remove clinic badge with reason
+CREATE OR REPLACE FUNCTION admin_remove_badge(
+    p_award_id UUID,
+    p_removal_reason TEXT DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+    current_context JSONB;
+    v_current_role TEXT;
+    v_admin_id UUID;
+    v_clinic_id UUID;
+    v_badge_id UUID;
+BEGIN
+    current_context := get_current_user_context();
+    
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+    
+    v_current_role := current_context->>'user_type';
+    v_admin_id := (current_context->>'user_id')::UUID;
+    
+    IF v_current_role != 'admin' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Admin required');
+    END IF;
+    
+    -- Get badge award info before deletion
+    SELECT clinic_id, badge_id INTO v_clinic_id, v_badge_id
+    FROM clinic_badge_awards
+    WHERE id = p_award_id;
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Badge award not found');
+    END IF;
+    
+    -- Soft delete: Update is_current to false instead of hard delete
+    UPDATE clinic_badge_awards
+    SET 
+        is_current = false,
+        notes = COALESCE(notes || E'\n\n', '') || 
+                'REMOVED: ' || COALESCE(p_removal_reason, 'No reason provided') || 
+                ' (by admin on ' || NOW()::text || ')'
+    WHERE id = p_award_id;
+    
+    -- Log the removal in a history table if you have one
+    -- INSERT INTO badge_removal_log (award_id, removed_by, reason, removed_at) 
+    -- VALUES (p_award_id, v_admin_id, p_removal_reason, NOW());
+    
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Badge removed successfully',
+        'award_id', p_award_id,
+        'clinic_id', v_clinic_id,
+        'removal_reason', p_removal_reason
+    );
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.approve_appointment(p_appointment_id uuid, p_staff_notes text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -1641,6 +1976,121 @@ BEGIN
 END;
 $function$
 ;
+
+CREATE OR REPLACE FUNCTION admin_send_notification(
+    p_user_id UUID,
+    p_message TEXT,
+    p_title TEXT DEFAULT 'Admin Notification'
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+    current_context JSONB;
+    v_current_role TEXT;
+    v_admin_id UUID;
+BEGIN
+    -- Get current user context
+    current_context := get_current_user_context();
+    
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+    
+    v_current_role := current_context->>'user_type';
+    v_admin_id := (current_context->>'user_id')::UUID;
+    
+    -- Only admins can send notifications
+    IF v_current_role != 'admin' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Admin required');
+    END IF;
+    
+    IF p_message IS NULL OR TRIM(p_message) = '' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Message cannot be empty');
+    END IF;
+    
+    -- Insert notification
+    INSERT INTO notifications (
+        user_id,
+        notification_type,
+        title,
+        message,
+        is_read,
+        created_at
+    ) VALUES (
+        p_user_id,
+        'admin_message',
+        p_title,
+        p_message,
+        false,
+        NOW()
+    );
+    
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Notification sent successfully'
+    );
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION admin_toggle_user_status(
+    p_user_id UUID,
+    p_is_active BOOLEAN
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+    current_context JSONB;
+    v_current_role TEXT;
+BEGIN
+    -- Get current user context
+    current_context := get_current_user_context();
+    
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+    
+    v_current_role := current_context->>'user_type';
+    
+    -- Only admins can toggle user status
+    IF v_current_role != 'admin' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Admin required');
+    END IF;
+    
+    -- Update user status
+    UPDATE users
+    SET 
+        is_active = p_is_active,
+        updated_at = NOW()
+    WHERE id = p_user_id;
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'User not found');
+    END IF;
+    
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', CASE 
+            WHEN p_is_active THEN 'User activated successfully'
+            ELSE 'User deactivated successfully'
+        END
+    );
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
 
 CREATE OR REPLACE FUNCTION public.approve_partnership_request_v2(p_request_id uuid, p_admin_notes text DEFAULT NULL::text)
  RETURNS jsonb
@@ -5602,82 +6052,109 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.get_admin_system_analytics(p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date, p_include_trends boolean DEFAULT true, p_include_performance boolean DEFAULT true)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public', 'pg_catalog', 'extensions'
+CREATE OR REPLACE FUNCTION public.get_admin_system_analytics(
+    p_date_from date DEFAULT NULL::date,
+    p_date_to date DEFAULT NULL::date,
+    p_include_trends boolean DEFAULT true,
+    p_include_performance boolean DEFAULT true
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_catalog', 'extensions'
 AS $function$
 DECLARE
     current_context JSONB;
     date_from DATE;
     date_to DATE;
     result JSONB;
-    system_stats RECORD;
-    growth_stats RECORD;
-    performance_stats RECORD;
+    growth_stats JSONB;
+    performance_stats JSONB;
+    
+    v_total_users INTEGER;
+    v_new_users_period INTEGER;
+    v_active_users_week INTEGER;
+    v_active_users_month INTEGER;
+    v_total_patients INTEGER;
+    v_total_staff INTEGER;
+    v_total_admins INTEGER;
+    v_total_clinics INTEGER;
+    v_active_clinics INTEGER;
+    v_new_clinics_period INTEGER;
+    v_avg_clinic_rating NUMERIC;
+    v_total_appointments INTEGER;
+    v_appointments_period INTEGER;
+    v_completed_appointments INTEGER;
+    v_cancelled_appointments INTEGER;
 BEGIN
     
     current_context := get_current_user_context();
     
-    -- Admin-only access
     IF NOT (current_context->>'authenticated')::boolean OR 
        (current_context->>'user_type') != 'admin' THEN
         RETURN jsonb_build_object('success', false, 'error', 'Admin access required');
     END IF;
     
-    -- ✅ ENHANCED: Smart date range defaults
     date_from := COALESCE(p_date_from, CURRENT_DATE - INTERVAL '30 days');
     date_to := COALESCE(p_date_to, CURRENT_DATE);
     
-    -- ✅ OPTIMIZED: Core system statistics in single query
-    WITH system_overview AS (
-        SELECT 
-            -- User Statistics
-            COUNT(DISTINCT u.id) as total_users,
-            COUNT(DISTINCT u.id) FILTER (WHERE u.created_at >= date_from) as new_users_period,
-            COUNT(DISTINCT u.id) FILTER (WHERE u.last_login >= CURRENT_DATE - INTERVAL '7 days') as active_users_week,
-            COUNT(DISTINCT u.id) FILTER (WHERE u.last_login >= CURRENT_DATE - INTERVAL '30 days') as active_users_month,
-            
-            -- Role Distribution
-            COUNT(DISTINCT u.id) FILTER (WHERE up.user_type = 'patient') as total_patients,
-            COUNT(DISTINCT u.id) FILTER (WHERE up.user_type = 'staff') as total_staff,
-            COUNT(DISTINCT u.id) FILTER (WHERE up.user_type = 'admin') as total_admins,
-            
-            -- Clinic Statistics
-            COUNT(DISTINCT c.id) as total_clinics,
-            COUNT(DISTINCT c.id) FILTER (WHERE c.is_active = true) as active_clinics,
-            COUNT(DISTINCT c.id) FILTER (WHERE c.created_at >= date_from) as new_clinics_period,
-            AVG(c.rating) as avg_clinic_rating,
-            
-            -- Appointment Statistics  
-            COUNT(DISTINCT a.id) as total_appointments,
-            COUNT(DISTINCT a.id) FILTER (WHERE a.created_at >= date_from AND a.created_at <= date_to) as appointments_period,
-            COUNT(DISTINCT a.id) FILTER (WHERE a.status = 'completed') as completed_appointments,
-            COUNT(DISTINCT a.id) FILTER (WHERE a.status = 'cancelled') as cancelled_appointments,
-            
-            -- Financial Estimates (based on appointment services)
-            COUNT(DISTINCT a.id) FILTER (WHERE a.status = 'completed' AND a.created_at >= date_from) as revenue_appointments
-            
-        FROM users u
-        JOIN user_profiles up ON u.id = up.user_id
-        LEFT JOIN clinics c ON true -- Cross join for clinic stats
-        LEFT JOIN appointments a ON true -- Cross join for appointment stats
-    )
-    SELECT * INTO system_stats FROM system_overview;
+    -- User Statistics
+    SELECT 
+        COUNT(DISTINCT u.id),
+        COUNT(DISTINCT u.id) FILTER (WHERE u.created_at >= date_from),
+        COUNT(DISTINCT u.id) FILTER (WHERE u.last_login >= CURRENT_DATE - INTERVAL '7 days'),
+        COUNT(DISTINCT u.id) FILTER (WHERE u.last_login >= CURRENT_DATE - INTERVAL '30 days'),
+        COUNT(DISTINCT u.id) FILTER (WHERE up.user_type = 'patient'),
+        COUNT(DISTINCT u.id) FILTER (WHERE up.user_type = 'staff'),
+        COUNT(DISTINCT u.id) FILTER (WHERE up.user_type = 'admin')
+    INTO
+        v_total_users,
+        v_new_users_period,
+        v_active_users_week,
+        v_active_users_month,
+        v_total_patients,
+        v_total_staff,
+        v_total_admins
+    FROM users u
+    JOIN user_profiles up ON u.id = up.user_id;
     
-    -- ✅ ENHANCED: Growth trends (if requested)
+    -- Clinic Statistics
+    SELECT 
+        COUNT(id),
+        COUNT(id) FILTER (WHERE is_active = true),
+        COUNT(id) FILTER (WHERE created_at >= date_from),
+        COALESCE(AVG(rating), 0)
+    INTO
+        v_total_clinics,
+        v_active_clinics,
+        v_new_clinics_period,
+        v_avg_clinic_rating
+    FROM clinics;
+    
+    -- Appointment Statistics
+    SELECT 
+        COUNT(id),
+        COUNT(id) FILTER (WHERE created_at >= date_from AND created_at <= date_to),
+        COUNT(id) FILTER (WHERE status = 'completed'),
+        COUNT(id) FILTER (WHERE status = 'cancelled')
+    INTO
+        v_total_appointments,
+        v_appointments_period,
+        v_completed_appointments,
+        v_cancelled_appointments
+    FROM appointments;
+    
     IF p_include_trends THEN
         WITH daily_growth AS (
             SELECT 
-                date_trunc('day', created_at)::date as growth_date,
+                date_trunc('day', u.created_at)::date as growth_date,
                 COUNT(*) FILTER (WHERE up.user_type = 'patient') as new_patients,
                 COUNT(*) FILTER (WHERE up.user_type = 'staff') as new_staff,
                 COUNT(*) as total_new_users
             FROM users u
             JOIN user_profiles up ON u.id = up.user_id
-            WHERE u.created_at >= date_from - INTERVAL '7 days' -- Extra context
-            GROUP BY date_trunc('day', created_at)::date
+            WHERE u.created_at >= date_from - INTERVAL '7 days'
+            GROUP BY date_trunc('day', u.created_at)::date
             ORDER BY growth_date
         ),
         appointment_trends AS (
@@ -5692,7 +6169,7 @@ BEGIN
             ORDER BY trend_date
         )
         SELECT jsonb_build_object(
-            'user_growth_trend', (
+            'user_growth_trend', COALESCE((
                 SELECT jsonb_agg(
                     jsonb_build_object(
                         'date', growth_date,
@@ -5702,8 +6179,8 @@ BEGIN
                     )
                     ORDER BY growth_date
                 ) FROM daily_growth WHERE growth_date >= date_from
-            ),
-            'appointment_trends', (
+            ), '[]'::jsonb),
+            'appointment_trends', COALESCE((
                 SELECT jsonb_agg(
                     jsonb_build_object(
                         'date', trend_date,
@@ -5714,17 +6191,10 @@ BEGIN
                     )
                     ORDER BY trend_date
                 ) FROM appointment_trends WHERE trend_date >= date_from
-            ),
-            'growth_rate_weekly', COALESCE((
-                SELECT ROUND(
-                    ((COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'))::NUMERIC / 
-                     NULLIF(COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE - INTERVAL '14 days' AND created_at < CURRENT_DATE - INTERVAL '7 days'), 0) - 1) * 100, 2
-                ) FROM users WHERE created_at >= CURRENT_DATE - INTERVAL '14 days'
-            ), 0)
+            ), '[]'::jsonb)
         ) INTO growth_stats;
     END IF;
     
-    -- ✅ ENHANCED: Performance metrics (if requested)
     IF p_include_performance THEN
         WITH clinic_performance AS (
             SELECT 
@@ -5735,7 +6205,6 @@ BEGIN
                 COUNT(a.id) as total_appointments,
                 COUNT(a.id) FILTER (WHERE a.status = 'completed') as completed_appointments,
                 COUNT(a.id) FILTER (WHERE a.status = 'cancelled') as cancelled_appointments,
-                ROUND(AVG(CASE WHEN a.status = 'completed' THEN 5.0 ELSE 0.0 END), 2) as completion_score,
                 COUNT(DISTINCT a.patient_id) as unique_patients
             FROM clinics c
             LEFT JOIN appointments a ON c.id = a.clinic_id
@@ -5743,48 +6212,33 @@ BEGIN
             GROUP BY c.id, c.name, c.rating, c.total_reviews
         )
         SELECT jsonb_build_object(
-'top_performing_clinics', (
-    SELECT jsonb_agg(row_data)
-    FROM (
-        SELECT jsonb_build_object(
-            'clinic_id', id,
-            'clinic_name', name,
-            'rating', rating,
-            'total_appointments', total_appointments,
-            'completion_rate', ROUND((completed_appointments::NUMERIC / NULLIF(total_appointments, 0) * 100), 1),
-            'unique_patients', unique_patients,
-            'performance_score', ROUND((rating * 20 + completion_score * 20 + (unique_patients::NUMERIC / NULLIF(total_appointments, 0) * 100)), 1)
-        ) AS row_data
-        FROM clinic_performance
-        ORDER BY (rating * 20 + completion_score * 20) DESC
-        LIMIT 10
-    ) sub
-),
-
+            'top_performing_clinics', COALESCE((
+                SELECT jsonb_agg(row_data)
+                FROM (
+                    SELECT jsonb_build_object(
+                        'clinic_id', id,
+                        'clinic_name', name,
+                        'rating', rating,
+                        'total_appointments', total_appointments,
+                        'completion_rate', ROUND((completed_appointments::NUMERIC / NULLIF(total_appointments, 0) * 100), 1),
+                        'unique_patients', unique_patients
+                    ) AS row_data
+                    FROM clinic_performance
+                    ORDER BY rating DESC, total_appointments DESC
+                    LIMIT 10
+                ) sub
+            ), '[]'::jsonb),
             'system_health', jsonb_build_object(
                 'avg_appointment_completion_rate', (
                     SELECT ROUND(AVG(completed_appointments::NUMERIC / NULLIF(total_appointments, 0) * 100), 1)
                     FROM clinic_performance
                     WHERE total_appointments > 0
                 ),
-                'avg_clinic_rating', (SELECT ROUND(AVG(rating), 2) FROM clinic_performance WHERE rating > 0),
-                'patient_retention_rate', (
-                    SELECT ROUND(
-                        COUNT(DISTINCT patient_id) FILTER (WHERE cnt > 1)::NUMERIC / 
-                        COUNT(DISTINCT patient_id) * 100, 1
-                    )
-                    FROM (
-                        SELECT patient_id, COUNT(*) as cnt 
-                        FROM appointments 
-                        WHERE status = 'completed'
-                        GROUP BY patient_id
-                    ) patient_visits
-                )
+                'avg_clinic_rating', (SELECT ROUND(AVG(rating), 2) FROM clinic_performance WHERE rating > 0)
             )
         ) INTO performance_stats;
     END IF;
     
-    -- ✅ ENHANCED: Comprehensive result structure
     result := jsonb_build_object(
         'success', true,
         'generated_at', NOW(),
@@ -5795,38 +6249,36 @@ BEGIN
         ),
         'system_overview', jsonb_build_object(
             'users', jsonb_build_object(
-                'total', system_stats.total_users,
-                'new_this_period', system_stats.new_users_period,
-                'active_last_week', system_stats.active_users_week,
-                'active_last_month', system_stats.active_users_month,
+                'total', v_total_users,
+                'new_this_period', v_new_users_period,
+                'active_last_week', v_active_users_week,
+                'active_last_month', v_active_users_month,
                 'by_role', jsonb_build_object(
-                    'patients', system_stats.total_patients,
-                    'staff', system_stats.total_staff,
-                    'admins', system_stats.total_admins
+                    'patients', v_total_patients,
+                    'staff', v_total_staff,
+                    'admins', v_total_admins
                 )
             ),
             'clinics', jsonb_build_object(
-                'total', system_stats.total_clinics,
-                'active', system_stats.active_clinics,
-                'new_this_period', system_stats.new_clinics_period,
-                'average_rating', ROUND(system_stats.avg_clinic_rating, 2)
+                'total', v_total_clinics,
+                'active', v_active_clinics,
+                'new_this_period', v_new_clinics_period,
+                'average_rating', ROUND(v_avg_clinic_rating, 2)
             ),
             'appointments', jsonb_build_object(
-                'total', system_stats.total_appointments,
-                'this_period', system_stats.appointments_period,
-                'completed', system_stats.completed_appointments,
-                'cancelled', system_stats.cancelled_appointments,
-                'completion_rate', ROUND((system_stats.completed_appointments::NUMERIC / NULLIF(system_stats.total_appointments, 0) * 100), 1),
-                'cancellation_rate', ROUND((system_stats.cancelled_appointments::NUMERIC / NULLIF(system_stats.total_appointments, 0) * 100), 1)
+                'total', v_total_appointments,
+                'this_period', v_appointments_period,
+                'completed', v_completed_appointments,
+                'cancelled', v_cancelled_appointments,
+                'completion_rate', ROUND((v_completed_appointments::NUMERIC / NULLIF(v_total_appointments, 0) * 100), 1),
+                'cancellation_rate', ROUND((v_cancelled_appointments::NUMERIC / NULLIF(v_total_appointments, 0) * 100), 1)
             )
         ),
         'growth_analytics', CASE WHEN p_include_trends THEN growth_stats ELSE NULL END,
         'performance_metrics', CASE WHEN p_include_performance THEN performance_stats ELSE NULL END,
         'metadata', jsonb_build_object(
-            'query_execution_time_ms', EXTRACT(EPOCH FROM (clock_timestamp() - NOW())) * 1000,
             'includes_trends', p_include_trends,
-            'includes_performance', p_include_performance,
-            'cache_recommended', true
+            'includes_performance', p_include_performance
         )
     );
     
@@ -5834,10 +6286,13 @@ BEGIN
     
 EXCEPTION
     WHEN OTHERS THEN
-        RETURN jsonb_build_object('success', false, 'error', 'System analytics unavailable');
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'System analytics unavailable', 
+            'detail', SQLERRM
+        );
 END;
-$function$
-;
+$function$;
 
 CREATE OR REPLACE FUNCTION public.get_appointment_with_patient_info(p_appointment_id uuid)
  RETURNS jsonb
@@ -6934,6 +7389,18 @@ BEGIN
             'error', 'User profile not found or email not verified'
         );
     END IF;
+
+BEGIN
+    UPDATE users 
+    SET last_login = NOW(),
+        updated_at = NOW()
+    WHERE auth_user_id = current_auth_uid 
+      AND (last_login IS NULL OR last_login < NOW() - INTERVAL '5 minutes');
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Silently ignore errors (login tracking shouldn't break authentication)
+        NULL;
+END;
     
     -- ✅ REFACTOR: Email-centric result building
     result := jsonb_build_object(
@@ -9279,6 +9746,9 @@ BEGIN
             u.phone,
             u.is_active,
             u.last_login,
+            u.email_verified,
+            u.phone_verified,
+            u.updated_at,
             up.user_type,
             up.first_name,
             up.last_name,

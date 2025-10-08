@@ -3,21 +3,6 @@ import { useAuth } from '../../auth/context/AuthProvider';
 import { supabase } from '../../lib/supabaseClient';
 import { useAppointmentCancellation } from './useAppointmentCancellation';
 
-/**
- * ✅ ENHANCED Appointment Management Hook - Staff & Patient
- * 
- * STAFF ACTIONS:
- * - Approve appointments
- * - Reject appointments  
- * - Complete appointments
- * - Mark no-show
- * - Send reschedule reminders (NEW)
- * - Bulk approve (NEW)
- * 
- * PATIENT ACTIONS:
- * - View appointments
- * - Cancel appointments (via useAppointmentCancellation)
- */
 export const useAppointmentManagement = (options = {}) => {
   const { user, profile, isPatient, isStaff, isAdmin } = useAuth();
   const cancellation = useAppointmentCancellation();
@@ -50,7 +35,7 @@ export const useAppointmentManagement = (options = {}) => {
     }
   });
 
-  // ✅ UNIFIED FETCH - Works for all user types
+  // UNIFIED FETCH - Works for all user types
   const fetchAppointments = useCallback(async (customFilters = {}, loadMore = false) => {
     try {
       setState(prev => ({ 
@@ -75,8 +60,9 @@ export const useAppointmentManagement = (options = {}) => {
 
       const appointments = data.data?.appointments || [];
       const pagination = data.data?.pagination || {};
+      console.log('Fetched appointments:', appointments);
 
-      // ✅ Get health analytics for patients
+      // Get health analytics for patients
       let healthAnalytics = null;
       if (isPatient && includeStats) {
         try {

@@ -1,6 +1,5 @@
-import React from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
-  Calendar,
   ChevronLeft,
   ChevronRight,
   AlertCircle,
@@ -11,15 +10,26 @@ import {
   Users,
   CalendarClock,
   CalendarCheck,
+  Sparkles,
+  X,
+  AlertTriangle,
   Info,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/core/components/ui/card";
 import { Button } from "@/core/components/ui/button";
-import { Alert } from "@/core/components/ui/alert";
 import { Progress } from "@/core/components/ui/progress";
+import { Badge } from "@/core/components/ui/badge";
 import Toast from "@/core/components/ui/toast";
 import ProgressIndicator from "@/core/components/ui/process-indicator";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/core/components/ui/dialog";
 
 import ClinicSelectionStep from "../components/booking/clinic-selection-step";
 import ServicesSelectionStep from "../components/booking/service-selection-step";
@@ -29,17 +39,38 @@ import ConfirmationStep from "../components/booking/confirmation-step";
 import TreatmentLinkPrompt from "@/app/shared/components/treatment-link-prompt";
 
 import { useBookingFlow } from "../hook/useBookingFlow";
+import { useIsMobile } from "@/core/hooks/use-mobile";
 import { FaTeeth } from "react-icons/fa";
+import { cn } from "@/lib/utils";
 
 const BOOKING_STEPS = [
-  { key: "clinic", label: "Clinic", icon: Hospital },
-  { key: "services", label: "Services", icon: FaTeeth },
-  { key: "doctor", label: "Doctor", icon: Users },
-  { key: "datetime", label: "Date & Time", icon: CalendarClock },
-  { key: "confirm", label: "Confirm", icon: CalendarCheck },
+  { key: "clinic", label: "Clinic", icon: Hospital, color: "text-blue-600" },
+  {
+    key: "services",
+    label: "Services",
+    icon: FaTeeth,
+    color: "text-purple-600",
+  },
+  { key: "doctor", label: "Doctor", icon: Users, color: "text-green-600" },
+  {
+    key: "datetime",
+    label: "Date & Time",
+    icon: CalendarClock,
+    color: "text-orange-600",
+  },
+  {
+    key: "confirm",
+    label: "Confirm",
+    icon: CalendarCheck,
+    color: "text-pink-600",
+  },
 ];
 
 const BookAppointment = () => {
+  const isMobile = useIsMobile();
+  const [showBlockerDialog, setShowBlockerDialog] = useState(false);
+  const [blockerDetails, setBlockerDetails] = useState(null);
+
   const {
     // Step & Progress
     bookingStep,
@@ -107,102 +138,149 @@ const BookAppointment = () => {
     handleClearDate,
   } = useBookingFlow();
 
-  // ✅ Get current critical blocker (only shows blockers that prevent booking)
-  const getCriticalBlocker = () => {
-    // Same-day conflict - blocks datetime step onwards
-    if (
-      bookingStep !== "clinic" &&
-      bookingStep !== "services" &&
-      sameDayConflict
-    ) {
-      return {
-        type: "destructive",
-        title: "Existing Appointment on Selected Date",
-        message: sameDayConflictDetails
-          ? `You have a ${sameDayConflictDetails.status} appointment at ${sameDayConflictDetails.clinicName} on this date.`
-          : "You already have an appointment scheduled for this date.",
-      };
-    }
+  // ✅ Auto-scroll to top on step change
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [bookingStep]);
 
-    // Appointment limit exceeded - blocks confirmation
-    if (
-      bookingStep === "confirm" &&
-      appointmentLimitCheck &&
-      !appointmentLimitCheck.allowed
-    ) {
-      return {
-        type: "destructive",
-        title: "Booking Limit Reached",
-        message: appointmentLimitCheck.message,
-      };
-    }
+  // ✅ Check for critical blockers and show dialog instead of alerts
+  useEffect(() => {
+    const checkBlockers = () => {
+      // Same-day conflict blocker
+      if (
+        bookingStep !== "clinic" &&
+        bookingStep !== "services" &&
+        sameDayConflict
+      ) {
+        setBlockerDetails({
+          type: "conflict",
+          title: "Existing Appointment Conflict",
+          message: sameDayConflictDetails
+            ? `You have a ${sameDayConflictDetails.status} appointment at ${sameDayConflictDetails.clinicName} on this date.`
+            : "You already have an appointment scheduled for this date.",
+          icon: XCircle,
+          action: {
+            label: "View My Appointments",
+            onClick: () =>
+              (window.location.href = "/patient/appointments/upcoming"),
+          },
+        });
+        setShowBlockerDialog(true);
+        return;
+      }
 
-    return null;
-  };
+      // Limit reached blocker
+      if (
+        bookingStep === "confirm" &&
+        appointmentLimitCheck &&
+        !appointmentLimitCheck.allowed
+      ) {
+        setBlockerDetails({
+          type: "limit",
+          title: "Booking Limit Reached",
+          message: appointmentLimitCheck.message,
+          icon: AlertTriangle,
+        });
+        setShowBlockerDialog(true);
+        return;
+      }
+
+      // No blocker
+      setShowBlockerDialog(false);
+      setBlockerDetails(null);
+    };
+
+    checkBlockers();
+  }, [
+    bookingStep,
+    sameDayConflict,
+    sameDayConflictDetails,
+    appointmentLimitCheck,
+  ]);
 
   const currentStep = BOOKING_STEPS[currentStepIndex] || BOOKING_STEPS[0];
-  const criticalBlocker = getCriticalBlocker();
+  const StepIcon = currentStep.icon;
 
-  // ✅ Access control
+  // ✅ Access control with better UX
   if (!isPatient) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-md mx-auto">
-          <CardContent className="text-center p-8">
-            <AlertCircle className="w-16 h-16 mx-auto mb-4 text-destructive" />
-            <h1 className="text-2xl font-bold mb-4">Access Denied</h1>
-            <p className="text-muted-foreground mb-6">
-              Only patients can book appointments.
+        <Card className="max-w-md mx-auto shadow-xl">
+          <CardContent className="text-center p-6 sm:p-8">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 sm:mb-6 bg-destructive/10 rounded-full flex items-center justify-center">
+              <AlertCircle className="w-8 h-8 sm:w-10 sm:h-10 text-destructive" />
+            </div>
+            <h1 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4">
+              Access Denied
+            </h1>
+            <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6">
+              Only patients can book appointments. Please log in with a patient
+              account.
             </p>
-            <Button onClick={() => window.history.back()}>Go Back</Button>
+            <Button
+              onClick={() => window.history.back()}
+              className="w-full sm:w-auto"
+            >
+              Go Back
+            </Button>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  // ✅ Success state
+  // ✅ Enhanced success state with better animations
   if (bookingSuccess) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-lg mx-auto">
-          <CardContent className="text-center p-8">
-            <CheckCircle2 className="w-20 h-20 mx-auto mb-6 text-success" />
-            <h1 className="text-2xl font-bold mb-4">
+      <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center p-4">
+        <Card className="max-w-lg mx-auto shadow-2xl animate-in zoom-in-95 fade-in-0 duration-500">
+          <CardContent className="text-center p-6 sm:p-8">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4 sm:mb-6 bg-success/10 rounded-full flex items-center justify-center animate-in zoom-in-50 duration-700">
+              <CheckCircle2 className="w-10 h-10 sm:w-12 sm:h-12 text-success animate-in zoom-in-50 duration-1000" />
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold mb-3 sm:mb-4 bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
               {isConsultationOnly
-                ? "Consultation Booked!"
-                : "Appointment Booked!"}
+                ? "Consultation Booked Successfully!"
+                : "Appointment Booked Successfully!"}
             </h1>
 
-            <div className="space-y-4 text-left">
-              <div className="bg-card border rounded-lg p-4">
-                <h3 className="font-semibold mb-2">Details</h3>
+            <div className="space-y-4 text-left animate-in slide-in-from-bottom-4 fade-in-0 duration-700">
+              <div className="bg-gradient-to-br from-card to-muted/50 border rounded-xl p-4 sm:p-5">
+                <h3 className="font-semibold mb-3 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  Appointment Details
+                </h3>
                 <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-start gap-4">
                     <span className="text-muted-foreground">Type:</span>
-                    <span className="font-medium capitalize">
+                    <Badge variant="outline" className="capitalize text-xs">
                       {bookingType?.replace(/_/g, " ")}
-                    </span>
+                    </Badge>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Clinic:</span>
-                    <span className="font-medium">
+                    <span className="font-medium text-right">
                       {bookingData.clinic?.name}
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Doctor:</span>
-                    <span className="font-medium">
+                    <span className="font-medium text-right">
                       {bookingData.doctor?.name}
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Date:</span>
-                    <span className="font-medium">
-                      {new Date(bookingData.date).toLocaleDateString()}
+                    <span className="font-medium text-right">
+                      {new Date(bookingData.date).toLocaleDateString("en-US", {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-4">
                     <span className="text-muted-foreground">Time:</span>
                     <span className="font-medium">{bookingData.time}</span>
                   </div>
@@ -210,33 +288,43 @@ const BookAppointment = () => {
               </div>
 
               {isLinkedToTreatment && selectedTreatment && (
-                <Alert className="bg-purple-50 border-purple-200">
-                  <CheckCircle2 className="h-4 w-4 text-purple-600" />
-                  <div className="text-sm">
-                    <strong>Linked to Treatment:</strong>{" "}
-                    {selectedTreatment.treatment_name}
-                    <br />
-                    <span className="text-xs">
-                      Visit #{selectedTreatment.visits_completed + 1}
-                    </span>
+                <div className="bg-purple-50 dark:bg-purple-950/20 border-2 border-purple-200 dark:border-purple-800 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm">
+                      <strong className="text-purple-900 dark:text-purple-100">
+                        Linked to Treatment:
+                      </strong>{" "}
+                      {selectedTreatment.treatment_name}
+                      <br />
+                      <span className="text-xs text-purple-700 dark:text-purple-300">
+                        Visit #{selectedTreatment.visits_completed + 1}
+                      </span>
+                    </div>
                   </div>
-                </Alert>
+                </div>
               )}
 
               {isConsultationOnly && (
-                <Alert>
-                  <Info className="h-4 w-4" />
-                  <div className="text-sm">
-                    <strong>Consultation Only:</strong> Your doctor will assess
-                    your needs and recommend treatments during your visit.
+                <div className="bg-blue-50 dark:bg-blue-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-xs sm:text-sm text-blue-800 dark:text-blue-200">
+                      <strong>Consultation Only:</strong> Your doctor will
+                      assess your needs and recommend treatments during your
+                      visit.
+                    </div>
                   </div>
-                </Alert>
+                </div>
               )}
             </div>
 
-            <p className="text-sm text-muted-foreground mt-4">
-              Redirecting to your appointments...
-            </p>
+            <div className="mt-6 pt-6 border-t">
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent" />
+                <span>Redirecting to your appointments...</span>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -244,7 +332,8 @@ const BookAppointment = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
+      {/* Toast Notification */}
       {toastMessage && (
         <Toast
           message={toastMessage.message}
@@ -253,28 +342,84 @@ const BookAppointment = () => {
         />
       )}
 
-      {/* Header */}
-      <div className="border-b bg-card/50 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Calendar className="w-10 h-10 text-primary" />
+      {/* ✅ Blocker Dialog (Replaces Alerts) */}
+      <Dialog open={showBlockerDialog} onOpenChange={setShowBlockerDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-2">
+              {blockerDetails?.icon && (
+                <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
+                  <blockerDetails.icon className="w-6 h-6 text-destructive" />
+                </div>
+              )}
+              <DialogTitle className="text-lg">
+                {blockerDetails?.title}
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-base">
+              {blockerDetails?.message}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            {blockerDetails?.action && (
+              <Button
+                variant="default"
+                onClick={blockerDetails.action.onClick}
+                className="w-full sm:w-auto"
+              >
+                {blockerDetails.action.label}
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={() => setShowBlockerDialog(false)}
+              className="w-full sm:w-auto"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Enhanced Header */}
+      <div className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-20 shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 py-4 sm:py-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div
+                className={cn(
+                  "w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center transition-all duration-300",
+                  "bg-gradient-to-br from-primary/20 to-purple-500/20",
+                  currentStep.color
+                )}
+              >
+                <StepIcon className="w-5 h-5 sm:w-6 sm:h-6" />
+              </div>
               <div>
-                <h1 className="text-2xl font-bold">Book Appointment</h1>
-                <p className="text-muted-foreground">
+                <h1 className="text-xl sm:text-2xl font-bold">
+                  Book Appointment
+                </h1>
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   Step {currentStepIndex + 1} of {totalSteps}:{" "}
                   {currentStep.label}
                 </p>
               </div>
             </div>
-            <Progress value={stepProgress} className="w-32" />
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              {isMobile && (
+                <Badge variant="outline" className="text-xs">
+                  {Math.round(stepProgress)}%
+                </Badge>
+              )}
+              <Progress value={stepProgress} className="w-full sm:w-32 h-2" />
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-4 py-6 sm:py-8">
         {/* Progress Indicator */}
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           <ProgressIndicator
             currentStep={currentStepIndex}
             totalSteps={totalSteps}
@@ -283,189 +428,172 @@ const BookAppointment = () => {
           />
         </div>
 
-        {/* Alerts - Context-Aware Warnings */}
-        <div className="space-y-4 mb-8">
-          {/* CRITICAL BLOCKER - Always shown if exists */}
-          {criticalBlocker && (
-            <Alert variant={criticalBlocker.type}>
-              <XCircle className="h-5 w-5" />
-              <div className="flex-1">
-                <strong>{criticalBlocker.title}</strong>
-                <p className="text-sm mt-1">{criticalBlocker.message}</p>
-                {sameDayConflict && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-3"
-                    onClick={() =>
-                      (window.location.href = "/patient/appointments/upcoming")
-                    }
-                  >
-                    View My Appointments
-                  </Button>
-                )}
-              </div>
-            </Alert>
-          )}
-
-          {/* General Errors */}
-          {error && !criticalBlocker && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <div>
-                <strong>Error</strong>
-                <p className="text-sm mt-1">{error}</p>
-              </div>
-            </Alert>
-          )}
-
-          {/* High Risk Warning - Only on confirm step */}
+        {/* ✅ Inline contextual information (non-blocking) */}
+        <div className="space-y-3 sm:space-y-4 mb-6 sm:mb-8">
+          {/* High Risk Warning - Now as Badge Card */}
           {bookingStep === "confirm" &&
             patientReliability?.risk_level === "high_risk" && (
-              <Alert variant="warning">
-                <Shield className="h-4 w-4" />
-                <div>
-                  <strong>Attendance Reminder</strong>
-                  <p className="text-sm mt-1">
-                    Please ensure you attend this appointment. Multiple no-shows
-                    may restrict future bookings.
-                  </p>
-                </div>
-              </Alert>
+              <Card className="border-2 border-amber-200 dark:border-amber-800 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20">
+                <CardContent className="p-4 flex items-start gap-3">
+                  <Shield className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <strong className="text-sm sm:text-base text-amber-900 dark:text-amber-100">
+                      Attendance Reminder
+                    </strong>
+                    <p className="text-xs sm:text-sm mt-1 text-amber-800 dark:text-amber-200">
+                      Please ensure you attend this appointment. Multiple
+                      no-shows may restrict future bookings.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
-          {/* Treatment Link Prompt - Only on services step if treatments exist */}
+          {/* Treatment Link Prompt */}
           {bookingStep === "services" &&
             showTreatmentLinkPrompt &&
             hasOngoingTreatments &&
             ongoingTreatments.length > 0 && (
-              <TreatmentLinkPrompt
-                treatments={ongoingTreatments}
-                selectedTreatmentId={bookingData.treatmentPlanId}
-                onSelectTreatment={selectTreatmentPlan}
-                onDismiss={dismissTreatmentPrompt}
-              />
+              <div className="animate-in slide-in-from-top-2 fade-in-50">
+                <TreatmentLinkPrompt
+                  treatments={ongoingTreatments}
+                  selectedTreatmentId={bookingData.treatmentPlanId}
+                  onSelectTreatment={selectTreatmentPlan}
+                  onDismiss={dismissTreatmentPrompt}
+                />
+              </div>
             )}
 
-          {/* Treatment Linked Badge - After services step */}
+          {/* Treatment Linked Badge */}
           {isLinkedToTreatment &&
             selectedTreatment &&
             bookingStep !== "clinic" && (
-              <Alert className="bg-purple-50 border-purple-200">
-                <CheckCircle2 className="h-4 w-4 text-purple-600" />
-                <div className="flex-1">
-                  <h4 className="font-semibold text-purple-900">
-                    Treatment Plan Linked
-                  </h4>
-                  <p className="text-sm text-purple-800 mt-1">
-                    Linked to:{" "}
-                    <strong>{selectedTreatment.treatment_name}</strong>
-                    <span className="text-xs block mt-1">
-                      Visit #{selectedTreatment.visits_completed + 1} of{" "}
-                      {selectedTreatment.total_visits_planned || "?"}
-                    </span>
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={clearTreatmentPlanLink}
-                    className="mt-2 text-purple-700"
-                  >
-                    Unlink
-                  </Button>
-                </div>
-              </Alert>
+              <Card className="border-2 border-purple-200 dark:border-purple-800 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 animate-in slide-in-from-top-2 fade-in-50">
+                <CardContent className="p-4 flex items-start gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-purple-900 dark:text-purple-100 text-sm sm:text-base">
+                      Treatment Plan Linked
+                    </h4>
+                    <p className="text-xs sm:text-sm text-purple-800 dark:text-purple-200 mt-1">
+                      Linked to:{" "}
+                      <strong>{selectedTreatment.treatment_name}</strong>
+                      <span className="text-xs block mt-1">
+                        Visit #{selectedTreatment.visits_completed + 1} of{" "}
+                        {selectedTreatment.total_visits_planned || "?"}
+                      </span>
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={clearTreatmentPlanLink}
+                      className="mt-2 text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-purple-100 h-8"
+                    >
+                      Unlink
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
-          {/* Consultation-Only Badge - Doctor step onwards */}
+          {/* Consultation-Only Badge */}
           {isConsultationOnly &&
             (bookingStep === "doctor" ||
               bookingStep === "datetime" ||
               bookingStep === "confirm") && (
-              <Alert>
-                <Info className="h-4 w-4" />
-                <div>
-                  <strong>Consultation Only Booking</strong>
-                  <p className="text-sm mt-1">
-                    You're booking a consultation without services. The doctor
-                    will assess your needs and recommend treatments.
-                  </p>
-                </div>
-              </Alert>
+              <Card className="border-2 border-blue-200 dark:border-blue-800 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 animate-in slide-in-from-top-2 fade-in-50">
+                <CardContent className="p-4 flex items-start gap-3">
+                  <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="text-sm sm:text-base text-blue-900 dark:text-blue-100">
+                      Consultation Only Booking
+                    </strong>
+                    <p className="text-xs sm:text-sm mt-1 text-blue-800 dark:text-blue-200">
+                      You're booking a consultation without services. The doctor
+                      will assess your needs and recommend treatments.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
             )}
         </div>
 
         {/* Step Content */}
-        <Card className="mb-8">
-          <CardContent className="p-8">
-            {bookingStep === "clinic" && (
-              <ClinicSelectionStep
-                clinics={clinics}
-                clinicsLoading={clinicsLoading}
-                selectedClinic={bookingData.clinic}
-                onClinicSelect={handleClinicSelect}
-              />
-            )}
+        <Card className="mb-6 sm:mb-8 shadow-lg border-2 transition-all duration-300 hover:shadow-xl">
+          <CardContent className="p-4 sm:p-6 lg:p-8">
+            <div className="animate-in fade-in-50 slide-in-from-bottom-4 duration-500">
+              {bookingStep === "clinic" && (
+                <ClinicSelectionStep
+                  clinics={clinics}
+                  clinicsLoading={clinicsLoading}
+                  selectedClinic={bookingData.clinic}
+                  onClinicSelect={handleClinicSelect}
+                />
+              )}
 
-            {bookingStep === "services" && (
-              <ServicesSelectionStep
-                services={services}
-                selectedServices={bookingData.services}
-                onServiceToggle={handleServiceToggle}
-                isConsultationOnly={isConsultationOnly}
-              />
-            )}
+              {bookingStep === "services" && (
+                <ServicesSelectionStep
+                  services={services}
+                  selectedServices={bookingData.services}
+                  onServiceToggle={handleServiceToggle}
+                  isConsultationOnly={isConsultationOnly}
+                />
+              )}
 
-            {bookingStep === "doctor" && (
-              <DoctorSelectionStep
-                doctors={doctors}
-                selectedDoctor={bookingData.doctor}
-                onDoctorSelect={handleDoctorSelect}
-                isConsultationOnly={isConsultationOnly}
-                selectedServices={bookingData.services}
-                consultationCheckResult={consultationCheckResult}
-                skipConsultation={skipConsultation}
-                setSkipConsultation={setSkipConsultation}
-              />
-            )}
+              {bookingStep === "doctor" && (
+                <DoctorSelectionStep
+                  doctors={doctors}
+                  selectedDoctor={bookingData.doctor}
+                  onDoctorSelect={handleDoctorSelect}
+                  isConsultationOnly={isConsultationOnly}
+                  selectedServices={bookingData.services}
+                  consultationCheckResult={consultationCheckResult}
+                  skipConsultation={skipConsultation}
+                  setSkipConsultation={setSkipConsultation}
+                />
+              )}
 
-            {bookingStep === "datetime" && (
-              <DateTimeSelectionStep
-                bookingData={bookingData}
-                availableTimes={availableTimes}
-                checkingAvailability={checkingAvailability}
-                onUpdateBookingData={updateBookingData}
-                onDateSelect={handleDateSelect}
-                onClearDate={handleClearDate} // ✅ ADD THIS
-                sameDayConflict={sameDayConflict}
-                sameDayConflictDetails={sameDayConflictDetails}
-                bookingLimitsInfo={bookingLimitsInfo}
-              />
-            )}
+              {bookingStep === "datetime" && (
+                <DateTimeSelectionStep
+                  bookingData={bookingData}
+                  availableTimes={availableTimes}
+                  checkingAvailability={checkingAvailability}
+                  onUpdateBookingData={updateBookingData}
+                  onDateSelect={handleDateSelect}
+                  onClearDate={handleClearDate}
+                  sameDayConflict={sameDayConflict}
+                  sameDayConflictDetails={sameDayConflictDetails}
+                  bookingLimitsInfo={bookingLimitsInfo}
+                />
+              )}
 
-            {bookingStep === "confirm" && (
-              <ConfirmationStep
-                bookingData={bookingData}
-                services={services}
-                profile={profile}
-                appointmentLimitCheck={appointmentLimitCheck}
-                patientReliability={patientReliability}
-                cancellationInfo={getCancellationInfo()}
-                bookingLimitsInfo={bookingLimitsInfo}
-                selectedTreatment={selectedTreatment}
-                consultationCheckResult={consultationCheckResult}
-                skipConsultation={skipConsultation}
-              />
-            )}
+              {bookingStep === "confirm" && (
+                <ConfirmationStep
+                  bookingData={bookingData}
+                  services={services}
+                  profile={profile}
+                  appointmentLimitCheck={appointmentLimitCheck}
+                  patientReliability={patientReliability}
+                  cancellationInfo={getCancellationInfo()}
+                  bookingLimitsInfo={bookingLimitsInfo}
+                  selectedTreatment={selectedTreatment}
+                  consultationCheckResult={consultationCheckResult}
+                  skipConsultation={skipConsultation}
+                  isConsultationOnly={isConsultationOnly}
+                />
+              )}
+            </div>
           </CardContent>
         </Card>
 
         {/* Navigation */}
-        <div className="flex justify-between">
+        <div className="flex flex-col-reverse sm:flex-row justify-between gap-3 sm:gap-4 sticky bottom-4 sm:static bg-background sm:bg-transparent p-4 sm:p-0 rounded-xl sm:rounded-none shadow-lg sm:shadow-none border sm:border-0">
           <Button
             variant="outline"
             onClick={previousStep}
             disabled={currentStepIndex === 0 || loading}
+            size={isMobile ? "default" : "lg"}
+            className="w-full sm:w-auto min-h-[44px] touch-manipulation"
           >
             <ChevronLeft className="w-4 h-4 mr-2" />
             Previous
@@ -474,8 +602,9 @@ const BookAppointment = () => {
           {bookingStep === "confirm" ? (
             <Button
               onClick={handleSubmit}
-              disabled={!canProceed || loading || !!criticalBlocker}
-              size="lg"
+              disabled={!canProceed || loading || showBlockerDialog}
+              size={isMobile ? "default" : "lg"}
+              className="w-full sm:w-auto min-h-[44px] touch-manipulation shadow-lg hover:shadow-xl transition-all duration-200"
             >
               {loading ? (
                 <>
@@ -492,8 +621,9 @@ const BookAppointment = () => {
           ) : (
             <Button
               onClick={nextStep}
-              disabled={!canProceed || !!criticalBlocker || validationLoading}
-              size="lg"
+              disabled={!canProceed || showBlockerDialog || validationLoading}
+              size={isMobile ? "default" : "lg"}
+              className="w-full sm:w-auto min-h-[44px] touch-manipulation"
             >
               {validationLoading ? (
                 <>
