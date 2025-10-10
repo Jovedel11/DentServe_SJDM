@@ -3,6 +3,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -78,25 +79,6 @@
   --sidebar-accent-foreground: #1A202C;
   --sidebar-border: #E2E8F0;
   --sidebar-ring: #457B9D;
-  
-  /* Additional Variables */
-  --header-height: 3.5rem;
-  --sidebar-width: 16rem;
-  --content-max-width: 80rem;
-  
-  /* Dental Care Brand Colors */
-  --dental-mint: #F1FAEE;
-  --dental-teal: #457B9D;
-  --dental-navy: #1D3557;
-  --dental-coral: #F1C0A8;
-  --dental-accent: #A8DADC;
-  --dental-dark: #1A202C;
-  
-  /* Status Colors */
-  --success: #10B981;
-  --warning: #F59E0B;
-  --error: #EF4444;
-  --info: #3B82F6;
 }
 
 .dark {
@@ -135,8 +117,32 @@
 }
 
 @layer base {
-  /* Only apply styles to authenticated app areas */
-  body.private-styles {
+  /* Global CSS Variables */
+  :root {
+    --header-height: 3.5rem;
+    --sidebar-width: 16rem;
+    --content-max-width: 80rem;
+    
+    /* Dental Care Brand Colors */
+    --dental-mint: #F1FAEE;
+    --dental-teal: #457B9D;
+    --dental-navy: #1D3557;
+    --dental-coral: #F1C0A8;
+    --dental-accent: #A8DADC;
+    --dental-dark: #1A202C;
+    
+    /* Status Colors */
+    --success: #10B981;
+    --warning: #F59E0B;
+    --error: #EF4444;
+    --info: #3B82F6;
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
     @apply bg-background text-foreground font-sans;
     font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
@@ -160,19 +166,6 @@
   }
 }
 
-/* Public Page Styles - Outside @layer to prevent override */
-body.public-page {
-  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #F1FAEE;
-  color: #1A202C;
-  line-height: 1.6;
-}
-
-body.offline-mode {
-  background: var(--background) !important;
-  color: var(--foreground) !important;
-}
-
 /* Enhanced Animations */
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
@@ -182,17 +175,6 @@ body.offline-mode {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 @keyframes slideIn {
@@ -212,10 +194,6 @@ body.offline-mode {
   animation: slideIn 0.3s ease-out;
 }
 
-body.page-loaded {
-  animation: fadeIn 0.5s ease-out;
-}
-
 /* Glass Effect Utility */
 .glass-effect {
   @apply bg-white/80 backdrop-blur-sm border border-white/20;
@@ -224,3 +202,9 @@ body.page-loaded {
 .dark .glass-effect {
   @apply bg-gray-900/80 backdrop-blur-sm border border-gray-700/20;
 }
+
+body.offline-mode {
+  background: var(--background) !important;
+  color: var(--foreground) !important;
+}
+

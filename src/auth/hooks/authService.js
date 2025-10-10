@@ -52,9 +52,17 @@ export const authService = {
             allergies: userData.allergies || [],
             recaptcha_token: userData.recaptchaToken
           },
-          emailRedirectTo: `${window.location.origin}/auth-callback?type=patient`
+          emailRedirectTo: getRedirectURL()
         }
       })
+
+      const getRedirectURL = () => {
+        // Use environment variable for production
+        if (import.meta.env.PROD) {
+          return `${import.meta.env.VITE_SITE_URL}/auth-callback?type=patient`;
+        }
+        return `${window.location.origin}/auth-callback?type=patient`;
+      };
 
       if (signupError) throw new Error(signupError.message || 'Signup failed')
 

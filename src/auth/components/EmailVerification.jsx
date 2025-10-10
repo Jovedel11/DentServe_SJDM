@@ -200,13 +200,24 @@ const EmailVerification = () => {
   const roleInfo = getRoleInfo();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-100 flex items-center justify-center p-4">
-      <div className="bg-[#F1FAEE] rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-blue-100">
+    <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--primary))] via-[hsl(var(--primary-foreground))]/10 to-background flex items-center justify-center p-4 sm:p-6">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="bg-card rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-border/50"
+      >
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-cyan-600 px-8 py-8 text-center">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-white bg-opacity-20 rounded-full mb-6">
+        <div className="bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--primary))]/80 px-8 py-10 text-center relative overflow-hidden">
+          <div className="absolute inset-0 bg-grid-white/10 [mask-image:radial-gradient(white,transparent_85%)]" />
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ delay: 0.2, type: "spring" }}
+            className="relative inline-flex items-center justify-center w-24 h-24 bg-white/20 backdrop-blur-sm rounded-2xl mb-6 shadow-lg"
+          >
             <svg
-              className="w-10 h-10 text-white"
+              className="w-12 h-12 text-white"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -216,24 +227,29 @@ const EmailVerification = () => {
                 strokeLinejoin="round"
                 strokeWidth="2"
                 d="M3 8l7.89 7.89a1 1 0 001.42 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-              ></path>
+              />
             </svg>
-          </div>
-          <h2 className="text-3xl font-bold text-white mb-3">
-            Verify Your Email Address
+          </motion.div>
+          <h2 className="text-4xl font-bold text-white mb-3 relative">
+            Verify Your Email
           </h2>
-          <p className="text-blue-100 text-lg leading-relaxed">
-            We've sent a verification link to secure your dental clinic account
+          <p className="text-primary-foreground/90 text-lg leading-relaxed relative">
+            We've sent a verification link to secure your account
           </p>
         </div>
 
-        {/* Content */}
+        {/* Content - use similar enhancements as above components */}
         <div className="px-8 py-8">
           {/* Email Display */}
-          <div className="bg-white rounded-xl p-6 mb-8 border border-blue-200 shadow-sm text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="bg-primary/5 border-2 border-primary/20 rounded-xl p-6 mb-8 text-center shadow-sm"
+          >
             <div className="flex items-center justify-center mb-3">
               <svg
-                className="w-5 h-5 text-blue-600 mr-2"
+                className="w-6 h-6 text-primary mr-2"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -243,16 +259,16 @@ const EmailVerification = () => {
                   strokeLinejoin="round"
                   strokeWidth="2"
                   d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"
-                ></path>
+                />
               </svg>
-              <span className="text-sm font-medium text-gray-600">
-                Verification email sent to:
+              <span className="text-sm font-semibold text-muted-foreground">
+                Verification sent to:
               </span>
             </div>
-            <p className="font-bold text-[#1A202C] text-lg break-all">
+            <p className="font-bold text-foreground text-xl break-all">
               {userEmail}
             </p>
-          </div>
+          </motion.div>
 
           {/* Instructions */}
           <div className="bg-white rounded-xl p-6 mb-8 border border-gray-200 shadow-sm">
@@ -580,7 +596,7 @@ const EmailVerification = () => {
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };
