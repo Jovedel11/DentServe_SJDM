@@ -313,7 +313,7 @@ export const authService = {
       const errorMsg = error?.message || String(error) || 'Password reset failed'
       return { success: false, error: errorMsg }
     }
-  }
+  },
 
   // update pass
   async updatePassword(newPassword) {
