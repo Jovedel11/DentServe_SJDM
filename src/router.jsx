@@ -1,4 +1,4 @@
-import { lazy } from "react";
+import { lazy, useEffect } from "react";
 import { createBrowserRouter, Outlet } from "react-router-dom";
 import withSuspense from "./core/components/withSuspense";
 import RouteGuard from "./core/routes/RouteGuard";
