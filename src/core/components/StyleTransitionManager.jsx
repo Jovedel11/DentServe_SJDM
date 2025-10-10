@@ -36,9 +36,8 @@ export const StyleTransitionManager = ({ children }) => {
   const applyStyles = (state) => {
     const body = document.body;
 
-    // Remove all style classes
+    // Remove only theme classes, NOT public-page class
     body.classList.remove(
-      "public-styles",
       "private-styles",
       "patient-theme",
       "staff-theme",
@@ -46,11 +45,13 @@ export const StyleTransitionManager = ({ children }) => {
     );
 
     if (!state.user) {
-      body.classList.add("public-styles");
+      // Don't add any class - PublicStyle handles this
       // Clean up any Tailwind interference
       body.style.removeProperty("--tw-bg-opacity");
       body.style.removeProperty("background-color");
     } else {
+      // Remove public-page class when user is authenticated
+      body.classList.remove("public-page");
       body.classList.add("private-styles");
       if (state.userRole) {
         body.classList.add(`${state.userRole}-theme`);
