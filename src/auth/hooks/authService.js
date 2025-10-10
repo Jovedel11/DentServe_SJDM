@@ -287,30 +287,33 @@ export const authService = {
   // reset pass
   async resetPassword(email) {
     try {
-
       const redirectURL = getRedirectURL('/reset-password');
       console.log('📧 Reset redirect URL:', redirectURL);
-
+  
       const { data, error: resetError } = await supabase.auth.resetPasswordForEmail(
         email,
         {
           redirectTo: redirectURL
         }
       )
-
-      if (resetError) throw new Error(resetError?.message || 'Failed to send reset email')
-
+  
+      if (resetError) {
+        // Only throw on actual errors (rate limit, network, etc.)
+        throw new Error(resetError?.message || 'Failed to send reset email')
+      }
+  
       return {
         success: true,
-        message: 'Password reset link sent to your email'
+        // ✅ Use ambiguous messaging
+        message: 'If an account exists with this email, you will receive a password reset link'
       }
-
+  
     } catch (error) {
-      console.error('Password reset request error:', error)
+      console.error('❌ Password reset request error:', error)
       const errorMsg = error?.message || String(error) || 'Password reset failed'
       return { success: false, error: errorMsg }
     }
-  },
+  }
 
   // update pass
   async updatePassword(newPassword) {

@@ -298,6 +298,10 @@ const ForgotPassword = () => {
               <p className="text-muted-foreground mb-4 text-base">
                 We've sent a password reset link to:
               </p>
+              <p className="text-muted-foreground mb-4 text-base">
+                If an account exists with this email, a password reset link has
+                been sent to:
+              </p>
               <div className="bg-primary/5 border-2 border-primary/20 rounded-xl p-4 mb-6">
                 <p className="font-semibold text-primary break-all text-lg">
                   {email}
