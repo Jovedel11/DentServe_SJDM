@@ -132,9 +132,6 @@ $breakpoint-desktop: 1024px;
   background-color: $color-red-50;
 }
 
-// ============================================
-// STYLES
-// ============================================
 
 .container {
   min-height: 100vh;
@@ -581,7 +578,7 @@ $breakpoint-desktop: 1024px;
   &__icon {
     width: 64px;
     height: 64px;
-    background-color: $color-blue-100;
+    background-color: $color-blue-50;
     border-radius: $radius-full;
     display: flex;
     align-items: center;

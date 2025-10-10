@@ -46,6 +46,7 @@ $transition-base: 200ms ease-in-out;
 $breakpoint-tablet: 640px;
 $breakpoint-desktop: 1024px;
 
+
 @mixin responsive-padding {
   padding: $spacing-md;
 
