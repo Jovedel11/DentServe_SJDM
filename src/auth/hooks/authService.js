@@ -11,6 +11,15 @@ const generateTempPassword = () => {
   return password
 }
 
+const getRedirectURL = (path = '/auth-callback?type=patient') => {
+  // Use environment variable for production
+  if (import.meta.env.PROD && import.meta.env.VITE_SITE_URL) {
+    return `${import.meta.env.VITE_SITE_URL}${path}`;
+  }
+  // Fallback for development
+  return `${window.location.origin}${path}`;
+};
+
 export const authService = {
   // sign up new user
   async signUpUser(userData) {
@@ -34,6 +43,9 @@ export const authService = {
         throw new Error('Please enter a valid email address')
       }
 
+      const redirectURL = getRedirectURL('/auth-callback?type=patient');
+      console.log('📧 Email redirect URL:', redirectURL);
+
       const { data, error: signupError } = await supabase.auth.signUp({
         email: userData.email,
         password: userData.password,
@@ -52,17 +64,9 @@ export const authService = {
             allergies: userData.allergies || [],
             recaptcha_token: userData.recaptchaToken
           },
-          emailRedirectTo: getRedirectURL()
+          emailRedirectTo: redirectURL
         }
       })
-
-      const getRedirectURL = () => {
-        // Use environment variable for production
-        if (import.meta.env.PROD) {
-          return `${import.meta.env.VITE_SITE_URL}/auth-callback?type=patient`;
-        }
-        return `${window.location.origin}/auth-callback?type=patient`;
-      };
 
       if (signupError) throw new Error(signupError.message || 'Signup failed')
 
@@ -283,10 +287,14 @@ export const authService = {
   // reset pass
   async resetPassword(email) {
     try {
+
+      const redirectURL = getRedirectURL('/reset-password');
+      console.log('📧 Reset redirect URL:', redirectURL);
+
       const { data, error: resetError } = await supabase.auth.resetPasswordForEmail(
         email,
         {
-          redirectTo: `${window.location.origin}/reset-password`
+          redirectTo: redirectURL
         }
       )
 
@@ -307,22 +315,29 @@ export const authService = {
   // update pass
   async updatePassword(newPassword) {
     try {
-      if (newPassword.length < 8) {
-        throw new Error('Password must be at least 8 characters long')
-      }
+      console.log('🔄 Updating password...');
+      
+      validatePassword(newPassword);
 
       const { data, error: updateError } = await supabase.auth.updateUser({
         password: newPassword
       })
 
-      if (updateError) throw new Error(updateError?.message || 'Password update failed')
+      if (updateError) {
+        console.error('❌ Update password error:', updateError);
+        throw new Error(updateError?.message || 'Failed to update password');
+      }
 
-      return { success: true, message: 'Password updated successfully' }
+      console.log('✅ Password updated successfully');
+
+      return {
+        success: true,
+        message: 'Password updated successfully'
+      }
 
     } catch (error) {
-      console.error('Password update error:', error)
-      const errorMsg = error?.message || String(error) || 'Password update failed'
-      return { success: false, error: errorMsg }
+      console.error('❌ Password update error:', error)
+      return { success: false, error: error.message || 'Password update failed' }
     }
   },
 
