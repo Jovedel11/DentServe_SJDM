@@ -1,0 +1,664 @@
+// Spacing System
+$spacing-xs: 0.5rem;
+$spacing-sm: 0.75rem;
+$spacing-md: 1rem;
+$spacing-lg: 1.5rem;
+$spacing-xl: 2rem;
+$spacing-2xl: 3rem;
+
+// Colors
+$color-primary: #3b82f6;
+$color-primary-dark: #2563eb;
+$color-primary-light: #60a5fa;
+$color-secondary: #06b6d4;
+$color-secondary-dark: #0891b2;
+
+$color-success: #10b981;
+$color-success-bg: #d1fae5;
+$color-success-border: #6ee7b7;
+$color-success-text: #065f46;
+
+$color-error: #ef4444;
+$color-error-bg: #fee2e2;
+$color-error-border: #fca5a5;
+$color-error-text: #991b1b;
+
+$color-warning: #f59e0b;
+$color-warning-bg: #fef3c7;
+$color-warning-border: #fcd34d;
+$color-warning-text: #92400e;
+
+$color-bg-primary: #f0fdfa;
+$color-bg-secondary: #f9fafb;
+$color-bg-card: #ffffff;
+$color-border: #e5e7eb;
+$color-border-light: #f3f4f6;
+
+$color-text-primary: #1a202c;
+$color-text-secondary: #4b5563;
+$color-text-muted: #9ca3af;
+$color-text-white: #ffffff;
+
+// Breakpoints
+$breakpoint-sm: 640px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 1024px;
+
+// Animations
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+// Container
+.container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #eff6ff 0%, #e0f2fe 50%, #f0fdfa 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: $spacing-md;
+
+  @media (min-width: $breakpoint-md) {
+    padding: $spacing-lg;
+  }
+}
+
+// Loading Card
+.loadingCard {
+  background: $color-bg-primary;
+  border-radius: 1rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  padding: $spacing-xl;
+  width: 100%;
+  max-width: 28rem;
+  text-align: center;
+  border: 1px solid rgba(59, 130, 246, 0.1);
+}
+
+.loadingIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 4rem;
+  height: 4rem;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 1rem;
+  margin-bottom: $spacing-lg;
+
+  .spinner {
+    width: 2rem;
+    height: 2rem;
+    color: $color-primary;
+    animation: spin 1s linear infinite;
+  }
+
+  .spinnerCircle {
+    opacity: 0.25;
+  }
+
+  .spinnerPath {
+    opacity: 0.75;
+  }
+}
+
+.loadingTitle {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: $color-text-primary;
+  margin-bottom: $spacing-sm;
+}
+
+.loadingText {
+  color: $color-text-secondary;
+}
+
+// Main Card
+.card {
+  background: $color-bg-card;
+  border-radius: 1.5rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  width: 100%;
+  max-width: 42rem;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  animation: fadeInUp 0.5s ease-out;
+}
+
+// Header
+.header {
+  background: linear-gradient(135deg, $color-primary 0%, rgba($color-primary, 0.8) 100%);
+  padding: $spacing-xl $spacing-xl 2.5rem;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+
+  @media (min-width: $breakpoint-md) {
+    padding: 2.5rem $spacing-xl;
+  }
+}
+
+.headerBackground {
+  position: absolute;
+  inset: 0;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+  background-size: 20px 20px;
+  -webkit-mask-image: radial-gradient(ellipse at center, white, transparent 85%);
+  mask-image: radial-gradient(ellipse at center, white, transparent 85%);
+}
+
+.headerIcon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 6rem;
+  height: 6rem;
+  background: rgba(255, 255, 255, 0.2);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-radius: 1rem;
+  margin-bottom: $spacing-lg;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  animation: scaleIn 0.5s ease-out 0.2s backwards;
+
+  .icon {
+    width: 3rem;
+    height: 3rem;
+    color: $color-text-white;
+  }
+}
+
+.headerTitle {
+  position: relative;
+  font-size: clamp(1.875rem, 5vw, 2.25rem);
+  font-weight: 700;
+  color: $color-text-white;
+  margin-bottom: $spacing-sm;
+}
+
+.headerSubtitle {
+  position: relative;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: clamp(1rem, 3vw, 1.125rem);
+  line-height: 1.75;
+}
+
+// Content
+.content {
+  padding: $spacing-xl;
+
+  @media (min-width: $breakpoint-md) {
+    padding: $spacing-xl $spacing-xl;
+  }
+}
+
+// Email Display
+.emailDisplay {
+  background: rgba($color-primary, 0.05);
+  border: 2px solid rgba($color-primary, 0.2);
+  border-radius: 0.75rem;
+  padding: $spacing-lg;
+  margin-bottom: $spacing-xl;
+  text-align: center;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  animation: fadeInUp 0.5s ease-out 0.3s backwards;
+}
+
+.emailLabel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: $spacing-sm;
+
+  .emailIcon {
+    width: 1.5rem;
+    height: 1.5rem;
+    color: $color-primary;
+    margin-right: $spacing-sm;
+  }
+
+  span {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: $color-text-secondary;
+  }
+}
+
+.emailAddress {
+  font-weight: 700;
+  color: $color-text-primary;
+  font-size: clamp(1rem, 3vw, 1.25rem);
+  word-break: break-all;
+}
+
+// Instructions
+.instructions {
+  background: $color-bg-card;
+  border-radius: 0.75rem;
+  padding: $spacing-lg;
+  margin-bottom: $spacing-xl;
+  border: 1px solid $color-border;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  animation: fadeInUp 0.5s ease-out 0.4s backwards;
+}
+
+.instructionsTitle {
+  font-weight: 700;
+  color: $color-text-primary;
+  margin-bottom: $spacing-md;
+  display: flex;
+  align-items: center;
+  font-size: 1.125rem;
+
+  .instructionsIcon {
+    width: 1.25rem;
+    height: 1.25rem;
+    color: $color-primary;
+    margin-right: $spacing-sm;
+  }
+}
+
+.instructionsList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+
+  li {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: $spacing-sm;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    span:not(.stepNumber) {
+      color: $color-text-secondary;
+      line-height: 1.75;
+    }
+  }
+}
+
+.stepNumber {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  background: rgba($color-primary, 0.1);
+  color: $color-primary;
+  border-radius: 9999px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  margin-right: $spacing-sm;
+  margin-top: 0.125rem;
+  flex-shrink: 0;
+}
+
+// Role Info
+.roleInfo {
+  background: linear-gradient(to right, #f9fafb 0%, #eff6ff 100%);
+  border-radius: 0.75rem;
+  padding: $spacing-lg;
+  margin-bottom: $spacing-xl;
+  border: 1px solid $color-border;
+  animation: fadeInUp 0.5s ease-out 0.5s backwards;
+}
+
+.roleTitle {
+  font-weight: 700;
+  color: $color-text-primary;
+  margin-bottom: $spacing-md;
+  display: flex;
+  align-items: center;
+  font-size: 1.125rem;
+
+  span {
+    margin-left: $spacing-sm;
+  }
+}
+
+.roleSubtitle {
+  color: $color-text-secondary;
+  margin-bottom: $spacing-md;
+  font-weight: 500;
+}
+
+.roleSteps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+
+  li {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: $spacing-sm;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+
+    span {
+      color: $color-text-secondary;
+      line-height: 1.75;
+    }
+  }
+}
+
+.checkIcon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: $color-success;
+  margin-right: $spacing-sm;
+  margin-top: 0.125rem;
+  flex-shrink: 0;
+}
+
+// Role Icons
+.iconPatient,
+.iconStaff,
+.iconAdmin {
+  width: 1.5rem;
+  height: 1.5rem;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.iconPatient {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%233b82f6' viewBox='0 0 24 24'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z'%3E%3C/path%3E%3C/svg%3E");
+}
+
+.iconStaff {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%2310b981' viewBox='0 0 24 24'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 002 2h2a2 2 0 002-2V6m-8 0V6a2 2 0 012-2h4a2 2 0 012 2v0'%3E%3C/path%3E%3C/svg%3E");
+}
+
+.iconAdmin {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='%239333ea' viewBox='0 0 24 24'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.031 9-11.622 0-1.042-.133-2.052-.382-3.016z'%3E%3C/path%3E%3C/svg%3E");
+}
+
+// Alerts
+.alertError,
+.alertSuccess {
+  border-radius: 0.75rem;
+  padding: $spacing-md;
+  margin-bottom: $spacing-lg;
+  display: flex;
+  align-items: flex-start;
+  animation: fadeInUp 0.3s ease-out;
+
+  .alertIcon {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-top: 0.125rem;
+    margin-right: $spacing-sm;
+    flex-shrink: 0;
+  }
+
+  h3 {
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+  }
+
+  p {
+    font-size: 0.875rem;
+    margin: 0;
+  }
+}
+
+.alertError {
+  background: $color-error-bg;
+  border: 1px solid $color-error-border;
+
+  .alertIcon {
+    color: $color-error;
+  }
+
+  h3 {
+    color: $color-error-text;
+  }
+
+  p {
+    color: darken($color-error-text, 5%);
+  }
+}
+
+.alertSuccess {
+  background: $color-success-bg;
+  border: 1px solid $color-success-border;
+
+  .alertIcon {
+    color: $color-success;
+  }
+
+  h3 {
+    color: $color-success-text;
+  }
+
+  p {
+    color: darken($color-success-text, 5%);
+  }
+}
+
+// Resend Section
+.resendSection {
+  background: $color-bg-card;
+  border-radius: 0.75rem;
+  padding: $spacing-lg;
+  margin-bottom: $spacing-xl;
+  border: 1px solid $color-border;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  text-align: center;
+  animation: fadeInUp 0.5s ease-out 0.6s backwards;
+}
+
+.resendTitle {
+  font-weight: 600;
+  color: $color-text-primary;
+  margin-bottom: $spacing-md;
+}
+
+.countdownBox {
+  background: $color-warning-bg;
+  border: 1px solid $color-warning-border;
+  border-radius: 0.5rem;
+  padding: $spacing-md;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  .clockIcon {
+    width: 1.25rem;
+    height: 1.25rem;
+    color: $color-warning;
+    margin-right: $spacing-sm;
+  }
+
+  p {
+    color: $color-warning-text;
+    font-weight: 500;
+    margin: 0;
+  }
+}
+
+.resendButton {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.75rem $spacing-lg;
+  background: linear-gradient(to right, $color-primary 0%, $color-secondary 100%);
+  color: $color-text-white;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 1rem;
+
+  &:hover:not(:disabled) {
+    background: linear-gradient(to right, $color-primary-dark 0%, $color-secondary-dark 100%);
+    transform: scale(1.05);
+  }
+
+  &:disabled {
+    background: linear-gradient(to right, #9ca3af 0%, #9ca3af 100%);
+    cursor: not-allowed;
+    transform: scale(1);
+  }
+
+  .buttonIcon,
+  .buttonSpinner {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-right: $spacing-sm;
+  }
+
+  .buttonSpinner {
+    animation: spin 1s linear infinite;
+  }
+}
+
+// Help Section
+.helpSection {
+  background: $color-bg-secondary;
+  border-radius: 0.75rem;
+  padding: $spacing-lg;
+  margin-bottom: $spacing-xl;
+  border: 1px solid $color-border;
+  animation: fadeInUp 0.5s ease-out 0.7s backwards;
+}
+
+.helpTitle {
+  font-weight: 600;
+  color: $color-text-primary;
+  margin-bottom: $spacing-md;
+  display: flex;
+  align-items: center;
+
+  .helpIcon {
+    width: 1.25rem;
+    height: 1.25rem;
+    color: $color-primary;
+    margin-right: $spacing-sm;
+  }
+}
+
+.helpList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+
+  li {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: $spacing-sm;
+    font-size: 0.875rem;
+    color: $color-text-secondary;
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+}
+
+.checkmark {
+  width: 1rem;
+  height: 1rem;
+  color: $color-text-muted;
+  margin-right: $spacing-sm;
+  margin-top: 0.125rem;
+  flex-shrink: 0;
+}
+
+.emailHighlight {
+  font-weight: 500;
+  color: $color-text-primary;
+}
+
+// Footer
+.footer {
+  padding: $spacing-lg $spacing-xl;
+  background: $color-bg-card;
+  border-top: 1px solid $color-border;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: $spacing-sm;
+
+  @media (min-width: $breakpoint-md) {
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 0;
+  }
+}
+
+.backButton {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.875rem;
+  color: $color-text-secondary;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  padding: 0;
+
+  &:hover {
+    color: $color-primary;
+  }
+
+  .backIcon {
+    width: 1rem;
+    height: 1rem;
+    margin-right: $spacing-sm;
+  }
+}
+
+.securityNote {
+  display: flex;
+  align-items: center;
+  font-size: 0.75rem;
+  color: $color-text-muted;
+
+  .lockIcon {
+    width: 1rem;
+    height: 1rem;
+    color: $color-text-muted;
+    margin-right: $spacing-sm;
+  }
+}

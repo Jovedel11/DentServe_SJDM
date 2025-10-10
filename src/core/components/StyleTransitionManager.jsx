@@ -7,9 +7,21 @@ export const StyleTransitionManager = ({ children }) => {
   const location = useLocation();
   const lastState = useRef({ user: null, userRole: null });
   const isTransitioning = useRef(false);
+  const isMountedRef = useRef(true);
+
+  // ✅ PRODUCTION: Track applied styles to prevent flicker
+  const currentStylesRef = useRef(new Set());
 
   useEffect(() => {
-    if (!isInitialized) return;
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isInitialized || !isMountedRef.current) return;
 
     const currentState = { user: !!user, userRole };
 
@@ -21,41 +33,68 @@ export const StyleTransitionManager = ({ children }) => {
     if (hasChange && !isTransitioning.current) {
       isTransitioning.current = true;
 
-      // Apply styles immediately
-      applyStyles(currentState);
+      // ✅ PRODUCTION: Use requestAnimationFrame for smooth transitions
+      requestAnimationFrame(() => {
+        if (!isMountedRef.current) return;
+        applyStyles(currentState);
 
-      // Reset transition flag
-      setTimeout(() => {
-        isTransitioning.current = false;
-      }, 300);
+        setTimeout(() => {
+          isTransitioning.current = false;
+        }, 300);
+      });
     }
 
     lastState.current = currentState;
   }, [user, userRole, isInitialized]);
 
   const applyStyles = (state) => {
+    if (!isMountedRef.current) return;
+
     const body = document.body;
 
-    // Remove only theme classes, NOT public-page class
-    body.classList.remove(
+    // ✅ PRODUCTION: Build new class set
+    const newClasses = new Set();
+
+    if (!state.user) {
+      // Public page - no theme classes
+      // PublicStyle component handles public-page class
+    } else {
+      // Private page
+      body.classList.remove("public-page");
+      newClasses.add("private-styles");
+
+      if (state.userRole) {
+        newClasses.add(`${state.userRole}-theme`);
+      }
+    }
+
+    // ✅ PRODUCTION: Only update if classes actually changed
+    const classesToRemove = [
       "private-styles",
       "patient-theme",
       "staff-theme",
-      "admin-theme"
-    );
+      "admin-theme",
+    ];
 
+    // Remove old classes
+    classesToRemove.forEach((cls) => {
+      if (!newClasses.has(cls)) {
+        body.classList.remove(cls);
+      }
+    });
+
+    // Add new classes
+    newClasses.forEach((cls) => {
+      body.classList.add(cls);
+    });
+
+    // Update current styles
+    currentStylesRef.current = newClasses;
+
+    // Clean up Tailwind interference for public pages
     if (!state.user) {
-      // Don't add any class - PublicStyle handles this
-      // Clean up any Tailwind interference
       body.style.removeProperty("--tw-bg-opacity");
       body.style.removeProperty("background-color");
-    } else {
-      // Remove public-page class when user is authenticated
-      body.classList.remove("public-page");
-      body.classList.add("private-styles");
-      if (state.userRole) {
-        body.classList.add(`${state.userRole}-theme`);
-      }
     }
   };
 

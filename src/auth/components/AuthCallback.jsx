@@ -1,74 +1,111 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/auth/context/AuthProvider";
 import Loader from "@/core/components/Loader";
+import styles from "../styles/AuthCallback.module.scss";
 
 const AuthCallback = () => {
   const navigate = useNavigate();
-  const location = useLocation();
   const { refreshAuthStatus } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    handleAuthCallback();
-  }, []);
+    const handleAuthCallback = async () => {
+      try {
+        // Get session from Supabase
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
 
-  const handleAuthCallback = async () => {
-    try {
-      // Get session from Supabase
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
 
-      if (error) throw error;
+        if (session) {
+          // Refresh auth status
+          await refreshAuthStatus(session.user.id);
 
-      if (session) {
-        // Refresh auth status
-        await refreshAuthStatus(session.user.id);
+          // Check if staff needs profile completion
+          const userMeta = session.user.user_metadata;
+          if (
+            userMeta?.user_type === "staff" &&
+            userMeta?.profile_completion_required
+          ) {
+            navigate("/staff/complete-profile", {
+              state: {
+                clinicId: userMeta.clinic_id,
+                invitationId: userMeta.invitation_id,
+              },
+              replace: true,
+            });
+            return;
+          }
 
-        // Check if staff needs profile completion
-        const userMeta = session.user.user_metadata;
-        if (
-          userMeta?.user_type === "staff" &&
-          userMeta?.profile_completion_required
-        ) {
-          navigate("/staff/complete-profile", {
-            state: {
-              clinicId: userMeta.clinic_id,
-              invitationId: userMeta.invitation_id,
-            },
-          });
-          return;
+          // Redirect based on user type
+          const userType = userMeta?.user_type;
+          if (userType === "patient") {
+            navigate("/patient/dashboard", { replace: true });
+          } else if (userType === "staff") {
+            navigate("/staff/dashboard", { replace: true });
+          } else if (userType === "admin") {
+            navigate("/admin/dashboard", { replace: true });
+          } else {
+            navigate("/", { replace: true });
+          }
+        } else {
+          navigate("/login", { replace: true });
         }
-
-        // Redirect based on user type
-        const userType = userMeta?.user_type;
-        if (userType === "patient") navigate("/patient/dashboard");
-        else if (userType === "staff") navigate("/staff/dashboard");
-        else if (userType === "admin") navigate("/admin/dashboard");
-        else navigate("/");
-      } else {
-        navigate("/login");
+      } catch (err) {
+        console.error("Auth callback error:", err);
+        setError(err.message || "Authentication failed. Please try again.");
       }
-    } catch (err) {
-      console.error("Auth callback error:", err);
-      navigate("/login");
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
 
-  if (loading) {
+    handleAuthCallback();
+  }, [navigate, refreshAuthStatus]);
+
+  if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader className="h-8 w-8 animate-spin" />
+      <div className={styles.container}>
+        <div className={styles.errorCard}>
+          <div className={styles.errorIcon}>
+            <svg
+              className={styles.icon}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <h2 className={styles.errorTitle}>Authentication Error</h2>
+          <p className={styles.errorMessage}>{error}</p>
+          <button
+            type="button"
+            onClick={() => navigate("/login", { replace: true })}
+            className={styles.errorButton}
+          >
+            Return to Login
+          </button>
+        </div>
       </div>
     );
   }
 
-  return null;
+  return (
+    <div className={styles.container}>
+      <div className={styles.loaderWrapper}>
+        <Loader className={styles.loader} />
+        <p className={styles.loadingText}>Authenticating your account...</p>
+      </div>
+    </div>
+  );
 };
 
 export default AuthCallback;

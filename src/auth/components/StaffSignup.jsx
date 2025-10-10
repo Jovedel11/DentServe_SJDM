@@ -14,6 +14,7 @@ import {
 } from "@/core/components/ui/card";
 import { Alert, AlertDescription } from "@/core/components/ui/alert";
 import { Loader2, CheckCircle, XCircle } from "lucide-react";
+import styles from "../styles/StaffSignup.module.scss";
 
 const StaffSignup = () => {
   const [searchParams] = useSearchParams();
@@ -200,14 +201,12 @@ const StaffSignup = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center gap-4">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">
-                Validating invitation...
-              </p>
+      <div className={styles.container}>
+        <Card className={styles.card}>
+          <CardContent className={styles.cardContent}>
+            <div className={styles.loadingState}>
+              <Loader2 className={styles.loadingIcon} />
+              <p className={styles.loadingText}>Validating invitation...</p>
             </div>
           </CardContent>
         </Card>
@@ -217,11 +216,11 @@ const StaffSignup = () => {
 
   if (error && !invitationData) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <Card className="w-full max-w-md">
+      <div className={styles.container}>
+        <Card className={styles.card}>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <XCircle className="h-6 w-6 text-destructive" />
+            <div className={styles.errorHeader}>
+              <XCircle className={styles.errorIcon} />
               <CardTitle>Invalid Invitation</CardTitle>
             </div>
           </CardHeader>
@@ -230,7 +229,7 @@ const StaffSignup = () => {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
             <Button
-              className="w-full mt-4"
+              className={styles.fullWidthButton}
               onClick={() => navigate("/contact")}
             >
               Contact Support
@@ -242,8 +241,8 @@ const StaffSignup = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <Card className="w-full max-w-md">
+    <div className={styles.container}>
+      <Card className={styles.card}>
         <CardHeader>
           <CardTitle>Complete Your Staff Registration</CardTitle>
           <CardDescription>
@@ -255,20 +254,20 @@ const StaffSignup = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className={styles.form}>
             {/* Email (readonly) */}
-            <div className="space-y-2">
+            <div className={styles.formField}>
               <Label>Email</Label>
               <Input
                 type="email"
                 value={invitationData?.email || ""}
                 disabled
-                className="bg-muted"
+                className={styles.disabledInput}
               />
             </div>
 
             {/* First Name */}
-            <div className="space-y-2">
+            <div className={styles.formField}>
               <Label htmlFor="firstName">First Name *</Label>
               <Input
                 id="firstName"
@@ -281,7 +280,7 @@ const StaffSignup = () => {
             </div>
 
             {/* Last Name */}
-            <div className="space-y-2">
+            <div className={styles.formField}>
               <Label htmlFor="lastName">Last Name *</Label>
               <Input
                 id="lastName"
@@ -294,7 +293,7 @@ const StaffSignup = () => {
             </div>
 
             {/* Phone */}
-            <div className="space-y-2">
+            <div className={styles.formField}>
               <Label htmlFor="phone">Phone Number (Optional)</Label>
               <Input
                 id="phone"
@@ -307,7 +306,7 @@ const StaffSignup = () => {
             </div>
 
             {/* Password */}
-            <div className="space-y-2">
+            <div className={styles.formField}>
               <Label htmlFor="password">Password *</Label>
               <Input
                 id="password"
@@ -321,7 +320,7 @@ const StaffSignup = () => {
             </div>
 
             {/* Confirm Password */}
-            <div className="space-y-2">
+            <div className={styles.formField}>
               <Label htmlFor="confirmPassword">Confirm Password *</Label>
               <Input
                 id="confirmPassword"
@@ -343,18 +342,22 @@ const StaffSignup = () => {
             {/* Deadline notice */}
             {invitationData?.expires_at && (
               <Alert>
-                <CheckCircle className="h-4 w-4" />
-                <AlertDescription className="text-sm">
+                <CheckCircle className={styles.successIcon} />
+                <AlertDescription className={styles.deadlineText}>
                   Please complete your profile setup within 7 days to activate
                   your account.
                 </AlertDescription>
               </Alert>
             )}
 
-            <Button type="submit" className="w-full" disabled={submitting}>
+            <Button
+              type="submit"
+              className={styles.submitButton}
+              disabled={submitting}
+            >
               {submitting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className={styles.buttonIcon} />
                   Creating Account...
                 </>
               ) : (

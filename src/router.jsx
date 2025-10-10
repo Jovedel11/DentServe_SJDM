@@ -11,10 +11,31 @@ import { RouterErrorBoundary } from "./core/components/ErrorFolder/ErrorBoundary
 import { NetworkMonitor } from "./core/components/NetworkMonitor";
 import { StyleTransitionManager } from "./core/components/StyleTransitionManager";
 
+const preloadCriticalChunks = () => {
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(
+      () => {
+        // Preload auth pages (high priority)
+        import("./auth/Login.jsx");
+        import("./auth/Signup");
+
+        // Preload patient dashboard (common entry point)
+        import("./app/patient/pages/PatientDashboard");
+      },
+      { timeout: 2000 }
+    );
+  }
+};
+
 const AppLayout = () => {
   useVerificationMonitor();
   const { showUnauthorizedWarning, warningMessage, dismissWarning } =
     useNavigationManager();
+
+  // Preload on mount
+  useEffect(() => {
+    preloadCriticalChunks();
+  }, []);
 
   return (
     <NetworkMonitor>
@@ -40,6 +61,7 @@ import UnauthorizedPage from "./core/components/ErrorFolder/UnauthorizedPage";
 // Public pages
 const Home = lazy(() => import("./public/pages/Home"));
 const About = lazy(() => import("./public/pages/About"));
+const Service = lazy(() => import("./public/pages/Service"));
 const Contact = lazy(() => import("./public/pages/Contact"));
 
 // Auth pages
@@ -140,6 +162,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: withSuspense(Home) },
           { path: "about", element: withSuspense(About) },
+          { path: "services", element: withSuspense(Service) },
           { path: "contact", element: withSuspense(Contact) },
           { path: "login", element: withSuspense(Login) },
           { path: "signup", element: withSuspense(Signup) },

@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { motion, AnimatePresence } from "framer-motion";
+import styles from "../styles/ResetPassword.module.scss";
 
 const ResetPassword = () => {
   const [password, setPassword] = useState("");
@@ -16,7 +17,6 @@ const ResetPassword = () => {
   const { updatePassword, loading } = useAuth();
   const navigate = useNavigate();
 
-  // ✅ Use ref to track attempts (not state)
   const attemptsRef = useRef(0);
   const maxAttempts = 3;
 
@@ -29,7 +29,6 @@ const ResetPassword = () => {
       attemptsRef.current += 1;
       console.log("🔍 Checking reset session... Attempt:", attemptsRef.current);
 
-      // ✅ Check for hash params (from email link)
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
       const accessToken = hashParams.get("access_token");
       const refreshToken = hashParams.get("refresh_token");
@@ -41,7 +40,6 @@ const ResetPassword = () => {
         type,
       });
 
-      // ✅ If we have tokens in the URL, set the session manually
       if (accessToken && refreshToken && type === "recovery") {
         console.log("🔐 Setting session from URL tokens...");
 
@@ -58,7 +56,6 @@ const ResetPassword = () => {
         console.log("✅ Session established from URL tokens");
         setIsResetting(true);
 
-        // Clean up URL
         window.history.replaceState(
           {},
           document.title,
@@ -67,7 +64,6 @@ const ResetPassword = () => {
         return;
       }
 
-      // ✅ Check for existing session
       const {
         data: { session },
         error: sessionError,
@@ -88,7 +84,6 @@ const ResetPassword = () => {
         return;
       }
 
-      // ✅ Check if we should retry
       if (attemptsRef.current < maxAttempts) {
         console.log(
           `⏳ No session yet, retrying in 1 second... (${attemptsRef.current}/${maxAttempts})`
@@ -99,7 +94,6 @@ const ResetPassword = () => {
         return;
       }
 
-      // ✅ Max attempts reached - show error and redirect
       console.log(
         `❌ No valid session after ${maxAttempts} attempts, redirecting to forgot-password`
       );
@@ -172,18 +166,18 @@ const ResetPassword = () => {
     },
   ];
 
-  // ✅ Show error state if there's an error
+  // Error state
   if (error && !isResetting) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--primary))] via-[hsl(var(--primary-foreground))]/10 to-background flex items-center justify-center p-4">
+      <div className={styles.pageContainer}>
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-card rounded-3xl shadow-2xl p-8 w-full max-w-md text-center border border-border/50"
+          className={styles.card}
         >
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-destructive/10 rounded-2xl mb-4">
+          <div className={styles.errorIconWrapper}>
             <svg
-              className="w-10 h-10 text-destructive"
+              className={styles.errorIcon}
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -196,18 +190,14 @@ const ResetPassword = () => {
               />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-foreground mb-3">
-            Invalid Reset Link
-          </h2>
-          <p className="text-muted-foreground mb-4">{error}</p>
-          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 mb-4">
-            <p className="text-sm text-muted-foreground">
-              Redirecting you to request a new reset link...
-            </p>
+          <h2 className={styles.errorTitle}>Invalid Reset Link</h2>
+          <p className={styles.errorMessage}>{error}</p>
+          <div className={styles.redirectNotice}>
+            <p>Redirecting you to request a new reset link...</p>
           </div>
           <button
             onClick={() => navigate("/forgot-password")}
-            className="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            className={styles.buttonPrimary}
           >
             Go to Forgot Password
           </button>
@@ -216,22 +206,19 @@ const ResetPassword = () => {
     );
   }
 
+  // Loading state
   if (!isResetting) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--primary))] via-[hsl(var(--primary-foreground))]/10 to-background flex items-center justify-center p-4">
+      <div className={styles.pageContainer}>
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="bg-card rounded-3xl shadow-2xl p-8 w-full max-w-md text-center border border-border/50"
+          className={styles.card}
         >
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary/10 rounded-2xl mb-4">
-            <svg
-              className="w-8 h-8 text-primary animate-spin"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
+          <div className={styles.loadingIconWrapper}>
+            <svg className={styles.loadingIcon} fill="none" viewBox="0 0 24 24">
               <circle
-                className="opacity-25"
+                className={styles.loadingCircle}
                 cx="12"
                 cy="12"
                 r="10"
@@ -239,16 +226,14 @@ const ResetPassword = () => {
                 strokeWidth="4"
               />
               <path
-                className="opacity-75"
+                className={styles.loadingPath}
                 fill="currentColor"
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-foreground mb-2">
-            Verifying Reset Link
-          </h2>
-          <p className="text-muted-foreground">
+          <h2 className={styles.loadingTitle}>Verifying Reset Link</h2>
+          <p className={styles.loadingMessage}>
             Please wait while we verify your request...
           </p>
         </motion.div>
@@ -256,22 +241,23 @@ const ResetPassword = () => {
     );
   }
 
+  // Success state
   if (success) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--primary))] via-[hsl(var(--primary-foreground))]/10 to-background flex items-center justify-center p-4">
+      <div className={styles.pageContainer}>
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-card rounded-3xl shadow-2xl p-8 w-full max-w-md text-center border border-border/50"
+          className={styles.card}
         >
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.2, type: "spring" }}
-            className="inline-flex items-center justify-center w-24 h-24 bg-green-100 dark:bg-green-900/20 rounded-full mb-6 shadow-lg"
+            className={styles.successIconWrapper}
           >
             <svg
-              className="w-12 h-12 text-green-600 dark:text-green-500"
+              className={styles.successIcon}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -284,25 +270,18 @@ const ResetPassword = () => {
               />
             </svg>
           </motion.div>
-          <h2 className="text-3xl font-bold text-foreground mb-4">
-            Password Updated!
-          </h2>
-          <p className="text-muted-foreground mb-6 text-base">
+          <h2 className={styles.successTitle}>Password Updated!</h2>
+          <p className={styles.successMessage}>
             Your password has been updated successfully. You can now login with
             your new credentials.
           </p>
-          <div className="bg-primary/5 border-2 border-primary/20 rounded-xl p-4 mb-6">
-            <p className="text-primary text-sm font-semibold">
-              Redirecting to login in 3 seconds...
-            </p>
+          <div className={styles.redirectNoticeSuccess}>
+            <p>Redirecting to login in 3 seconds...</p>
           </div>
-          <a
-            href="/login"
-            className="inline-flex items-center justify-center w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3.5 px-6 rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
-          >
+          <a href="/login" className={styles.buttonSuccess}>
             Go to Login Now
             <svg
-              className="ml-2 w-5 h-5"
+              className={styles.buttonIcon}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -320,25 +299,26 @@ const ResetPassword = () => {
     );
   }
 
+  // Main form
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--primary))] via-[hsl(var(--primary-foreground))]/10 to-background flex items-center justify-center p-4 sm:p-6">
+    <div className={styles.pageContainer}>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="bg-card rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-border/50"
+        className={styles.formCard}
       >
         {/* Header */}
-        <div className="bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--primary))]/80 px-8 py-10 text-center relative overflow-hidden">
-          <div className="absolute inset-0 bg-grid-white/10 [mask-image:radial-gradient(white,transparent_85%)]" />
+        <div className={styles.header}>
+          <div className={styles.headerPattern} />
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.2, type: "spring" }}
-            className="relative inline-flex items-center justify-center w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl mb-4 shadow-lg"
+            className={styles.headerIconWrapper}
           >
             <svg
-              className="w-10 h-10 text-white"
+              className={styles.headerIcon}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -351,26 +331,21 @@ const ResetPassword = () => {
               />
             </svg>
           </motion.div>
-          <h2 className="text-3xl font-bold text-white mb-2 relative">
-            Reset Password
-          </h2>
-          <p className="text-primary-foreground/90 relative">
+          <h2 className={styles.headerTitle}>Reset Password</h2>
+          <p className={styles.headerSubtitle}>
             Create a secure new password for your account
           </p>
         </div>
 
         {/* Form */}
-        <div className="p-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
+        <div className={styles.formContent}>
+          <form onSubmit={handleSubmit} className={styles.form}>
             {/* New Password Field */}
-            <div className="space-y-2">
-              <label
-                htmlFor="password"
-                className="block text-sm font-semibold text-foreground"
-              >
+            <div className={styles.formGroup}>
+              <label htmlFor="password" className={styles.label}>
                 New Password
               </label>
-              <div className="relative group">
+              <div className={styles.inputWrapper}>
                 <input
                   id="password"
                   type={showPassword ? "text" : "password"}
@@ -379,16 +354,17 @@ const ResetPassword = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength="8"
-                  className="w-full px-4 py-3.5 pr-12 bg-background border-2 border-input rounded-xl focus:ring-2 focus:ring-ring focus:border-primary transition-all duration-200 text-foreground placeholder:text-muted-foreground"
+                  className={styles.input}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-muted-foreground hover:text-foreground transition-colors"
+                  className={styles.inputIconButton}
+                  aria-label="Toggle password visibility"
                 >
                   {showPassword ? (
                     <svg
-                      className="w-5 h-5"
+                      className={styles.inputIcon}
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -402,7 +378,7 @@ const ResetPassword = () => {
                     </svg>
                   ) : (
                     <svg
-                      className="w-5 h-5"
+                      className={styles.inputIcon}
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -431,34 +407,26 @@ const ResetPassword = () => {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="bg-muted/50 border border-border rounded-xl p-4 mt-3"
+                    className={styles.requirementsBox}
                   >
-                    <p className="text-sm font-semibold text-foreground mb-3">
+                    <p className={styles.requirementsTitle}>
                       Password Requirements:
                     </p>
-                    <div className="space-y-2">
+                    <div className={styles.requirementsList}>
                       {passwordRequirements.map((req, index) => (
                         <motion.div
                           key={index}
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: index * 0.05 }}
-                          className={`flex items-center text-sm ${
-                            req.met
-                              ? "text-green-600 dark:text-green-500"
-                              : "text-muted-foreground"
+                          className={`${styles.requirementItem} ${
+                            req.met ? styles.requirementMet : ""
                           }`}
                         >
-                          <div
-                            className={`w-5 h-5 rounded-full mr-3 flex items-center justify-center ${
-                              req.met
-                                ? "bg-green-100 dark:bg-green-900/20"
-                                : "bg-muted"
-                            }`}
-                          >
+                          <div className={styles.requirementIcon}>
                             {req.met ? (
                               <svg
-                                className="w-3 h-3 text-green-600 dark:text-green-500"
+                                className={styles.checkIcon}
                                 fill="currentColor"
                                 viewBox="0 0 20 20"
                               >
@@ -469,7 +437,7 @@ const ResetPassword = () => {
                                 />
                               </svg>
                             ) : (
-                              <div className="w-2 h-2 rounded-full bg-muted-foreground/30" />
+                              <div className={styles.dotIcon} />
                             )}
                           </div>
                           {req.label}
@@ -482,14 +450,11 @@ const ResetPassword = () => {
             </div>
 
             {/* Confirm Password Field */}
-            <div className="space-y-2">
-              <label
-                htmlFor="confirmPassword"
-                className="block text-sm font-semibold text-foreground"
-              >
+            <div className={styles.formGroup}>
+              <label htmlFor="confirmPassword" className={styles.label}>
                 Confirm New Password
               </label>
-              <div className="relative group">
+              <div className={styles.inputWrapper}>
                 <input
                   id="confirmPassword"
                   type={showConfirmPassword ? "text" : "password"}
@@ -497,27 +462,24 @@ const ResetPassword = () => {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  className="w-full px-4 py-3.5 pr-12 bg-background border-2 border-input rounded-xl focus:ring-2 focus:ring-ring focus:border-primary transition-all duration-200 text-foreground placeholder:text-muted-foreground"
+                  className={styles.input}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center"
+                  className={styles.inputIconButton}
+                  aria-label="Toggle confirm password visibility"
                 >
                   {confirmPassword && (
                     <div
-                      className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                      className={`${styles.matchIndicator} ${
                         password === confirmPassword && confirmPassword
-                          ? "bg-green-100 dark:bg-green-900/20"
-                          : "bg-red-100 dark:bg-red-900/20"
+                          ? styles.matchIndicatorSuccess
+                          : styles.matchIndicatorError
                       }`}
                     >
                       <svg
-                        className={`w-4 h-4 ${
-                          password === confirmPassword && confirmPassword
-                            ? "text-green-600 dark:text-green-500"
-                            : "text-red-600 dark:text-red-500"
-                        }`}
+                        className={styles.matchIcon}
                         fill="currentColor"
                         viewBox="0 0 20 20"
                       >
@@ -548,10 +510,10 @@ const ResetPassword = () => {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="bg-destructive/10 border-2 border-destructive/20 rounded-xl p-4 flex items-start"
+                  className={styles.alertError}
                 >
                   <svg
-                    className="w-5 h-5 text-destructive mt-0.5 mr-3 flex-shrink-0"
+                    className={styles.alertIcon}
                     fill="currentColor"
                     viewBox="0 0 20 20"
                   >
@@ -562,10 +524,8 @@ const ResetPassword = () => {
                     />
                   </svg>
                   <div>
-                    <h3 className="text-sm font-semibold text-destructive">
-                      Error
-                    </h3>
-                    <p className="text-sm text-destructive/90 mt-1">{error}</p>
+                    <h3 className={styles.alertTitle}>Error</h3>
+                    <p className={styles.alertMessage}>{error}</p>
                   </div>
                 </motion.div>
               )}
@@ -575,18 +535,18 @@ const ResetPassword = () => {
             <button
               type="submit"
               disabled={loading || !password || !confirmPassword}
-              className="w-full bg-primary hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground text-primary-foreground font-semibold py-3.5 px-6 rounded-xl transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] disabled:scale-100 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-xl disabled:shadow-none"
+              className={styles.submitButton}
             >
               {loading ? (
                 <>
                   <svg
-                    className="animate-spin -ml-1 mr-3 h-5 w-5"
+                    className={styles.buttonSpinner}
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
                     viewBox="0 0 24 24"
                   >
                     <circle
-                      className="opacity-25"
+                      className={styles.spinnerCircle}
                       cx="12"
                       cy="12"
                       r="10"
@@ -594,7 +554,7 @@ const ResetPassword = () => {
                       strokeWidth="4"
                     />
                     <path
-                      className="opacity-75"
+                      className={styles.spinnerPath}
                       fill="currentColor"
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     />
@@ -605,7 +565,7 @@ const ResetPassword = () => {
                 <>
                   Update Password
                   <svg
-                    className="ml-2 w-5 h-5"
+                    className={styles.buttonIcon}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -623,13 +583,10 @@ const ResetPassword = () => {
           </form>
 
           {/* Back to Login */}
-          <div className="mt-6 text-center">
-            <a
-              href="/login"
-              className="inline-flex items-center text-sm text-muted-foreground hover:text-primary transition-colors duration-200 font-medium"
-            >
+          <div className={styles.backLink}>
+            <a href="/login" className={styles.link}>
               <svg
-                className="mr-2 w-4 h-4"
+                className={styles.linkIcon}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, useMemo } from "react";
 import Loader from "./Loader";
 import ErrorBoundary from "./ErrorFolder/ErrorBoundary";
 import { useNetworkStatus } from "./NetworkMonitor";
@@ -7,7 +7,6 @@ const SuspenseFallback = ({ message = "Loading..." }) => {
   const networkStatus = useNetworkStatus();
 
   if (!networkStatus) {
-    // Fallback if NetworkMonitor is not available
     return <Loader type="spinner" size="large" message={message} />;
   }
 
@@ -24,11 +23,19 @@ const SuspenseFallback = ({ message = "Loading..." }) => {
   return <Loader type="spinner" size="large" message={loadingMessage} />;
 };
 
+// ✅ FIXED: Memoize wrapped component to prevent recreation on every render
 const withSuspense = (Component, fallbackMessage) => {
+  // Create wrapper component once
+  const WrappedComponent = () => <Component />;
+  WrappedComponent.displayName = `withSuspense(${
+    Component.displayName || Component.name || "Component"
+  })`;
+
+  // Return memoized JSX
   return (
     <ErrorBoundary>
       <Suspense fallback={<SuspenseFallback message={fallbackMessage} />}>
-        <Component />
+        <WrappedComponent />
       </Suspense>
     </ErrorBoundary>
   );

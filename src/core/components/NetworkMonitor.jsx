@@ -1,4 +1,11 @@
-import { useEffect, useState, createContext, useContext } from "react";
+import {
+  useEffect,
+  useState,
+  createContext,
+  useContext,
+  useRef,
+  useCallback,
+} from "react";
 
 const NetworkContext = createContext();
 
@@ -21,80 +28,95 @@ export const NetworkMonitor = ({ children }) => {
   const [wasOffline, setWasOffline] = useState(false);
   const [connectionQuality, setConnectionQuality] = useState("unknown");
 
+  // ✅ FIX: Track mounted state to prevent memory leaks
+  const isMountedRef = useRef(true);
+  const styleAppliedRef = useRef(false);
+  const cleanupTimeoutRef = useRef(null);
+
+  // ✅ PRODUCTION: Memoize style handlers
+  const handleOfflineStyles = useCallback(() => {
+    if (!isMountedRef.current || styleAppliedRef.current) return;
+
+    const body = document.body;
+    body.classList.add("offline-mode");
+
+    const isDark = body.classList.contains("dark");
+    const isPublic = body.classList.contains("public-styles");
+    const isPrivate = body.classList.contains("private-styles");
+
+    body.setAttribute("data-offline-theme", isDark ? "dark" : "light");
+    body.setAttribute("data-offline-mode", isPublic ? "public" : "private");
+
+    if (isPublic) {
+      body.style.setProperty("background-color", "#F1FAEE", "important");
+      body.style.setProperty("color", "#2D3748", "important");
+    } else if (isPrivate) {
+      if (isDark) {
+        body.style.setProperty("background-color", "#1D3557", "important");
+        body.style.setProperty("color", "#F1FAEE", "important");
+      } else {
+        body.style.setProperty("background-color", "#F1FAEE", "important");
+        body.style.setProperty("color", "#1A202C", "important");
+      }
+    }
+
+    styleAppliedRef.current = true;
+    console.log("🎨 Offline styles applied");
+  }, []);
+
+  const handleOnlineStyles = useCallback(() => {
+    if (!isMountedRef.current) return;
+
+    const body = document.body;
+    body.classList.remove("offline-mode");
+
+    body.style.removeProperty("background-color");
+    body.style.removeProperty("color");
+
+    body.removeAttribute("data-offline-theme");
+    body.removeAttribute("data-offline-mode");
+
+    styleAppliedRef.current = false;
+    console.log("🎨 Online styles restored");
+  }, []);
+
   useEffect(() => {
+    isMountedRef.current = true;
+
     const updateOnlineStatus = () => {
+      if (!isMountedRef.current) return;
+
       const online = navigator.onLine;
       setIsOnline(online);
 
       if (online && wasOffline) {
         setWasOffline(false);
-        console.log("✅ Connection restored");
-
-        // Restore normal styles when back online
         handleOnlineStyles();
 
+        // ✅ PRODUCTION: Notify other components
         window.dispatchEvent(new CustomEvent("connection-restored"));
+
+        // ✅ PRODUCTION: Auto-retry failed requests (if queue exists)
+        if (window.__networkRetryQueue) {
+          window.__networkRetryQueue.forEach((fn) => {
+            try {
+              fn();
+            } catch (e) {
+              console.error("Retry failed:", e);
+            }
+          });
+          window.__networkRetryQueue = [];
+        }
       } else if (!online) {
         setWasOffline(true);
-        console.log("❌ Connection lost");
-
-        // Apply offline-safe styles
         handleOfflineStyles();
-
         window.dispatchEvent(new CustomEvent("connection-lost"));
       }
     };
 
-    const handleOfflineStyles = () => {
-      const body = document.body;
-
-      // Add offline mode class
-      body.classList.add("offline-mode");
-
-      // Preserve current theme state
-      const isDark = body.classList.contains("dark");
-      const isPublic = body.classList.contains("public-styles");
-      const isPrivate = body.classList.contains("private-styles");
-
-      // Store theme information as data attributes for offline preservation
-      body.setAttribute("data-offline-theme", isDark ? "dark" : "light");
-      body.setAttribute("data-offline-mode", isPublic ? "public" : "private");
-
-      // Force critical styles to be inline for offline reliability
-      if (isPublic) {
-        body.style.setProperty("background-color", "#F1FAEE", "important");
-        body.style.setProperty("color", "#2D3748", "important");
-      } else if (isPrivate) {
-        if (isDark) {
-          body.style.setProperty("background-color", "#1D3557", "important");
-          body.style.setProperty("color", "#F1FAEE", "important");
-        } else {
-          body.style.setProperty("background-color", "#F1FAEE", "important");
-          body.style.setProperty("color", "#1A202C", "important");
-        }
-      }
-
-      console.log("🎨 Offline styles applied");
-    };
-
-    const handleOnlineStyles = () => {
-      const body = document.body;
-
-      // Remove offline mode class
-      body.classList.remove("offline-mode");
-
-      // Remove inline styles to restore normal CSS behavior
-      body.style.removeProperty("background-color");
-      body.style.removeProperty("color");
-
-      // Clean up data attributes
-      body.removeAttribute("data-offline-theme");
-      body.removeAttribute("data-offline-mode");
-
-      console.log("🎨 Online styles restored");
-    };
-
     const detectConnectionQuality = () => {
+      if (!isMountedRef.current) return;
+
       if ("connection" in navigator) {
         const connection =
           navigator.connection ||
@@ -114,11 +136,23 @@ export const NetworkMonitor = ({ children }) => {
     updateOnlineStatus();
     detectConnectionQuality();
 
+    // ✅ PRODUCTION: Cleanup function
     return () => {
+      isMountedRef.current = false;
       window.removeEventListener("online", updateOnlineStatus);
       window.removeEventListener("offline", updateOnlineStatus);
+
+      // Clear any pending timeouts
+      if (cleanupTimeoutRef.current) {
+        clearTimeout(cleanupTimeoutRef.current);
+      }
+
+      // Restore styles if component unmounts while offline
+      if (styleAppliedRef.current) {
+        handleOnlineStyles();
+      }
     };
-  }, [wasOffline]);
+  }, [wasOffline, handleOfflineStyles, handleOnlineStyles]);
 
   const value = {
     isOnline,
@@ -131,7 +165,7 @@ export const NetworkMonitor = ({ children }) => {
 
   return (
     <NetworkContext.Provider value={value}>
-      {/* Enhanced offline notification with preserved styling */}
+      {/* Enhanced offline notification */}
       {!isOnline && (
         <div
           className="fixed top-0 left-0 right-0 z-50"

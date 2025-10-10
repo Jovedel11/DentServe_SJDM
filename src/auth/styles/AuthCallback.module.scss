@@ -1,0 +1,225 @@
+// Spacing System
+$spacing-xs: 0.5rem;
+$spacing-sm: 0.75rem;
+$spacing-md: 1rem;
+$spacing-lg: 1.5rem;
+$spacing-xl: 2rem;
+$spacing-2xl: 3rem;
+
+// Colors
+$color-primary: #3b82f6;
+$color-primary-dark: #2563eb;
+
+$color-error: #ef4444;
+$color-error-dark: #dc2626;
+$color-error-bg: #fef2f2;
+$color-error-border: #fecaca;
+$color-error-text: #991b1b;
+
+$color-bg-primary: #f9fafb;
+$color-bg-card: #ffffff;
+$color-border: #e5e7eb;
+
+$color-text-primary: #111827;
+$color-text-secondary: #6b7280;
+$color-text-white: #ffffff;
+
+// Breakpoints
+$breakpoint-sm: 640px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 1024px;
+
+// Animations
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+// Container
+.container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%);
+  padding: $spacing-md;
+
+  @media (min-width: $breakpoint-md) {
+    padding: $spacing-xl;
+  }
+}
+
+// Loader Wrapper
+.loaderWrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: $spacing-lg;
+  animation: fadeIn 0.4s ease-out;
+}
+
+.loader {
+  width: 3rem;
+  height: 3rem;
+  color: $color-primary;
+  animation: spin 1s linear infinite;
+
+  @media (min-width: $breakpoint-md) {
+    width: 4rem;
+    height: 4rem;
+  }
+}
+
+.loadingText {
+  font-size: 1rem;
+  font-weight: 500;
+  color: $color-text-secondary;
+  text-align: center;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+  @media (min-width: $breakpoint-md) {
+    font-size: 1.125rem;
+  }
+}
+
+// Error Card
+.errorCard {
+  background: $color-bg-card;
+  border-radius: 1rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  padding: $spacing-xl;
+  width: 100%;
+  max-width: 28rem;
+  text-align: center;
+  border: 1px solid $color-border;
+  animation: fadeIn 0.4s ease-out;
+
+  @media (min-width: $breakpoint-md) {
+    padding: $spacing-2xl;
+    max-width: 32rem;
+  }
+}
+
+.errorIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 4rem;
+  height: 4rem;
+  background: $color-error-bg;
+  border-radius: 50%;
+  margin: 0 auto $spacing-lg;
+
+  @media (min-width: $breakpoint-md) {
+    width: 5rem;
+    height: 5rem;
+  }
+
+  .icon {
+    width: 2rem;
+    height: 2rem;
+    color: $color-error;
+
+    @media (min-width: $breakpoint-md) {
+      width: 2.5rem;
+      height: 2.5rem;
+    }
+  }
+}
+
+.errorTitle {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: $color-text-primary;
+  margin-bottom: $spacing-md;
+
+  @media (min-width: $breakpoint-md) {
+    font-size: 1.875rem;
+  }
+}
+
+.errorMessage {
+  font-size: 0.875rem;
+  color: $color-text-secondary;
+  line-height: 1.6;
+  margin-bottom: $spacing-xl;
+
+  @media (min-width: $breakpoint-md) {
+    font-size: 1rem;
+    margin-bottom: $spacing-2xl;
+  }
+}
+
+.errorButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem $spacing-lg;
+  background: linear-gradient(
+    to right,
+    $color-primary 0%,
+    $color-primary-dark 100%
+  );
+  color: $color-text-white;
+  font-weight: 600;
+  font-size: 0.875rem;
+  border-radius: 0.5rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+
+  @media (min-width: $breakpoint-sm) {
+    width: auto;
+    min-width: 12rem;
+  }
+
+  @media (min-width: $breakpoint-md) {
+    padding: 0.875rem $spacing-xl;
+    font-size: 1rem;
+  }
+
+  &:hover {
+    background: linear-gradient(
+      to right,
+      $color-primary-dark 0%,
+      darken($color-primary-dark, 5%) 100%
+    );
+    transform: translateY(-1px);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+      0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+
+  &:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba($color-primary, 0.3);
+  }
+}

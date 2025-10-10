@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthProvider";
 import { useRecaptcha } from "../hooks/useRecaptcha";
 import { motion, AnimatePresence } from "framer-motion";
+import styles from "../styles/ForgotPassword.module.scss";
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -52,12 +53,12 @@ const ForgotPassword = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--primary))] via-[hsl(var(--primary-foreground))]/10 to-background flex items-center justify-center p-4 sm:p-6">
+    <div className={styles.pageContainer}>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="bg-card rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-border/50"
+        className={styles.card}
       >
         <AnimatePresence mode="wait">
           {!emailSent ? (
@@ -68,16 +69,16 @@ const ForgotPassword = () => {
               exit={{ opacity: 0 }}
             >
               {/* Header */}
-              <div className="bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--primary))]/80 px-8 py-10 text-center relative overflow-hidden">
-                <div className="absolute inset-0 bg-grid-white/10 [mask-image:radial-gradient(white,transparent_85%)]" />
+              <div className={styles.header}>
+                <div className={styles.headerPattern} />
                 <motion.div
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   transition={{ delay: 0.2, type: "spring" }}
-                  className="relative inline-flex items-center justify-center w-20 h-20 bg-white/20 backdrop-blur-sm rounded-2xl mb-4 shadow-lg"
+                  className={styles.headerIconWrapper}
                 >
                   <svg
-                    className="w-10 h-10 text-white"
+                    className={styles.headerIcon}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -90,35 +91,30 @@ const ForgotPassword = () => {
                     />
                   </svg>
                 </motion.div>
-                <h2 className="text-3xl font-bold text-white mb-2 relative">
-                  Forgot Password?
-                </h2>
-                <p className="text-primary-foreground/90 text-base relative">
+                <h2 className={styles.headerTitle}>Forgot Password?</h2>
+                <p className={styles.headerSubtitle}>
                   No worries! We'll help you reset it securely
                 </p>
               </div>
 
               {/* Form */}
-              <div className="p-8">
-                <div className="mb-6">
-                  <p className="text-muted-foreground text-center text-sm leading-relaxed">
+              <div className={styles.formContent}>
+                <div className={styles.formDescription}>
+                  <p>
                     Enter your email address and we'll send you a secure link to
                     reset your password.
                   </p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="email"
-                      className="block text-sm font-semibold text-foreground"
-                    >
+                <form onSubmit={handleSubmit} className={styles.form}>
+                  <div className={styles.formGroup}>
+                    <label htmlFor="email" className={styles.label}>
                       Email Address
                     </label>
-                    <div className="relative group">
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <div className={styles.inputWrapper}>
+                      <div className={styles.inputIconLeft}>
                         <svg
-                          className="w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors"
+                          className={styles.inputIcon}
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -138,7 +134,7 @@ const ForgotPassword = () => {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
-                        className="w-full px-4 py-3.5 pl-12 bg-background border-2 border-input rounded-xl focus:ring-2 focus:ring-ring focus:border-primary transition-all duration-200 text-foreground placeholder:text-muted-foreground"
+                        className={styles.input}
                       />
                     </div>
                   </div>
@@ -150,10 +146,10 @@ const ForgotPassword = () => {
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
                         exit={{ opacity: 0, height: 0 }}
-                        className="bg-destructive/10 border-2 border-destructive/20 rounded-xl p-4 flex items-start"
+                        className={styles.alertError}
                       >
                         <svg
-                          className="w-5 h-5 text-destructive mt-0.5 mr-3 flex-shrink-0"
+                          className={styles.alertIcon}
                           fill="currentColor"
                           viewBox="0 0 20 20"
                         >
@@ -164,12 +160,8 @@ const ForgotPassword = () => {
                           />
                         </svg>
                         <div>
-                          <h3 className="text-sm font-semibold text-destructive">
-                            Error
-                          </h3>
-                          <p className="text-sm text-destructive/90 mt-1">
-                            {error}
-                          </p>
+                          <h3 className={styles.alertTitle}>Error</h3>
+                          <p className={styles.alertMessage}>{error}</p>
                         </div>
                       </motion.div>
                     )}
@@ -180,15 +172,15 @@ const ForgotPassword = () => {
                     <motion.div
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
-                      className="bg-yellow-500/10 border-2 border-yellow-500/20 rounded-xl p-4 flex items-start"
+                      className={styles.alertWarning}
                     >
                       <svg
-                        className="w-5 h-5 text-yellow-600 dark:text-yellow-500 mt-0.5 mr-3 flex-shrink-0 animate-spin"
+                        className={styles.alertIconSpinner}
                         fill="none"
                         viewBox="0 0 24 24"
                       >
                         <circle
-                          className="opacity-25"
+                          className={styles.spinnerCircle}
                           cx="12"
                           cy="12"
                           r="10"
@@ -196,16 +188,14 @@ const ForgotPassword = () => {
                           strokeWidth="4"
                         />
                         <path
-                          className="opacity-75"
+                          className={styles.spinnerPath}
                           fill="currentColor"
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                         />
                       </svg>
                       <div>
-                        <h3 className="text-sm font-semibold text-yellow-800 dark:text-yellow-500">
-                          Loading Security
-                        </h3>
-                        <p className="text-sm text-yellow-700 dark:text-yellow-600 mt-1">
+                        <h3 className={styles.alertTitle}>Loading Security</h3>
+                        <p className={styles.alertMessage}>
                           Please wait while we load security features...
                         </p>
                       </div>
@@ -216,18 +206,18 @@ const ForgotPassword = () => {
                   <button
                     type="submit"
                     disabled={loading || !isLoaded}
-                    className="w-full bg-primary hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground text-primary-foreground font-semibold py-3.5 px-6 rounded-xl transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] disabled:scale-100 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-xl disabled:shadow-none"
+                    className={styles.submitButton}
                   >
                     {loading ? (
                       <>
                         <svg
-                          className="animate-spin -ml-1 mr-3 h-5 w-5"
+                          className={styles.buttonSpinner}
                           xmlns="http://www.w3.org/2000/svg"
                           fill="none"
                           viewBox="0 0 24 24"
                         >
                           <circle
-                            className="opacity-25"
+                            className={styles.spinnerCircle}
                             cx="12"
                             cy="12"
                             r="10"
@@ -235,7 +225,7 @@ const ForgotPassword = () => {
                             strokeWidth="4"
                           />
                           <path
-                            className="opacity-75"
+                            className={styles.spinnerPath}
                             fill="currentColor"
                             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                           />
@@ -246,7 +236,7 @@ const ForgotPassword = () => {
                       <>
                         Send Reset Link
                         <svg
-                          className="ml-2 w-5 h-5"
+                          className={styles.buttonIcon}
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -269,17 +259,17 @@ const ForgotPassword = () => {
               key="success"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="p-8 text-center"
+              className={styles.successContent}
             >
               {/* Success Header */}
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ delay: 0.2, type: "spring" }}
-                className="inline-flex items-center justify-center w-24 h-24 bg-green-100 dark:bg-green-900/20 rounded-full mb-6 shadow-lg"
+                className={styles.successIconWrapper}
               >
                 <svg
-                  className="w-12 h-12 text-green-600 dark:text-green-500"
+                  className={styles.successIcon}
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -292,27 +282,20 @@ const ForgotPassword = () => {
                   />
                 </svg>
               </motion.div>
-              <h3 className="text-3xl font-bold text-foreground mb-3">
-                Check Your Email!
-              </h3>
-              <p className="text-muted-foreground mb-4 text-base">
-                We've sent a password reset link to:
-              </p>
-              <p className="text-muted-foreground mb-4 text-base">
+              <h3 className={styles.successTitle}>Check Your Email!</h3>
+              <p className={styles.successMessage}>
                 If an account exists with this email, a password reset link has
                 been sent to:
               </p>
-              <div className="bg-primary/5 border-2 border-primary/20 rounded-xl p-4 mb-6">
-                <p className="font-semibold text-primary break-all text-lg">
-                  {email}
-                </p>
+              <div className={styles.emailDisplay}>
+                <p>{email}</p>
               </div>
 
               {/* Instructions */}
-              <div className="bg-muted/50 border border-border rounded-xl p-6 mb-6 text-left">
-                <h4 className="font-semibold text-foreground mb-4 flex items-center text-lg">
+              <div className={styles.instructionsBox}>
+                <h4 className={styles.instructionsTitle}>
                   <svg
-                    className="w-5 h-5 text-primary mr-2"
+                    className={styles.instructionsIcon}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -326,7 +309,7 @@ const ForgotPassword = () => {
                   </svg>
                   What to do next:
                 </h4>
-                <ol className="space-y-3">
+                <ol className={styles.instructionsList}>
                   {[
                     "Check your email inbox (and spam folder)",
                     "Click the reset link in the email",
@@ -338,26 +321,22 @@ const ForgotPassword = () => {
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.3 + index * 0.1 }}
-                      className="flex items-start"
+                      className={styles.instructionItem}
                     >
-                      <span className="inline-flex items-center justify-center w-7 h-7 bg-primary/10 text-primary rounded-full text-sm font-bold mr-3 mt-0.5 flex-shrink-0">
-                        {index + 1}
-                      </span>
-                      <span className="text-muted-foreground text-sm mt-0.5">
-                        {step}
-                      </span>
+                      <span className={styles.stepNumber}>{index + 1}</span>
+                      <span className={styles.stepText}>{step}</span>
                     </motion.li>
                   ))}
                 </ol>
               </div>
 
               {/* Resend Section */}
-              <div className="mb-6">
+              <div className={styles.resendSection}>
                 {countdown > 0 ? (
-                  <div className="bg-yellow-500/10 border-2 border-yellow-500/20 rounded-xl p-4">
-                    <div className="flex items-center justify-center">
+                  <div className={styles.countdownBox}>
+                    <div className={styles.countdownContent}>
                       <svg
-                        className="w-5 h-5 text-yellow-600 dark:text-yellow-500 mr-2"
+                        className={styles.countdownIcon}
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -369,7 +348,7 @@ const ForgotPassword = () => {
                           d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                         />
                       </svg>
-                      <p className="text-yellow-800 dark:text-yellow-500 font-semibold">
+                      <p className={styles.countdownText}>
                         Resend available in {countdown}s
                       </p>
                     </div>
@@ -378,10 +357,10 @@ const ForgotPassword = () => {
                   <button
                     type="button"
                     onClick={handleResend}
-                    className="inline-flex items-center px-6 py-3 border-2 border-primary/20 rounded-xl text-primary bg-primary/5 hover:bg-primary/10 transition-all duration-200 font-semibold transform hover:scale-105 active:scale-95"
+                    className={styles.resendButton}
                   >
                     <svg
-                      className="w-5 h-5 mr-2"
+                      className={styles.buttonIcon}
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -402,10 +381,10 @@ const ForgotPassword = () => {
         </AnimatePresence>
 
         {/* Help Section */}
-        <div className="bg-muted/30 px-8 py-6 border-t border-border">
-          <h4 className="font-semibold text-foreground mb-3 flex items-center text-sm">
+        <div className={styles.helpSection}>
+          <h4 className={styles.helpTitle}>
             <svg
-              className="w-5 h-5 text-primary mr-2"
+              className={styles.helpIcon}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -419,16 +398,16 @@ const ForgotPassword = () => {
             </svg>
             Having trouble?
           </h4>
-          <ul className="space-y-2 text-xs text-muted-foreground">
+          <ul className={styles.helpList}>
             {[
               "Make sure you entered the correct email address",
               "Check your spam/junk folder",
               "The reset link expires in 1 hour",
               "Contact support if issues persist",
             ].map((tip, index) => (
-              <li key={index} className="flex items-start">
+              <li key={index} className={styles.helpItem}>
                 <svg
-                  className="w-4 h-4 text-primary/60 mr-2 mt-0.5 flex-shrink-0"
+                  className={styles.helpItemIcon}
                   fill="currentColor"
                   viewBox="0 0 20 20"
                 >
@@ -445,14 +424,11 @@ const ForgotPassword = () => {
         </div>
 
         {/* Navigation Links */}
-        <div className="px-8 py-6 bg-card border-t border-border">
-          <div className="flex flex-col sm:flex-row justify-between items-center space-y-3 sm:space-y-0">
-            <a
-              href="/login"
-              className="inline-flex items-center text-sm text-muted-foreground hover:text-primary transition-colors duration-200 font-medium"
-            >
+        <div className={styles.navSection}>
+          <div className={styles.navLinks}>
+            <a href="/login" className={styles.navLink}>
               <svg
-                className="mr-2 w-4 h-4"
+                className={styles.navIconLeft}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -466,13 +442,10 @@ const ForgotPassword = () => {
               </svg>
               Back to Login
             </a>
-            <a
-              href="/signup"
-              className="inline-flex items-center text-sm text-muted-foreground hover:text-primary transition-colors duration-200 font-medium"
-            >
+            <a href="/signup" className={styles.navLink}>
               Don't have an account? Sign up
               <svg
-                className="ml-2 w-4 h-4"
+                className={styles.navIconRight}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

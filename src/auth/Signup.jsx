@@ -5,6 +5,7 @@ import { validateSignupForm } from "@/utils/validation/auth-validation";
 import SvgDental from "@/core/components/SvgDental.jsx";
 import Loader from "@/core/components/Loader";
 import { Eye, EyeOff, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import styles from "./styles/Signup.module.scss";
 
 const Signup = () => {
   const [formData, setFormData] = useState({
@@ -114,40 +115,39 @@ const Signup = () => {
 
   if (showEmailModal) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
-        <div className="max-w-md mx-auto">
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 text-center">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <span className="text-3xl">📧</span>
+      <div className={styles.container}>
+        <div className={styles.modalWrapper}>
+          <div className={styles.modal}>
+            <div className={styles.modal__icon}>
+              <span>📧</span>
             </div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">
-              Check Your Email!
-            </h2>
-            <p className="text-gray-600 mb-4">
+            <h2 className={styles.modal__title}>Check Your Email!</h2>
+            <p className={styles.modal__subtitle}>
               We've sent a verification link to:
             </p>
-            <p className="font-semibold text-blue-600 mb-6">{formData.email}</p>
+            <p className={styles.modal__email}>{formData.email}</p>
 
-            <div className="text-left mb-6">
-              <h3 className="font-semibold text-gray-800 mb-2">Next Steps:</h3>
-              <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
+            <div className={styles.modal__steps}>
+              <h3 className={styles.modal__stepsTitle}>Next Steps:</h3>
+              <ol className={styles.modal__stepsList}>
                 <li>Check your email inbox (and spam folder)</li>
                 <li>Click the verification link</li>
                 <li>You'll be automatically taken to your dashboard</li>
               </ol>
             </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
-              <p className="text-sm text-blue-800">
-                <span className="font-semibold">💡 Note:</span> Keep this tab
-                open and check your email in another tab. After clicking the
-                verification link, you'll be redirected here automatically.
+            <div className={styles.modal__notice}>
+              <p className={styles.modal__noticeText}>
+                <span className={styles.modal__noticeLabel}>💡 Note:</span> Keep
+                this tab open and check your email in another tab. After
+                clicking the verification link, you'll be redirected here
+                automatically.
               </p>
             </div>
 
             <button
               onClick={() => (window.location.href = "/login")}
-              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-3 px-4 rounded-xl transition-all duration-200 transform hover:scale-[1.02]"
+              className={styles.modal__button}
             >
               Go to Login Instead
             </button>
@@ -158,47 +158,45 @@ const Signup = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center p-4">
-      <div className="max-w-6xl w-full grid lg:grid-cols-2 gap-8 items-center">
+    <div className={styles.container}>
+      <div className={styles.grid}>
         {/* Left Column - SVG Illustration */}
-        <div className="hidden lg:flex flex-col items-center justify-center p-8">
-          <div className="mb-6">
-            <SvgDental className="drop-shadow-lg" />
+        <div className={styles.illustration}>
+          <div className={styles.illustration__svg}>
+            <SvgDental className={styles.illustration__icon} />
           </div>
-          <div className="text-center">
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">
+          <div className={styles.illustration__text}>
+            <h1 className={styles.illustration__title}>
               Join DentalCare Today
             </h1>
-            <p className="text-gray-600 text-lg">
+            <p className={styles.illustration__subtitle}>
               Start your journey to better dental health
             </p>
           </div>
         </div>
 
         {/* Right Column - Signup Form */}
-        <div className="w-full max-w-md mx-auto lg:mx-0">
-          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+        <div className={styles.formWrapper}>
+          <div className={styles.card}>
             {/* Mobile Logo */}
-            <div className="lg:hidden text-center mb-6">
-              <div className="w-20 h-20 mx-auto mb-3">
+            <div className={styles.mobileLogo}>
+              <div className={styles.mobileLogo__svg}>
                 <SvgDental />
               </div>
-              <h1 className="text-2xl font-bold text-gray-800">DentalCare</h1>
+              <h1 className={styles.mobileLogo__title}>DentalCare</h1>
             </div>
 
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">
-                Create your account
-              </h2>
-              <p className="text-gray-600">
+            <div className={styles.header}>
+              <h2 className={styles.header__title}>Create your account</h2>
+              <p className={styles.header__subtitle}>
                 Join thousands of satisfied patients
               </p>
             </div>
 
-            <form action={formAction} className="space-y-4">
+            <form action={formAction} className={styles.form}>
               {/* First Name & Last Name */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
+              <div className={styles.nameGrid}>
+                <div className={styles.inputGroup}>
                   <input
                     type="text"
                     name="first_name"
@@ -206,20 +204,18 @@ const Signup = () => {
                     autoComplete="given-name"
                     value={formData.first_name}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
-                      validationErrors.first_name
-                        ? "border-red-500 bg-red-50"
-                        : "border-gray-300"
+                    className={`${styles.input} ${
+                      validationErrors.first_name ? styles.input__error : ""
                     }`}
                     required
                   />
                   {validationErrors.first_name && (
-                    <p className="text-red-500 text-xs mt-1">
+                    <p className={styles.errorTextSmall}>
                       {validationErrors.first_name}
                     </p>
                   )}
                 </div>
-                <div className="space-y-1">
+                <div className={styles.inputGroup}>
                   <input
                     type="text"
                     name="last_name"
@@ -227,15 +223,13 @@ const Signup = () => {
                     autoComplete="family-name"
                     value={formData.last_name}
                     onChange={handleInputChange}
-                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
-                      validationErrors.last_name
-                        ? "border-red-500 bg-red-50"
-                        : "border-gray-300"
+                    className={`${styles.input} ${
+                      validationErrors.last_name ? styles.input__error : ""
                     }`}
                     required
                   />
                   {validationErrors.last_name && (
-                    <p className="text-red-500 text-xs mt-1">
+                    <p className={styles.errorTextSmall}>
                       {validationErrors.last_name}
                     </p>
                   )}
@@ -243,7 +237,7 @@ const Signup = () => {
               </div>
 
               {/* Email */}
-              <div className="space-y-1">
+              <div className={styles.inputGroup}>
                 <input
                   type="email"
                   name="email"
@@ -251,22 +245,18 @@ const Signup = () => {
                   autoComplete="email"
                   value={formData.email}
                   onChange={handleInputChange}
-                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
-                    validationErrors.email
-                      ? "border-red-500 bg-red-50"
-                      : "border-gray-300"
+                  className={`${styles.input} ${
+                    validationErrors.email ? styles.input__error : ""
                   }`}
                   required
                 />
                 {validationErrors.email && (
-                  <p className="text-red-500 text-sm mt-1">
-                    {validationErrors.email}
-                  </p>
+                  <p className={styles.errorText}>{validationErrors.email}</p>
                 )}
               </div>
 
               {/* Phone */}
-              <div className="space-y-1">
+              <div className={styles.inputGroup}>
                 <input
                   type="tel"
                   name="phone"
@@ -274,45 +264,41 @@ const Signup = () => {
                   placeholder="Phone number"
                   value={formData.phone}
                   onChange={handleInputChange}
-                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
-                    validationErrors.phone
-                      ? "border-red-500 bg-red-50"
-                      : "border-gray-300"
+                  className={`${styles.input} ${
+                    validationErrors.phone ? styles.input__error : ""
                   }`}
                   required
                 />
                 {validationErrors.phone && (
-                  <p className="text-red-500 text-sm mt-1">
-                    {validationErrors.phone}
-                  </p>
+                  <p className={styles.errorText}>{validationErrors.phone}</p>
                 )}
               </div>
 
               {/* Password */}
-              <div className="space-y-2">
-                <div className="space-y-1 relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    name="password"
-                    placeholder="Password (min 8 characters)"
-                    value={formData.password}
-                    onChange={handleInputChange}
-                    className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
-                      validationErrors.password
-                        ? "border-red-500 bg-red-50 pr-10"
-                        : "border-gray-300 pr-10"
-                    }`}
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                  </button>
+              <div className={styles.passwordSection}>
+                <div className={styles.inputGroup}>
+                  <div className={styles.passwordWrapper}>
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      name="password"
+                      placeholder="Password (min 8 characters)"
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      className={`${styles.input} ${styles.input__password} ${
+                        validationErrors.password ? styles.input__error : ""
+                      }`}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className={styles.passwordToggle}
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                  </div>
                   {validationErrors.password && (
-                    <p className="text-red-500 text-sm mt-1">
+                    <p className={styles.errorText}>
                       {validationErrors.password}
                     </p>
                   )}
@@ -320,24 +306,16 @@ const Signup = () => {
 
                 {/* Password Strength Indicator */}
                 {formData.password && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <div className={styles.strengthIndicator}>
+                    <div className={styles.strengthBar}>
+                      <div className={styles.strengthBar__track}>
                         <div
-                          className={`h-full transition-all duration-300 ${
-                            passwordStrength === 0
-                              ? "bg-red-500"
-                              : passwordStrength === 1
-                              ? "bg-red-500 w-1/4"
-                              : passwordStrength === 2
-                              ? "bg-yellow-500 w-1/2"
-                              : passwordStrength === 3
-                              ? "bg-blue-500 w-3/4"
-                              : "bg-green-500"
+                          className={`${styles.strengthBar__fill} ${
+                            styles[`strengthBar__fill--${passwordStrength}`]
                           }`}
                         ></div>
                       </div>
-                      <span className="text-xs text-gray-500">
+                      <span className={styles.strengthBar__label}>
                         {passwordStrength === 0
                           ? "Very weak"
                           : passwordStrength === 1
@@ -350,66 +328,90 @@ const Signup = () => {
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="flex items-center gap-1">
+                    <div className={styles.strengthChecks}>
+                      <div className={styles.strengthCheck}>
                         {formData.password.length >= 8 ? (
-                          <CheckCircle size={14} className="text-green-500" />
+                          <CheckCircle
+                            size={14}
+                            className={styles.strengthCheck__iconActive}
+                          />
                         ) : (
-                          <XCircle size={14} className="text-gray-400" />
+                          <XCircle
+                            size={14}
+                            className={styles.strengthCheck__iconInactive}
+                          />
                         )}
                         <span
                           className={
                             formData.password.length >= 8
-                              ? "text-green-600"
-                              : "text-gray-500"
+                              ? styles.strengthCheck__textActive
+                              : styles.strengthCheck__textInactive
                           }
                         >
                           8+ characters
                         </span>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className={styles.strengthCheck}>
                         {/[A-Z]/.test(formData.password) ? (
-                          <CheckCircle size={14} className="text-green-500" />
+                          <CheckCircle
+                            size={14}
+                            className={styles.strengthCheck__iconActive}
+                          />
                         ) : (
-                          <XCircle size={14} className="text-gray-400" />
+                          <XCircle
+                            size={14}
+                            className={styles.strengthCheck__iconInactive}
+                          />
                         )}
                         <span
                           className={
                             /[A-Z]/.test(formData.password)
-                              ? "text-green-600"
-                              : "text-gray-500"
+                              ? styles.strengthCheck__textActive
+                              : styles.strengthCheck__textInactive
                           }
                         >
                           Uppercase letter
                         </span>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className={styles.strengthCheck}>
                         {/[0-9]/.test(formData.password) ? (
-                          <CheckCircle size={14} className="text-green-500" />
+                          <CheckCircle
+                            size={14}
+                            className={styles.strengthCheck__iconActive}
+                          />
                         ) : (
-                          <XCircle size={14} className="text-gray-400" />
+                          <XCircle
+                            size={14}
+                            className={styles.strengthCheck__iconInactive}
+                          />
                         )}
                         <span
                           className={
                             /[0-9]/.test(formData.password)
-                              ? "text-green-600"
-                              : "text-gray-500"
+                              ? styles.strengthCheck__textActive
+                              : styles.strengthCheck__textInactive
                           }
                         >
                           Number
                         </span>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className={styles.strengthCheck}>
                         {/[^A-Za-z0-9]/.test(formData.password) ? (
-                          <CheckCircle size={14} className="text-green-500" />
+                          <CheckCircle
+                            size={14}
+                            className={styles.strengthCheck__iconActive}
+                          />
                         ) : (
-                          <XCircle size={14} className="text-gray-400" />
+                          <XCircle
+                            size={14}
+                            className={styles.strengthCheck__iconInactive}
+                          />
                         )}
                         <span
                           className={
                             /[^A-Za-z0-9]/.test(formData.password)
-                              ? "text-green-600"
-                              : "text-gray-500"
+                              ? styles.strengthCheck__textActive
+                              : styles.strengthCheck__textInactive
                           }
                         >
                           Special character
@@ -421,33 +423,35 @@ const Signup = () => {
               </div>
 
               {/* Confirm Password */}
-              <div className="space-y-1 relative">
-                <input
-                  type={showConfirmPassword ? "text" : "password"}
-                  name="confirmPassword"
-                  placeholder="Confirm password"
-                  value={formData.confirmPassword}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
-                    validationErrors.confirmPassword
-                      ? "border-red-500 bg-red-50 pr-10"
-                      : "border-gray-300 pr-10"
-                  }`}
-                  required
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                >
-                  {showConfirmPassword ? (
-                    <EyeOff size={20} />
-                  ) : (
-                    <Eye size={20} />
-                  )}
-                </button>
+              <div className={styles.inputGroup}>
+                <div className={styles.passwordWrapper}>
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    name="confirmPassword"
+                    placeholder="Confirm password"
+                    value={formData.confirmPassword}
+                    onChange={handleInputChange}
+                    className={`${styles.input} ${styles.input__password} ${
+                      validationErrors.confirmPassword
+                        ? styles.input__error
+                        : ""
+                    }`}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className={styles.passwordToggle}
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff size={20} />
+                    ) : (
+                      <Eye size={20} />
+                    )}
+                  </button>
+                </div>
                 {validationErrors.confirmPassword && (
-                  <p className="text-red-500 text-sm mt-1">
+                  <p className={styles.errorText}>
                     {validationErrors.confirmPassword}
                   </p>
                 )}
@@ -455,12 +459,9 @@ const Signup = () => {
 
               {/* Error Message */}
               {(error || state?.error) && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
-                  <AlertCircle
-                    size={18}
-                    className="text-red-600 mt-0.5 flex-shrink-0"
-                  />
-                  <p className="text-red-600 text-sm">
+                <div className={styles.errorBox}>
+                  <AlertCircle size={18} className={styles.errorBox__icon} />
+                  <p className={styles.errorBox__text}>
                     {error || state?.error}
                   </p>
                 </div>
@@ -470,16 +471,16 @@ const Signup = () => {
               <button
                 type="submit"
                 disabled={loading || !isLoaded}
-                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-3 px-4 rounded-xl transition-all duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transform hover:scale-[1.02] disabled:transform-none"
+                className={styles.submitButton}
               >
                 {loading ? (
-                  <div className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
+                  <div className={styles.loadingWrapper}>
+                    <div className={styles.spinner}></div>
                     Creating Account...
                   </div>
                 ) : isPending ? (
-                  <div className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
+                  <div className={styles.loadingWrapper}>
+                    <div className={styles.spinner}></div>
                     Signing up...
                   </div>
                 ) : (
@@ -489,37 +490,30 @@ const Signup = () => {
             </form>
 
             {/* Terms and Privacy Notice */}
-            <div className="mt-4 text-center">
-              <p className="text-xs text-gray-500">
+            <div className={styles.terms}>
+              <p className={styles.terms__text}>
                 By creating an account, you agree to our{" "}
-                <a href="/terms" className="text-blue-600 hover:underline">
+                <a href="/terms" className={styles.terms__link}>
                   Terms of Service
                 </a>{" "}
                 and{" "}
-                <a href="/privacy" className="text-blue-600 hover:underline">
+                <a href="/privacy" className={styles.terms__link}>
                   Privacy Policy
                 </a>
               </p>
             </div>
 
             {/* Footer Links */}
-            <div className="mt-6">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">
-                    Already have an account?
-                  </span>
+            <div className={styles.footer}>
+              <div className={styles.divider}>
+                <div className={styles.divider__line}></div>
+                <div className={styles.divider__text}>
+                  <span>Already have an account?</span>
                 </div>
               </div>
 
-              <div className="text-center mt-4">
-                <a
-                  href="/login"
-                  className="w-full inline-block bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-3 px-4 rounded-xl transition-all duration-200 transform hover:scale-[1.02]"
-                >
+              <div className={styles.footer__action}>
+                <a href="/login" className={styles.loginButton}>
                   Sign in instead
                 </a>
               </div>
