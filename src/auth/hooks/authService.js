@@ -355,7 +355,7 @@ export const authService = {
     }
   },
 
-  // 🔥 FIXED: Patient profile update
+  // Patient profile update
   async updatePatientProfile(profileData, patientData) {
     try {
       const { data, error } = await supabase.rpc('update_patient_profile', {

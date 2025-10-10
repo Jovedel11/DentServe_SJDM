@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthProvider";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -12,9 +12,11 @@ const ResetPassword = () => {
   const [success, setSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [sessionCheckAttempts, setSessionCheckAttempts] = useState(0);
 
   const { updatePassword, loading } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
     checkResetSession();
@@ -22,20 +24,96 @@ const ResetPassword = () => {
 
   const checkResetSession = async () => {
     try {
+      console.log(
+        "🔍 Checking reset session... Attempt:",
+        sessionCheckAttempts + 1
+      );
+
+      // ✅ Check for hash params (from email link)
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+      const type = hashParams.get("type");
+
+      console.log("📧 Hash params:", {
+        hasAccessToken: !!accessToken,
+        hasRefreshToken: !!refreshToken,
+        type,
+      });
+
+      // ✅ If we have tokens in the URL, set the session manually
+      if (accessToken && refreshToken && type === "recovery") {
+        console.log("🔐 Setting session from URL tokens...");
+
+        const { data, error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (sessionError) {
+          console.error("❌ Session error:", sessionError);
+          throw sessionError;
+        }
+
+        console.log("✅ Session established from URL tokens");
+        setIsResetting(true);
+
+        // Clean up URL
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname
+        );
+        return;
+      }
+
+      // ✅ Check for existing session
       const {
         data: { session },
         error,
       } = await supabase.auth.getSession();
 
-      if (error || !session) {
-        navigate("/forgot-password");
+      console.log("📊 Session check:", {
+        hasSession: !!session,
+        error: error?.message,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (session) {
+        console.log("✅ Valid session found");
+        setIsResetting(true);
         return;
       }
 
-      setIsResetting(true);
+      // ✅ Retry logic - sometimes session takes a moment
+      if (sessionCheckAttempts < 3) {
+        console.log("⏳ No session yet, retrying in 1 second...");
+        setTimeout(() => {
+          setSessionCheckAttempts((prev) => prev + 1);
+          checkResetSession();
+        }, 1000);
+        return;
+      }
+
+      // ✅ After retries, redirect
+      console.log(
+        "❌ No valid session after retries, redirecting to forgot-password"
+      );
+      setError("Reset link expired or invalid. Please request a new one.");
+
+      setTimeout(() => {
+        navigate("/forgot-password");
+      }, 2000);
     } catch (error) {
-      console.error("Error checking reset session:", error);
-      navigate("/forgot-password");
+      console.error("❌ Error checking reset session:", error);
+      setError("Failed to verify reset link. Please request a new one.");
+
+      setTimeout(() => {
+        navigate("/forgot-password");
+      }, 2000);
     }
   };
 
@@ -92,6 +170,41 @@ const ResetPassword = () => {
       met: /\d/.test(password),
     },
   ];
+
+  if (error && !isResetting) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--primary))] via-[hsl(var(--primary-foreground))]/10 to-background flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="bg-card rounded-3xl shadow-2xl p-8 w-full max-w-md text-center border border-border/50"
+        >
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-destructive/10 rounded-2xl mb-4">
+            <svg
+              className="w-8 h-8 text-destructive"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-foreground mb-2">
+            Invalid Reset Link
+          </h2>
+          <p className="text-muted-foreground mb-4">{error}</p>
+          <p className="text-sm text-muted-foreground">
+            Redirecting to forgot password...
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
 
   if (!isResetting) {
     return (

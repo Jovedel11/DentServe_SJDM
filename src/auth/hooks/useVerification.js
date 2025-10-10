@@ -1,5 +1,14 @@
 import { supabase } from '@/lib/supabaseClient'
 
+const getRedirectURL = (path = '/auth-callback?type=patient') => {
+  // Use environment variable for production
+  if (import.meta.env.PROD && import.meta.env.VITE_SITE_URL) {
+    return `${import.meta.env.VITE_SITE_URL}${path}`;
+  }
+  // Fallback for development
+  return `${window.location.origin}${path}`;
+};
+
 export const useVerification = {
   // Handle email verification callback
   async handleEmailVerification(token, type) {
@@ -13,12 +22,6 @@ export const useVerification = {
         throw new Error(verifyError?.message || 'Email verification failed')
       }
 
-      // Email verification automatically triggers database functions:
-      // 1. Updates email_verified = true in public.users
-      // 2. For patients: they can now access the app
-      // 3. For staff: they need to complete profile setup
-      // 4. Updates metadata with verification status
-
       console.log('✅ Email verification successful:', data.user?.email)
       return { success: true, user: data.user }
 
@@ -28,25 +31,39 @@ export const useVerification = {
     }
   },
 
+
   // Resend email verification
   async resendEmailVerification() {
     try {
+      console.log('🔄 Resending verification email...');
+      
       const { data: { user } } = await supabase.auth.getUser()
       
       if (!user?.email) {
         throw new Error('No user email found')
       }
 
+      // ✅ Get the user type from metadata to set correct redirect
+      const userType = user.user_metadata?.user_type || 'patient';
+      const redirectURL = getRedirectURL(`/auth-callback?type=${userType}`);
+      
+      console.log('📧 Resend redirect URL:', redirectURL);
+      console.log('👤 User email:', user.email);
+
       const { data, error: resendError } = await supabase.auth.resend({
         type: 'signup',
-        email: user.email
+        email: user.email,
+        options: {
+          emailRedirectTo: redirectURL 
+        }
       })
 
       if (resendError) {
+        console.error('❌ Resend error:', resendError);
         throw new Error(resendError?.message || 'Failed to resend verification email')
       }
 
-      console.log('✅ Verification email resent to:', user.email)
+      console.log('✅ Verification email resent successfully to:', user.email)
       return { success: true, message: 'Verification email sent successfully' }
 
     } catch (error) {
