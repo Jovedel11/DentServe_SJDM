@@ -61,7 +61,6 @@ import UnauthorizedPage from "./core/components/ErrorFolder/UnauthorizedPage";
 // Public pages
 const Home = lazy(() => import("./public/pages/Home"));
 const About = lazy(() => import("./public/pages/About"));
-const Service = lazy(() => import("./public/pages/Service"));
 const Contact = lazy(() => import("./public/pages/Contact"));
 
 // Auth pages
@@ -162,7 +161,6 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: withSuspense(Home) },
           { path: "about", element: withSuspense(About) },
-          { path: "services", element: withSuspense(Service) },
           { path: "contact", element: withSuspense(Contact) },
           { path: "login", element: withSuspense(Login) },
           { path: "signup", element: withSuspense(Signup) },
