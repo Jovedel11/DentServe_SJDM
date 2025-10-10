@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthProvider";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -12,11 +12,13 @@ const ResetPassword = () => {
   const [success, setSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [sessionCheckAttempts, setSessionCheckAttempts] = useState(0);
 
   const { updatePassword, loading } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+
+  // ✅ Use ref to track attempts (not state)
+  const attemptsRef = useRef(0);
+  const maxAttempts = 3;
 
   useEffect(() => {
     checkResetSession();
@@ -24,10 +26,8 @@ const ResetPassword = () => {
 
   const checkResetSession = async () => {
     try {
-      console.log(
-        "🔍 Checking reset session... Attempt:",
-        sessionCheckAttempts + 1
-      );
+      attemptsRef.current += 1;
+      console.log("🔍 Checking reset session... Attempt:", attemptsRef.current);
 
       // ✅ Check for hash params (from email link)
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -70,16 +70,16 @@ const ResetPassword = () => {
       // ✅ Check for existing session
       const {
         data: { session },
-        error,
+        error: sessionError,
       } = await supabase.auth.getSession();
 
       console.log("📊 Session check:", {
         hasSession: !!session,
-        error: error?.message,
+        error: sessionError?.message,
       });
 
-      if (error) {
-        throw error;
+      if (sessionError) {
+        throw sessionError;
       }
 
       if (session) {
@@ -88,32 +88,33 @@ const ResetPassword = () => {
         return;
       }
 
-      // ✅ Retry logic - sometimes session takes a moment
-      if (sessionCheckAttempts < 3) {
-        console.log("⏳ No session yet, retrying in 1 second...");
+      // ✅ Check if we should retry
+      if (attemptsRef.current < maxAttempts) {
+        console.log(
+          `⏳ No session yet, retrying in 1 second... (${attemptsRef.current}/${maxAttempts})`
+        );
         setTimeout(() => {
-          setSessionCheckAttempts((prev) => prev + 1);
           checkResetSession();
         }, 1000);
         return;
       }
 
-      // ✅ After retries, redirect
+      // ✅ Max attempts reached - show error and redirect
       console.log(
-        "❌ No valid session after retries, redirecting to forgot-password"
+        `❌ No valid session after ${maxAttempts} attempts, redirecting to forgot-password`
       );
-      setError("Reset link expired or invalid. Please request a new one.");
+      setError("Reset link is invalid or expired. Please request a new one.");
 
       setTimeout(() => {
         navigate("/forgot-password");
-      }, 2000);
+      }, 3000);
     } catch (error) {
       console.error("❌ Error checking reset session:", error);
       setError("Failed to verify reset link. Please request a new one.");
 
       setTimeout(() => {
         navigate("/forgot-password");
-      }, 2000);
+      }, 3000);
     }
   };
 
@@ -171,17 +172,18 @@ const ResetPassword = () => {
     },
   ];
 
+  // ✅ Show error state if there's an error
   if (error && !isResetting) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[hsl(var(--primary))] via-[hsl(var(--primary-foreground))]/10 to-background flex items-center justify-center p-4">
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
           className="bg-card rounded-3xl shadow-2xl p-8 w-full max-w-md text-center border border-border/50"
         >
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-destructive/10 rounded-2xl mb-4">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-destructive/10 rounded-2xl mb-4">
             <svg
-              className="w-8 h-8 text-destructive"
+              className="w-10 h-10 text-destructive"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -194,13 +196,21 @@ const ResetPassword = () => {
               />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-foreground mb-2">
+          <h2 className="text-2xl font-bold text-foreground mb-3">
             Invalid Reset Link
           </h2>
           <p className="text-muted-foreground mb-4">{error}</p>
-          <p className="text-sm text-muted-foreground">
-            Redirecting to forgot password...
-          </p>
+          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 mb-4">
+            <p className="text-sm text-muted-foreground">
+              Redirecting you to request a new reset link...
+            </p>
+          </div>
+          <button
+            onClick={() => navigate("/forgot-password")}
+            className="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            Go to Forgot Password
+          </button>
         </motion.div>
       </div>
     );
