@@ -8728,8 +8728,12 @@ SELECT jsonb_build_object(
                 'total_visits_planned', tp.total_visits_planned,
                 'progress_percentage', tp.progress_percentage,
                 'next_visit_due', tp.next_visit_date,
-                -- ✅ ADD THESE:
-                'next_visit_time', tp.next_visit_time,
+                'next_visit_time', (
+                SELECT a.appointment_time 
+                FROM appointments a 
+                WHERE a.id = tp.next_visit_appointment_id
+                LIMIT 1
+                ),
                 'assigned_doctor_id', tp.assigned_doctor_id,
                 'assigned_doctor', CASE 
                     WHEN d.id IS NOT NULL THEN jsonb_build_object(

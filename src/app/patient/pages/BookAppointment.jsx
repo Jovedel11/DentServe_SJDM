@@ -106,7 +106,7 @@ const BookAppointment = () => {
     sameDayConflict,
     sameDayConflictDetails,
     patientReliability,
-    bookingError, // ✅ NEW
+    bookingError,
 
     // Treatment Plan States
     ongoingTreatments,
@@ -140,7 +140,8 @@ const BookAppointment = () => {
     updateBookingData,
     getCancellationInfo,
     handleClearDate,
-    clearBookingError, // ✅ NEW
+    clearBookingError,
+    handleTreatmentPlanSelect, // ✅ NEW
   } = useBookingFlow();
 
   // Auto-scroll to top on step change
@@ -151,7 +152,7 @@ const BookAppointment = () => {
   // Check for critical blockers
   useEffect(() => {
     const checkBlockers = () => {
-      // Same-day conflict blocker (only if no bookingError is set)
+      // Same-day conflict blocker
       if (
         !bookingError &&
         bookingStep !== "clinic" &&
@@ -350,7 +351,7 @@ const BookAppointment = () => {
         />
       )}
 
-      {/* ✅ ENHANCED: Multi-Purpose Error/Blocker Dialog */}
+      {/* Error/Blocker Dialog */}
       <AlertDialog
         open={showBlockerDialog || Boolean(bookingError)}
         onOpenChange={(open) => {
@@ -423,7 +424,6 @@ const BookAppointment = () => {
               {bookingError?.message || blockerDetails?.message}
             </AlertDialogDescription>
 
-            {/* Show suggestion if available */}
             {(bookingError?.suggestion || blockerDetails?.action) && (
               <div className="mt-3 p-3 bg-muted rounded-lg">
                 <p className="text-sm text-muted-foreground flex items-center gap-2">
@@ -433,7 +433,7 @@ const BookAppointment = () => {
               </div>
             )}
 
-            {/* Show conflict details if same-day conflict */}
+            {/* Conflict details */}
             {bookingError?.type === "same_day_conflict" &&
               bookingError?.data && (
                 <div className="mt-3 p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
@@ -456,17 +456,11 @@ const BookAppointment = () => {
                       <span className="text-muted-foreground">Time:</span>
                       {bookingError.data.time}
                     </p>
-                    <p className="flex items-center gap-2">
-                      <span className="text-muted-foreground">Status:</span>
-                      <Badge variant="outline" className="capitalize">
-                        {bookingError.data.status}
-                      </Badge>
-                    </p>
                   </div>
                 </div>
               )}
 
-            {/* Show clinic hours info for closed/timing errors */}
+            {/* Clinic hours info */}
             {(bookingError?.type === "clinic_closed" ||
               bookingError?.type === "before_opening" ||
               bookingError?.type === "after_closing") &&
@@ -578,7 +572,7 @@ const BookAppointment = () => {
           />
         </div>
 
-        {/* Inline contextual information */}
+        {/* Contextual Alerts */}
         <div className="space-y-3 sm:space-y-4 mb-6 sm:mb-8">
           {/* High Risk Warning */}
           {bookingStep === "confirm" &&
@@ -597,21 +591,6 @@ const BookAppointment = () => {
                   </div>
                 </CardContent>
               </Card>
-            )}
-
-          {/* Treatment Link Prompt */}
-          {bookingStep === "services" &&
-            showTreatmentLinkPrompt &&
-            hasOngoingTreatments &&
-            ongoingTreatments.length > 0 && (
-              <div className="animate-in slide-in-from-top-2 fade-in-50">
-                <TreatmentLinkPrompt
-                  treatments={ongoingTreatments}
-                  selectedTreatmentId={bookingData.treatmentPlanId}
-                  onSelectTreatment={selectTreatmentPlan}
-                  onDismiss={dismissTreatmentPrompt}
-                />
-              </div>
             )}
 
           {/* Treatment Linked Badge */}
@@ -678,6 +657,7 @@ const BookAppointment = () => {
                   clinicsLoading={clinicsLoading}
                   selectedClinic={bookingData.clinic}
                   onClinicSelect={handleClinicSelect}
+                  profile={profile} // ✅ Pass profile for same-day check
                 />
               )}
 
@@ -687,6 +667,9 @@ const BookAppointment = () => {
                   selectedServices={bookingData.services}
                   onServiceToggle={handleServiceToggle}
                   isConsultationOnly={isConsultationOnly}
+                  ongoingTreatments={ongoingTreatments}
+                  onTreatmentSelect={handleTreatmentPlanSelect} // ✅ Pass handler
+                  selectedTreatment={selectedTreatment} // ✅ Pass selected
                 />
               )}
 
@@ -700,6 +683,7 @@ const BookAppointment = () => {
                   consultationCheckResult={consultationCheckResult}
                   skipConsultation={skipConsultation}
                   setSkipConsultation={setSkipConsultation}
+                  selectedTreatment={selectedTreatment} // ✅ Pass treatment
                 />
               )}
 
@@ -714,6 +698,8 @@ const BookAppointment = () => {
                   sameDayConflict={sameDayConflict}
                   sameDayConflictDetails={sameDayConflictDetails}
                   bookingLimitsInfo={bookingLimitsInfo}
+                  appointmentLimitCheck={appointmentLimitCheck} // ✅ Pass limit check
+                  selectedTreatment={selectedTreatment} // ✅ Pass treatment
                 />
               )}
 

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useCallback } from "react";
 import {
   MapPin,
   Phone,
@@ -8,12 +8,14 @@ import {
   Star,
   Navigation,
   Building2,
-  Calendar,
   Circle,
+  AlertTriangle,
+  Ban,
 } from "lucide-react";
 import { Button } from "@/core/components/ui/button";
 import { Card, CardContent } from "@/core/components/ui/card";
 import { Badge } from "@/core/components/ui/badge";
+import { Alert } from "@/core/components/ui/alert";
 import { useIsMobile } from "@/core/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
@@ -22,10 +24,11 @@ const ClinicSelectionStep = ({
   clinicsLoading,
   selectedClinic,
   onClinicSelect,
+  profile = null, // ✅ NEW: For same-day check
 }) => {
   const isMobile = useIsMobile();
 
-  const formatOperatingHours = (operatingHours) => {
+  const formatOperatingHours = useCallback((operatingHours) => {
     if (!operatingHours || typeof operatingHours !== "object") {
       return { text: "Hours not available", isOpen: false };
     }
@@ -85,7 +88,44 @@ const ClinicSelectionStep = ({
       console.error("Error formatting hours:", error);
       return { text: "Hours not available", isOpen: false };
     }
-  };
+  }, []);
+
+  // ✅ NEW: Check if clinic can be booked
+  const canBookClinic = useCallback(
+    (clinic, hoursInfo) => {
+      // ✅ RULE 1: Clinic must be open
+      if (!hoursInfo.isOpen) {
+        return {
+          allowed: false,
+          reason: "Clinic is currently closed",
+          type: "closed",
+          detail: `Opens at ${hoursInfo.openTime || "scheduled time"}`,
+        };
+      }
+
+      // ✅ RULE 2: Check same-day appointment (from profile statistics)
+      const today = new Date().toISOString().split("T")[0];
+      const hasAppointmentToday =
+        profile?.profile?.statistics?.upcoming_appointments?.some((apt) => {
+          const aptDate = new Date(apt.appointment_date)
+            .toISOString()
+            .split("T")[0];
+          return aptDate === today;
+        });
+
+      if (hasAppointmentToday) {
+        return {
+          allowed: false,
+          reason: "You already have an appointment today",
+          type: "same_day_limit",
+          detail: "Only one appointment per day allowed across all clinics",
+        };
+      }
+
+      return { allowed: true };
+    },
+    [profile]
+  );
 
   if (clinicsLoading) {
     return (
@@ -134,11 +174,45 @@ const ClinicSelectionStep = ({
         </div>
       </div>
 
+      {/* Policy Alerts */}
+      <div className="space-y-3 mb-6">
+        {/* 1 Appointment Per Day Policy */}
+        <Alert className="border-blue-200 dark:border-blue-800 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20">
+          <AlertTriangle className="h-5 w-5 text-blue-600 flex-shrink-0" />
+          <div className="flex-1">
+            <strong className="text-sm sm:text-base text-blue-900 dark:text-blue-100 block mb-1">
+              📅 One Appointment Per Day Policy
+            </strong>
+            <p className="text-xs sm:text-sm text-blue-800 dark:text-blue-200">
+              You can only book <strong>one appointment per day</strong> across
+              all clinics. If you already have an appointment today, closed
+              clinics will be unavailable.
+            </p>
+          </div>
+        </Alert>
+
+        {/* Operating Hours Info */}
+        <Alert className="border-green-200 dark:border-green-800 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20">
+          <Clock className="h-5 w-5 text-green-600 flex-shrink-0" />
+          <div className="flex-1">
+            <strong className="text-sm sm:text-base text-green-900 dark:text-green-100 block mb-1">
+              🕒 Operating Hours Enforcement
+            </strong>
+            <p className="text-xs sm:text-sm text-green-800 dark:text-green-200">
+              Only open clinics can be selected. Closed clinics are
+              automatically disabled.
+            </p>
+          </div>
+        </Alert>
+      </div>
+
       {/* Clinics Grid */}
       <div className="grid gap-4 sm:gap-5">
         {clinics.map((clinic) => {
           const isSelected = selectedClinic?.id === clinic.id;
           const hoursInfo = formatOperatingHours(clinic.operating_hours);
+          const bookingCheck = canBookClinic(clinic, hoursInfo);
+          const isDisabled = !bookingCheck.allowed;
           const hasImage = clinic.image_url || clinic.image;
           const imageUrl =
             clinic.image_url || clinic.image || "/assets/images/dental.png";
@@ -147,13 +221,19 @@ const ClinicSelectionStep = ({
             <Card
               key={clinic.id}
               className={cn(
-                "cursor-pointer transition-all duration-200 hover:shadow-lg overflow-hidden",
-                "border-2 touch-manipulation",
-                isSelected
+                "transition-all duration-200 overflow-hidden border-2 touch-manipulation relative",
+                isDisabled
+                  ? "opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-900/50"
+                  : "cursor-pointer hover:shadow-lg",
+                isSelected && !isDisabled
                   ? "ring-2 ring-primary border-primary shadow-md"
                   : "border-border hover:border-primary/50"
               )}
-              onClick={() => onClinicSelect(clinic)}
+              onClick={() => {
+                if (!isDisabled) {
+                  onClinicSelect(clinic);
+                }
+              }}
             >
               <CardContent className="p-0">
                 <div
@@ -172,7 +252,10 @@ const ClinicSelectionStep = ({
                     <img
                       src={imageUrl}
                       alt={clinic.name}
-                      className="w-full h-full object-cover"
+                      className={cn(
+                        "w-full h-full object-cover transition-all",
+                        isDisabled && "grayscale"
+                      )}
                       onError={(e) => {
                         e.target.src = "/assets/images/dental.png";
                       }}
@@ -220,6 +303,16 @@ const ClinicSelectionStep = ({
                           </Badge>
                         </div>
                       )}
+
+                    {/* ✅ Disabled Overlay */}
+                    {isDisabled && (
+                      <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center">
+                        <div className="bg-red-500/90 text-white px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2">
+                          <Ban className="w-4 h-4" />
+                          Unavailable
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Clinic Info */}
@@ -230,7 +323,8 @@ const ClinicSelectionStep = ({
                         <h3
                           className={cn(
                             "font-bold text-foreground mb-1 truncate",
-                            isMobile ? "text-lg" : "text-xl"
+                            isMobile ? "text-lg" : "text-xl",
+                            isDisabled && "text-muted-foreground"
                           )}
                         >
                           {clinic.name}
@@ -256,7 +350,7 @@ const ClinicSelectionStep = ({
                         )}
                       </div>
 
-                      {isSelected && (
+                      {isSelected && !isDisabled && (
                         <CheckCircle2 className="w-6 h-6 text-primary flex-shrink-0" />
                       )}
                     </div>
@@ -305,6 +399,17 @@ const ClinicSelectionStep = ({
                       </div>
                     </div>
 
+                    {/* ✅ Blocking Reason */}
+                    {isDisabled && (
+                      <Alert variant="destructive" className="mt-3">
+                        <AlertTriangle className="h-4 w-4" />
+                        <div className="text-xs">
+                          <strong>{bookingCheck.reason}</strong>
+                          <p className="mt-1 text-xs">{bookingCheck.detail}</p>
+                        </div>
+                      </Alert>
+                    )}
+
                     {/* Action Button */}
                     <Button
                       variant={isSelected ? "default" : "outline"}
@@ -313,15 +418,23 @@ const ClinicSelectionStep = ({
                         "w-full sm:w-auto mt-2",
                         isSelected && "shadow-md"
                       )}
+                      disabled={isDisabled}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onClinicSelect(clinic);
+                        if (!isDisabled) {
+                          onClinicSelect(clinic);
+                        }
                       }}
                     >
-                      {isSelected ? (
+                      {isSelected && !isDisabled ? (
                         <>
                           <CheckCircle2 className="w-4 h-4 mr-2" />
                           Selected
+                        </>
+                      ) : isDisabled ? (
+                        <>
+                          <Ban className="w-4 h-4 mr-2" />
+                          Unavailable
                         </>
                       ) : (
                         "Select Clinic"
