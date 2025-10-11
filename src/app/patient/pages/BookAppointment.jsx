@@ -14,6 +14,7 @@ import {
   X,
   AlertTriangle,
   Info,
+  Clock,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/core/components/ui/card";
@@ -23,13 +24,15 @@ import { Badge } from "@/core/components/ui/badge";
 import Toast from "@/core/components/ui/toast";
 import ProgressIndicator from "@/core/components/ui/process-indicator";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/core/components/ui/dialog";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/core/components/ui/alert-dialog";
 
 import ClinicSelectionStep from "../components/booking/clinic-selection-step";
 import ServicesSelectionStep from "../components/booking/service-selection-step";
@@ -103,6 +106,7 @@ const BookAppointment = () => {
     sameDayConflict,
     sameDayConflictDetails,
     patientReliability,
+    bookingError, // ✅ NEW
 
     // Treatment Plan States
     ongoingTreatments,
@@ -136,18 +140,20 @@ const BookAppointment = () => {
     updateBookingData,
     getCancellationInfo,
     handleClearDate,
+    clearBookingError, // ✅ NEW
   } = useBookingFlow();
 
-  // ✅ Auto-scroll to top on step change
+  // Auto-scroll to top on step change
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [bookingStep]);
 
-  // ✅ Check for critical blockers and show dialog instead of alerts
+  // Check for critical blockers
   useEffect(() => {
     const checkBlockers = () => {
-      // Same-day conflict blocker
+      // Same-day conflict blocker (only if no bookingError is set)
       if (
+        !bookingError &&
         bookingStep !== "clinic" &&
         bookingStep !== "services" &&
         sameDayConflict
@@ -171,6 +177,7 @@ const BookAppointment = () => {
 
       // Limit reached blocker
       if (
+        !bookingError &&
         bookingStep === "confirm" &&
         appointmentLimitCheck &&
         !appointmentLimitCheck.allowed
@@ -196,12 +203,13 @@ const BookAppointment = () => {
     sameDayConflict,
     sameDayConflictDetails,
     appointmentLimitCheck,
+    bookingError,
   ]);
 
   const currentStep = BOOKING_STEPS[currentStepIndex] || BOOKING_STEPS[0];
   const StepIcon = currentStep.icon;
 
-  // ✅ Access control with better UX
+  // Access control
   if (!isPatient) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -229,7 +237,7 @@ const BookAppointment = () => {
     );
   }
 
-  // ✅ Enhanced success state with better animations
+  // Success state
   if (bookingSuccess) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center p-4">
@@ -342,44 +350,186 @@ const BookAppointment = () => {
         />
       )}
 
-      {/* ✅ Blocker Dialog (Replaces Alerts) */}
-      <Dialog open={showBlockerDialog} onOpenChange={setShowBlockerDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+      {/* ✅ ENHANCED: Multi-Purpose Error/Blocker Dialog */}
+      <AlertDialog
+        open={showBlockerDialog || Boolean(bookingError)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowBlockerDialog(false);
+            clearBookingError();
+          }
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
             <div className="flex items-center gap-3 mb-2">
-              {blockerDetails?.icon && (
-                <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
-                  <blockerDetails.icon className="w-6 h-6 text-destructive" />
+              {(blockerDetails?.icon || bookingError) && (
+                <div
+                  className={cn(
+                    "w-12 h-12 rounded-full flex items-center justify-center",
+                    bookingError?.type === "limit_reached"
+                      ? "bg-amber-100 dark:bg-amber-950"
+                      : bookingError?.type === "same_day_conflict"
+                      ? "bg-orange-100 dark:bg-orange-950"
+                      : bookingError?.type === "clinic_closed"
+                      ? "bg-blue-100 dark:bg-blue-950"
+                      : bookingError?.type === "before_opening" ||
+                        bookingError?.type === "after_closing"
+                      ? "bg-yellow-100 dark:bg-yellow-950"
+                      : bookingError?.type === "doctor_unavailable" ||
+                        bookingError?.type === "doctor_not_at_clinic"
+                      ? "bg-red-100 dark:bg-red-950"
+                      : "bg-destructive/10"
+                  )}
+                >
+                  {blockerDetails?.icon ? (
+                    <blockerDetails.icon
+                      className={cn(
+                        "w-6 h-6",
+                        bookingError?.type === "limit_reached"
+                          ? "text-amber-600"
+                          : bookingError?.type === "same_day_conflict"
+                          ? "text-orange-600"
+                          : "text-destructive"
+                      )}
+                    />
+                  ) : (
+                    <AlertTriangle
+                      className={cn(
+                        "w-6 h-6",
+                        bookingError?.type === "limit_reached"
+                          ? "text-amber-600"
+                          : bookingError?.type === "same_day_conflict"
+                          ? "text-orange-600"
+                          : bookingError?.type === "clinic_closed"
+                          ? "text-blue-600"
+                          : bookingError?.type === "before_opening" ||
+                            bookingError?.type === "after_closing"
+                          ? "text-yellow-600"
+                          : bookingError?.type === "doctor_unavailable" ||
+                            bookingError?.type === "doctor_not_at_clinic"
+                          ? "text-red-600"
+                          : "text-destructive"
+                      )}
+                    />
+                  )}
                 </div>
               )}
-              <DialogTitle className="text-lg">
-                {blockerDetails?.title}
-              </DialogTitle>
+              <AlertDialogTitle className="text-lg">
+                {bookingError?.title || blockerDetails?.title}
+              </AlertDialogTitle>
             </div>
-            <DialogDescription className="text-base">
-              {blockerDetails?.message}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            {blockerDetails?.action && (
-              <Button
-                variant="default"
-                onClick={blockerDetails.action.onClick}
+            <AlertDialogDescription className="text-base">
+              {bookingError?.message || blockerDetails?.message}
+            </AlertDialogDescription>
+
+            {/* Show suggestion if available */}
+            {(bookingError?.suggestion || blockerDetails?.action) && (
+              <div className="mt-3 p-3 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Info className="w-4 h-4" />
+                  {bookingError?.suggestion || "Action available"}
+                </p>
+              </div>
+            )}
+
+            {/* Show conflict details if same-day conflict */}
+            {bookingError?.type === "same_day_conflict" &&
+              bookingError?.data && (
+                <div className="mt-3 p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                  <h4 className="font-semibold text-sm mb-2">
+                    Existing Appointment:
+                  </h4>
+                  <div className="space-y-1 text-sm">
+                    <p className="flex items-center gap-2">
+                      <Hospital className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">Clinic:</span>
+                      <strong>{bookingError.data.clinicName}</strong>
+                    </p>
+                    <p className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">Doctor:</span>
+                      {bookingError.data.doctorName}
+                    </p>
+                    <p className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-muted-foreground">Time:</span>
+                      {bookingError.data.time}
+                    </p>
+                    <p className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Status:</span>
+                      <Badge variant="outline" className="capitalize">
+                        {bookingError.data.status}
+                      </Badge>
+                    </p>
+                  </div>
+                </div>
+              )}
+
+            {/* Show clinic hours info for closed/timing errors */}
+            {(bookingError?.type === "clinic_closed" ||
+              bookingError?.type === "before_opening" ||
+              bookingError?.type === "after_closing") &&
+              bookingError?.data && (
+                <div className="mt-3 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                    <Clock className="w-4 h-4" />
+                    Clinic Hours:
+                  </h4>
+                  <div className="text-sm space-y-1">
+                    {bookingError.data.clinic_opens_at && (
+                      <p>
+                        Opens:{" "}
+                        <strong>{bookingError.data.clinic_opens_at}</strong>
+                      </p>
+                    )}
+                    {bookingError.data.clinic_closes_at && (
+                      <p>
+                        Closes:{" "}
+                        <strong>{bookingError.data.clinic_closes_at}</strong>
+                      </p>
+                    )}
+                    {bookingError.data.day && (
+                      <p className="text-muted-foreground capitalize">
+                        Day: {bookingError.data.day}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            {(blockerDetails?.action ||
+              bookingError?.type === "same_day_conflict") && (
+              <AlertDialogAction
+                onClick={() => {
+                  if (blockerDetails?.action?.onClick) {
+                    blockerDetails.action.onClick();
+                  } else if (bookingError?.type === "same_day_conflict") {
+                    window.location.href = "/patient/appointments/upcoming";
+                  }
+                }}
                 className="w-full sm:w-auto"
               >
-                {blockerDetails.action.label}
-              </Button>
+                {blockerDetails?.action?.label || "View Appointments"}
+              </AlertDialogAction>
             )}
-            <Button
-              variant="outline"
-              onClick={() => setShowBlockerDialog(false)}
-              className="w-full sm:w-auto"
-            >
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <AlertDialogCancel className="w-full sm:w-auto">
+              {bookingError?.type === "same_day_conflict"
+                ? "Choose Another Date"
+                : bookingError?.type === "clinic_closed"
+                ? "Choose Another Day"
+                : bookingError?.type === "before_opening" ||
+                  bookingError?.type === "after_closing"
+                ? "Choose Another Time"
+                : bookingError?.type === "doctor_unavailable" ||
+                  bookingError?.type === "doctor_not_at_clinic"
+                ? "Choose Another Doctor"
+                : "Close"}
+            </AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Enhanced Header */}
       <div className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-20 shadow-sm">
@@ -428,9 +578,9 @@ const BookAppointment = () => {
           />
         </div>
 
-        {/* ✅ Inline contextual information (non-blocking) */}
+        {/* Inline contextual information */}
         <div className="space-y-3 sm:space-y-4 mb-6 sm:mb-8">
-          {/* High Risk Warning - Now as Badge Card */}
+          {/* High Risk Warning */}
           {bookingStep === "confirm" &&
             patientReliability?.risk_level === "high_risk" && (
               <Card className="border-2 border-amber-200 dark:border-amber-800 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20">
@@ -602,7 +752,12 @@ const BookAppointment = () => {
           {bookingStep === "confirm" ? (
             <Button
               onClick={handleSubmit}
-              disabled={!canProceed || loading || showBlockerDialog}
+              disabled={
+                !canProceed ||
+                loading ||
+                showBlockerDialog ||
+                Boolean(bookingError)
+              }
               size={isMobile ? "default" : "lg"}
               className="w-full sm:w-auto min-h-[44px] touch-manipulation shadow-lg hover:shadow-xl transition-all duration-200"
             >
@@ -621,7 +776,12 @@ const BookAppointment = () => {
           ) : (
             <Button
               onClick={nextStep}
-              disabled={!canProceed || showBlockerDialog || validationLoading}
+              disabled={
+                !canProceed ||
+                showBlockerDialog ||
+                validationLoading ||
+                Boolean(bookingError)
+              }
               size={isMobile ? "default" : "lg"}
               className="w-full sm:w-auto min-h-[44px] touch-manipulation"
             >

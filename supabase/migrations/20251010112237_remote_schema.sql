@@ -3,11 +3,11 @@ create extension if not exists "postgis" with schema "extensions";
 
 create type "public"."appointment_booking_type" as enum ('consultation_only', 'consultation_with_service', 'service_only', 'treatment_plan_follow_up');
 
-create type "public"."appointment_status" as enum ('pending', 'confirmed', 'completed', 'cancelled', 'no_show', 'admin_message');
+create type "public"."appointment_status" as enum ('pending', 'confirmed', 'completed', 'cancelled', 'no_show');
 
 create type "public"."feedback_type" as enum ('general', 'service', 'doctor', 'facility');
 
-create type "public"."notification_type" as enum ('appointment_reminder', 'appointment_confirmed', 'appointment_cancelled', 'feedback_request', 'partnership_request', 'feedback_response');
+create type "public"."notification_type" as enum ('appointment_reminder', 'appointment_confirmed', 'appointment_cancelled', 'feedback_request', 'partnership_request', 'feedback_response', 'admin_message');
 
 create type "public"."partnership_status" as enum ('pending', 'approved', 'rejected');
 
@@ -75,7 +75,11 @@ create table "public"."appointments" (
     "booking_type" appointment_booking_type default 'consultation_only'::appointment_booking_type,
     "appointment_type" character varying(50) default 'consultation_only'::character varying,
     "consultation_fee_charged" numeric(10,2) default NULL::numeric,
-    "requires_new_consultation" boolean default false
+    "requires_new_consultation" boolean default false,
+    "requires_treatment_plan" boolean default false,
+    "treatment_plan_notes" text,
+    "treatment_plan_created_at" timestamp with time zone,
+    "treatment_plan_created_by" uuid
 );
 
 
@@ -372,7 +376,11 @@ create table "public"."patient_medical_history" (
     "created_at" timestamp with time zone default now(),
     "updated_at" timestamp with time zone default now(),
     "appointment_deleted_at" timestamp with time zone,
-    "treatment_plan_id" uuid
+    "treatment_plan_id" uuid,
+    "requires_treatment_plan" boolean default false,
+    "recommended_treatment_name" character varying(200),
+    "recommended_visits" integer,
+    "diagnosis_summary" text
 );
 
 
@@ -511,7 +519,9 @@ create table "public"."treatment_plans" (
     "follow_up_interval_days" integer,
     "created_at" timestamp with time zone default now(),
     "updated_at" timestamp with time zone default now(),
-    "completed_at" timestamp with time zone
+    "completed_at" timestamp with time zone,
+    "source_appointment_id" uuid,
+    "assigned_doctor_id" uuid
 );
 
 
@@ -681,6 +691,8 @@ CREATE INDEX idx_appointments_patient_status_date ON public.appointments USING b
 
 CREATE INDEX idx_appointments_realtime_staff ON public.appointments USING btree (clinic_id, status, created_at DESC) WHERE (status = ANY (ARRAY['pending'::appointment_status, 'confirmed'::appointment_status]));
 
+CREATE INDEX idx_appointments_requires_treatment_plan ON public.appointments USING btree (clinic_id, created_at DESC) WHERE ((requires_treatment_plan = true) AND (treatment_plan_created_at IS NULL) AND (status = 'completed'::appointment_status));
+
 CREATE INDEX idx_appointments_staff_management ON public.appointments USING btree (clinic_id, status, appointment_date, appointment_time) WHERE (status = ANY (ARRAY['pending'::appointment_status, 'confirmed'::appointment_status]));
 
 CREATE INDEX idx_appointments_with_services ON public.appointments USING btree (patient_id, appointment_date DESC) INCLUDE (id, clinic_id, doctor_id, status, appointment_time, duration_minutes);
@@ -767,6 +779,8 @@ CREATE INDEX idx_file_uploads_user_id ON public.file_uploads USING btree (user_i
 
 CREATE INDEX idx_medical_history_patient_id ON public.patient_medical_history USING btree (patient_id);
 
+CREATE INDEX idx_medical_history_treatment_needed ON public.patient_medical_history USING btree (patient_id, created_at DESC) WHERE (requires_treatment_plan = true);
+
 CREATE INDEX idx_notification_log_email_type_sent ON public.notification_log USING btree (recipient_email, notification_type, sent_at DESC);
 
 CREATE INDEX idx_notifications_related_appointment_id ON public.notifications USING btree (related_appointment_id);
@@ -838,6 +852,8 @@ CREATE INDEX idx_staff_profiles_user_profile_id ON public.staff_profiles USING b
 CREATE INDEX idx_treatment_plans_clinic_active ON public.treatment_plans USING btree (clinic_id, status, next_visit_date) WHERE ((status)::text = 'active'::text);
 
 CREATE INDEX idx_treatment_plans_patient_status ON public.treatment_plans USING btree (patient_id, status) WHERE ((status)::text = 'active'::text);
+
+CREATE INDEX idx_treatment_plans_source_appointment ON public.treatment_plans USING btree (source_appointment_id) WHERE (source_appointment_id IS NOT NULL);
 
 CREATE INDEX idx_ui_components_created_by ON public.ui_components USING btree (created_by);
 
@@ -1034,6 +1050,10 @@ alter table "public"."appointments" validate constraint "appointments_doctor_id_
 alter table "public"."appointments" add constraint "appointments_patient_id_fkey" FOREIGN KEY (patient_id) REFERENCES users(id) ON DELETE CASCADE not valid;
 
 alter table "public"."appointments" validate constraint "appointments_patient_id_fkey";
+
+alter table "public"."appointments" add constraint "appointments_treatment_plan_created_by_fkey" FOREIGN KEY (treatment_plan_created_by) REFERENCES users(id) not valid;
+
+alter table "public"."appointments" validate constraint "appointments_treatment_plan_created_by_fkey";
 
 alter table "public"."archive_items" add constraint "archive_items_archive_reason_check" CHECK ((archive_reason = ANY (ARRAY['manual'::text, 'auto'::text, 'policy'::text, 'cascade'::text]))) not valid;
 
@@ -1247,6 +1267,10 @@ alter table "public"."treatment_plan_appointments" add constraint "treatment_pla
 
 alter table "public"."treatment_plan_appointments" validate constraint "treatment_plan_appointments_treatment_plan_id_fkey";
 
+alter table "public"."treatment_plans" add constraint "treatment_plans_assigned_doctor_id_fkey" FOREIGN KEY (assigned_doctor_id) REFERENCES doctors(id) not valid;
+
+alter table "public"."treatment_plans" validate constraint "treatment_plans_assigned_doctor_id_fkey";
+
 alter table "public"."treatment_plans" add constraint "treatment_plans_clinic_id_fkey" FOREIGN KEY (clinic_id) REFERENCES clinics(id) not valid;
 
 alter table "public"."treatment_plans" validate constraint "treatment_plans_clinic_id_fkey";
@@ -1266,6 +1290,10 @@ alter table "public"."treatment_plans" validate constraint "treatment_plans_pati
 alter table "public"."treatment_plans" add constraint "treatment_plans_progress_percentage_check" CHECK (((progress_percentage >= 0) AND (progress_percentage <= 100))) not valid;
 
 alter table "public"."treatment_plans" validate constraint "treatment_plans_progress_percentage_check";
+
+alter table "public"."treatment_plans" add constraint "treatment_plans_source_appointment_id_fkey" FOREIGN KEY (source_appointment_id) REFERENCES appointments(id) not valid;
+
+alter table "public"."treatment_plans" validate constraint "treatment_plans_source_appointment_id_fkey";
 
 alter table "public"."treatment_plans" add constraint "valid_status" CHECK (((status)::text = ANY ((ARRAY['active'::character varying, 'completed'::character varying, 'paused'::character varying, 'cancelled'::character varying])::text[]))) not valid;
 
@@ -1300,6 +1328,205 @@ alter table "public"."users" add constraint "users_auth_user_id_key" UNIQUE usin
 alter table "public"."users" add constraint "users_email_key" UNIQUE using index "users_email_key";
 
 set check_function_bodies = off;
+
+CREATE POLICY "patients_view_own_treatment_plans"
+ON treatment_plans
+FOR SELECT
+TO authenticated
+USING (
+  patient_id = auth.uid()
+);
+
+-- ✅ Policy 2: Staff can view treatment plans from their clinic
+CREATE POLICY "staff_view_clinic_treatment_plans"
+ON treatment_plans
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM staff_profiles sp
+    JOIN user_profiles up ON sp.user_profile_id = up.id
+    WHERE up.user_id = auth.uid()
+    AND sp.clinic_id = treatment_plans.clinic_id
+    AND sp.is_active = true
+  )
+);
+
+-- ✅ Policy 3: Staff can insert treatment plans for their clinic
+CREATE POLICY "staff_insert_clinic_treatment_plans"
+ON treatment_plans
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM staff_profiles sp
+    JOIN user_profiles up ON sp.user_profile_id = up.id
+    WHERE up.user_id = auth.uid()
+    AND sp.clinic_id = treatment_plans.clinic_id
+    AND sp.is_active = true
+  )
+);
+
+-- ✅ Policy 4: Staff can update treatment plans for their clinic
+CREATE POLICY "staff_update_clinic_treatment_plans"
+ON treatment_plans
+FOR UPDATE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM staff_profiles sp
+    JOIN user_profiles up ON sp.user_profile_id = up.id
+    WHERE up.user_id = auth.uid()
+    AND sp.clinic_id = treatment_plans.clinic_id
+    AND sp.is_active = true
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM staff_profiles sp
+    JOIN user_profiles up ON sp.user_profile_id = up.id
+    WHERE up.user_id = auth.uid()
+    AND sp.clinic_id = treatment_plans.clinic_id
+    AND sp.is_active = true
+  )
+);
+
+-- ============================================
+-- RLS POLICIES FOR TREATMENT PLAN APPOINTMENTS
+-- ============================================
+
+-- ✅ Policy 5: Patients can view their treatment plan appointments
+CREATE POLICY "patients_view_own_treatment_appointments"
+ON treatment_plan_appointments
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM treatment_plans tp
+    WHERE tp.id = treatment_plan_appointments.treatment_plan_id
+    AND tp.patient_id = auth.uid()
+  )
+);
+
+-- ✅ Policy 6: Staff can view treatment plan appointments from their clinic
+CREATE POLICY "staff_view_clinic_treatment_appointments"
+ON treatment_plan_appointments
+FOR SELECT
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM treatment_plans tp
+    JOIN staff_profiles sp ON tp.clinic_id = sp.clinic_id
+    JOIN user_profiles up ON sp.user_profile_id = up.id
+    WHERE tp.id = treatment_plan_appointments.treatment_plan_id
+    AND up.user_id = auth.uid()
+    AND sp.is_active = true
+  )
+);
+
+-- ✅ Policy 7: Staff can insert treatment plan appointments
+CREATE POLICY "staff_insert_treatment_appointments"
+ON treatment_plan_appointments
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM treatment_plans tp
+    JOIN staff_profiles sp ON tp.clinic_id = sp.clinic_id
+    JOIN user_profiles up ON sp.user_profile_id = up.id
+    WHERE tp.id = treatment_plan_appointments.treatment_plan_id
+    AND up.user_id = auth.uid()
+    AND sp.is_active = true
+  )
+);
+
+-- ✅ Policy 8: Staff can update treatment plan appointments
+CREATE POLICY "staff_update_treatment_appointments"
+ON treatment_plan_appointments
+FOR UPDATE
+TO authenticated
+USING (
+  EXISTS (
+    SELECT 1 FROM treatment_plans tp
+    JOIN staff_profiles sp ON tp.clinic_id = sp.clinic_id
+    JOIN user_profiles up ON sp.user_profile_id = up.id
+    WHERE tp.id = treatment_plan_appointments.treatment_plan_id
+    AND up.user_id = auth.uid()
+    AND sp.is_active = true
+  )
+)
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM treatment_plans tp
+    JOIN staff_profiles sp ON tp.clinic_id = sp.clinic_id
+    JOIN user_profiles up ON sp.user_profile_id = up.id
+    WHERE tp.id = treatment_plan_appointments.treatment_plan_id
+    AND up.user_id = auth.uid()
+    AND sp.is_active = true
+  )
+);
+
+CREATE OR REPLACE FUNCTION public.admin_award_badge(p_clinic_id uuid, p_badge_id uuid, p_reason text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+    current_context JSONB;
+    v_current_role TEXT;
+    v_admin_id UUID;
+BEGIN
+    current_context := get_current_user_context();
+    
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+    
+    v_current_role := current_context->>'user_type';
+    v_admin_id := (current_context->>'user_id')::UUID;
+    
+    IF v_current_role != 'admin' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Admin required');
+    END IF;
+    
+    -- Check if clinic exists
+    IF NOT EXISTS (SELECT 1 FROM clinics WHERE id = p_clinic_id) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Clinic not found');
+    END IF;
+    
+    -- Check if badge exists
+    IF NOT EXISTS (SELECT 1 FROM clinic_badges WHERE id = p_badge_id) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Badge not found');
+    END IF;
+    
+    -- Insert badge award (using 'notes' column instead of 'award_reason')
+    INSERT INTO clinic_badge_awards (
+        clinic_id,
+        badge_id,
+        awarded_by,
+        notes,
+        is_current
+    )
+    VALUES (
+        p_clinic_id,
+        p_badge_id,
+        v_admin_id,
+        p_reason,
+        true
+    );
+    
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Badge awarded successfully'
+    );
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$function$
+;
 
 CREATE OR REPLACE FUNCTION public.admin_cleanup_specific_incomplete_staff(p_invitation_id uuid, p_admin_notes text DEFAULT NULL::text)
  RETURNS jsonb
@@ -1396,285 +1623,12 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION admin_award_badge(
-    p_clinic_id UUID,
-    p_badge_id UUID,
-    p_reason TEXT DEFAULT NULL
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-DECLARE
-    current_context JSONB;
-    v_current_role TEXT;
-    v_admin_id UUID;
-BEGIN
-    current_context := get_current_user_context();
-    
-    IF NOT (current_context->>'authenticated')::boolean THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
-    END IF;
-    
-    v_current_role := current_context->>'user_type';
-    v_admin_id := (current_context->>'user_id')::UUID;
-    
-    IF v_current_role != 'admin' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Admin required');
-    END IF;
-    
-    -- Check if clinic exists
-    IF NOT EXISTS (SELECT 1 FROM clinics WHERE id = p_clinic_id) THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Clinic not found');
-    END IF;
-    
-    -- Check if badge exists
-    IF NOT EXISTS (SELECT 1 FROM clinic_badges WHERE id = p_badge_id) THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Badge not found');
-    END IF;
-    
-    -- Insert badge award (using 'notes' column instead of 'award_reason')
-    INSERT INTO clinic_badge_awards (
-        clinic_id,
-        badge_id,
-        awarded_by,
-        notes,
-        is_current
-    )
-    VALUES (
-        p_clinic_id,
-        p_badge_id,
-        v_admin_id,
-        p_reason,
-        true
-    );
-    
-    RETURN jsonb_build_object(
-        'success', true,
-        'message', 'Badge awarded successfully'
-    );
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object('success', false, 'error', SQLERRM);
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.get_users_list(
-    p_user_type user_type DEFAULT NULL::user_type, 
-    p_clinic_id uuid DEFAULT NULL::uuid, 
-    p_search_term text DEFAULT NULL::text, 
-    p_limit integer DEFAULT 50, 
-    p_offset integer DEFAULT 0
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
+CREATE OR REPLACE FUNCTION public.admin_remove_badge(p_award_id uuid, p_removal_reason text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
 AS $function$
-DECLARE
-    current_context JSONB;
-    v_current_role TEXT;
-    current_clinic_id UUID;
-    result JSONB;
-BEGIN
-    -- Get current user context
-    current_context := get_current_user_context();
-    
-    IF NOT (current_context->>'authenticated')::boolean THEN
-        RETURN current_context;
-    END IF;
-    
-    v_current_role := current_context->>'user_type';
-    
-    -- Access control: only staff and admin can list users
-    IF v_current_role NOT IN ('staff', 'admin') THEN
-        RETURN jsonb_build_object('error', 'Access denied');
-    END IF;
-    
-    -- Get clinic ID for staff users
-    IF v_current_role = 'staff' THEN
-        current_clinic_id := (current_context->>'clinic_id')::UUID;
-    END IF;
-    
-    -- Build query based on role
-    WITH filtered_users AS (
-        SELECT 
-            u.id,
-            u.email,
-            u.phone,
-            u.is_active,
-            u.last_login,
-            u.email_verified,
-            u.phone_verified,
-            u.updated_at,
-            up.user_type,
-            up.first_name,
-            up.last_name,
-            up.first_name || ' ' || up.last_name as full_name,
-            up.created_at,
-            CASE up.user_type::text
-                WHEN 'patient' THEN (
-                    SELECT jsonb_build_object(
-                        'total_appointments', COUNT(a.id),
-                        'last_appointment', MAX(a.appointment_date)
-                    )
-                    FROM appointments a 
-                    WHERE a.patient_id = u.id
-                    AND (v_current_role = 'admin' OR a.clinic_id = current_clinic_id)
-                )
-                WHEN 'staff' THEN (
-                    SELECT jsonb_build_object(
-                        'clinic_name', c.name,
-                        'clinic_id', sp.clinic_id,
-                        'position', sp.position,
-                        'is_active', sp.is_active,
-                        -- Clinic appointments managed by this staff
-                        'total_appointments', COALESCE((
-                            SELECT COUNT(a.id)
-                            FROM appointments a
-                            WHERE a.clinic_id = sp.clinic_id
-                            AND a.status IN ('confirmed', 'completed', 'pending')
-                            AND (v_current_role = 'admin' OR a.clinic_id = current_clinic_id)
-                        ), 0),
-                        'last_appointment', (
-                            SELECT MAX(a.appointment_date)
-                            FROM appointments a
-                            WHERE a.clinic_id = sp.clinic_id
-                            AND a.status IN ('confirmed', 'completed')
-                            AND (v_current_role = 'admin' OR a.clinic_id = current_clinic_id)
-                        ),
-                        -- Additional clinic metrics
-                        'pending_appointments', COALESCE((
-                            SELECT COUNT(a.id)
-                            FROM appointments a
-                            WHERE a.clinic_id = sp.clinic_id
-                            AND a.status = 'pending'
-                            AND (v_current_role = 'admin' OR a.clinic_id = current_clinic_id)
-                        ), 0),
-                        'completed_appointments', COALESCE((
-                            SELECT COUNT(a.id)
-                            FROM appointments a
-                            WHERE a.clinic_id = sp.clinic_id
-                            AND a.status = 'completed'
-                            AND (v_current_role = 'admin' OR a.clinic_id = current_clinic_id)
-                        ), 0)
-                    )
-                    FROM staff_profiles sp
-                    LEFT JOIN clinics c ON sp.clinic_id = c.id
-                    WHERE sp.user_profile_id = up.id
-                )
-                ELSE '{}'::jsonb
-            END as role_data
-        FROM users u
-        JOIN user_profiles up ON u.id = up.user_id
-        WHERE 
-            (p_user_type IS NULL OR up.user_type = p_user_type) AND
-            (p_search_term IS NULL OR 
-             up.first_name ILIKE '%' || p_search_term || '%' OR 
-             up.last_name ILIKE '%' || p_search_term || '%' OR 
-             u.email ILIKE '%' || p_search_term || '%') AND
-            (v_current_role = 'admin' OR 
-             (v_current_role = 'staff' AND (
-                up.user_type::text = 'patient' AND u.id IN (
-                    SELECT DISTINCT patient_id FROM appointments 
-                    WHERE clinic_id = current_clinic_id
-                ) OR up.user_type::text = 'staff'
-             ))
-            )
-        ORDER BY up.created_at DESC
-        LIMIT p_limit OFFSET p_offset
-    )
-    SELECT jsonb_build_object(
-        'users', jsonb_agg(to_jsonb(fu)),
-        'total_count', (SELECT COUNT(*) FROM filtered_users)
-    ) INTO result
-    FROM filtered_users fu;
-    
-    RETURN COALESCE(result, jsonb_build_object('users', '[]'::jsonb, 'total_count', 0));
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object('error', SQLERRM);
-END;
-$function$;
-
-CREATE OR REPLACE FUNCTION admin_award_badge(
-    p_clinic_id UUID,
-    p_badge_id UUID,
-    p_reason TEXT DEFAULT NULL
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-DECLARE
-    current_context JSONB;
-    v_current_role TEXT;
-    v_admin_id UUID;
-BEGIN
-    current_context := get_current_user_context();
-    
-    IF NOT (current_context->>'authenticated')::boolean THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
-    END IF;
-    
-    v_current_role := current_context->>'user_type';
-    v_admin_id := (current_context->>'user_id')::UUID;
-    
-    IF v_current_role != 'admin' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Admin required');
-    END IF;
-    
-    -- Check if clinic exists
-    IF NOT EXISTS (SELECT 1 FROM clinics WHERE id = p_clinic_id) THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Clinic not found');
-    END IF;
-    
-    -- Check if badge exists
-    IF NOT EXISTS (SELECT 1 FROM clinic_badges WHERE id = p_badge_id) THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Badge not found');
-    END IF;
-    
-    -- Insert badge award
-    INSERT INTO clinic_badge_awards (
-        clinic_id,
-        badge_id,
-        awarded_by,
-        award_reason,
-        is_current
-    )
-    VALUES (
-        p_clinic_id,
-        p_badge_id,
-        v_admin_id,
-        p_reason,
-        true
-    );
-    
-    RETURN jsonb_build_object(
-        'success', true,
-        'message', 'Badge awarded successfully'
-    );
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object('success', false, 'error', SQLERRM);
-END;
-$$;
-
--- ✅ NEW: Remove clinic badge with reason
-CREATE OR REPLACE FUNCTION admin_remove_badge(
-    p_award_id UUID,
-    p_removal_reason TEXT DEFAULT NULL
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
 DECLARE
     current_context JSONB;
     v_current_role TEXT;
@@ -1729,7 +1683,117 @@ EXCEPTION
     WHEN OTHERS THEN
         RETURN jsonb_build_object('success', false, 'error', SQLERRM);
 END;
-$$;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.admin_send_notification(p_user_id uuid, p_message text, p_title text DEFAULT 'Admin Notification'::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+    current_context JSONB;
+    v_current_role TEXT;
+    v_admin_id UUID;
+BEGIN
+    -- Get current user context
+    current_context := get_current_user_context();
+    
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+    
+    v_current_role := current_context->>'user_type';
+    v_admin_id := (current_context->>'user_id')::UUID;
+    
+    -- Only admins can send notifications
+    IF v_current_role != 'admin' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Admin required');
+    END IF;
+    
+    IF p_message IS NULL OR TRIM(p_message) = '' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Message cannot be empty');
+    END IF;
+    
+    -- Insert notification
+    INSERT INTO notifications (
+        user_id,
+        notification_type,
+        title,
+        message,
+        is_read,
+        created_at
+    ) VALUES (
+        p_user_id,
+        'admin_message',
+        p_title,
+        p_message,
+        false,
+        NOW()
+    );
+    
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Notification sent successfully'
+    );
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.admin_toggle_user_status(p_user_id uuid, p_is_active boolean)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+    current_context JSONB;
+    v_current_role TEXT;
+BEGIN
+    -- Get current user context
+    current_context := get_current_user_context();
+    
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
+    END IF;
+    
+    v_current_role := current_context->>'user_type';
+    
+    -- Only admins can toggle user status
+    IF v_current_role != 'admin' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Admin required');
+    END IF;
+    
+    -- Update user status
+    UPDATE users
+    SET 
+        is_active = p_is_active,
+        updated_at = NOW()
+    WHERE id = p_user_id;
+    
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'User not found');
+    END IF;
+    
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', CASE 
+            WHEN p_is_active THEN 'User activated successfully'
+            ELSE 'User deactivated successfully'
+        END
+    );
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$function$
+;
 
 CREATE OR REPLACE FUNCTION public.approve_appointment(p_appointment_id uuid, p_staff_notes text DEFAULT NULL::text)
  RETURNS jsonb
@@ -1976,121 +2040,6 @@ BEGIN
 END;
 $function$
 ;
-
-CREATE OR REPLACE FUNCTION admin_send_notification(
-    p_user_id UUID,
-    p_message TEXT,
-    p_title TEXT DEFAULT 'Admin Notification'
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-DECLARE
-    current_context JSONB;
-    v_current_role TEXT;
-    v_admin_id UUID;
-BEGIN
-    -- Get current user context
-    current_context := get_current_user_context();
-    
-    IF NOT (current_context->>'authenticated')::boolean THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
-    END IF;
-    
-    v_current_role := current_context->>'user_type';
-    v_admin_id := (current_context->>'user_id')::UUID;
-    
-    -- Only admins can send notifications
-    IF v_current_role != 'admin' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Admin required');
-    END IF;
-    
-    IF p_message IS NULL OR TRIM(p_message) = '' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Message cannot be empty');
-    END IF;
-    
-    -- Insert notification
-    INSERT INTO notifications (
-        user_id,
-        notification_type,
-        title,
-        message,
-        is_read,
-        created_at
-    ) VALUES (
-        p_user_id,
-        'admin_message',
-        p_title,
-        p_message,
-        false,
-        NOW()
-    );
-    
-    RETURN jsonb_build_object(
-        'success', true,
-        'message', 'Notification sent successfully'
-    );
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object('success', false, 'error', SQLERRM);
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION admin_toggle_user_status(
-    p_user_id UUID,
-    p_is_active BOOLEAN
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-DECLARE
-    current_context JSONB;
-    v_current_role TEXT;
-BEGIN
-    -- Get current user context
-    current_context := get_current_user_context();
-    
-    IF NOT (current_context->>'authenticated')::boolean THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
-    END IF;
-    
-    v_current_role := current_context->>'user_type';
-    
-    -- Only admins can toggle user status
-    IF v_current_role != 'admin' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Admin required');
-    END IF;
-    
-    -- Update user status
-    UPDATE users
-    SET 
-        is_active = p_is_active,
-        updated_at = NOW()
-    WHERE id = p_user_id;
-    
-    IF NOT FOUND THEN
-        RETURN jsonb_build_object('success', false, 'error', 'User not found');
-    END IF;
-    
-    RETURN jsonb_build_object(
-        'success', true,
-        'message', CASE 
-            WHEN p_is_active THEN 'User activated successfully'
-            ELSE 'User deactivated successfully'
-        END
-    );
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object('success', false, 'error', SQLERRM);
-END;
-$$;
-
 
 CREATE OR REPLACE FUNCTION public.approve_partnership_request_v2(p_request_id uuid, p_admin_notes text DEFAULT NULL::text)
  RETURNS jsonb
@@ -2372,6 +2321,139 @@ BEGIN
     IF pending_count >= max_pending_appointments THEN
         RETURN jsonb_build_object('success', false, 'error', format('Too many pending (%s). Wait for confirmations.', pending_count));
     END IF;
+
+    IF NOT EXISTS (
+    SELECT 1 FROM clinics 
+    WHERE id = p_clinic_id 
+    AND is_active = true
+) THEN
+    RETURN jsonb_build_object(
+        'success', false, 
+        'error', 'Clinic is not available for booking'
+    );
+END IF;
+
+-- ✅ 2. Check if doctor exists and is available
+IF NOT EXISTS (
+    SELECT 1 FROM doctors 
+    WHERE id = p_doctor_id 
+    AND is_available = true
+) THEN
+    RETURN jsonb_build_object(
+        'success', false, 
+        'error', 'Doctor is currently unavailable. Please select another doctor or try later.',
+        'data', jsonb_build_object(
+            'reason', 'doctor_unavailable',
+            'suggestion', 'View available doctors for this clinic'
+        )
+    );
+END IF;
+
+-- ✅ 3. Verify doctor works at this clinic
+IF NOT EXISTS (
+    SELECT 1 FROM doctor_clinics dc
+    WHERE dc.doctor_id = p_doctor_id 
+    AND dc.clinic_id = p_clinic_id 
+    AND dc.is_active = true
+) THEN
+    RETURN jsonb_build_object(
+        'success', false, 
+        'error', 'This doctor does not work at the selected clinic',
+        'data', jsonb_build_object(
+            'reason', 'doctor_not_at_clinic',
+            'suggestion', 'Please select a different doctor or clinic'
+        )
+    );
+END IF;
+
+-- ✅ 4. Check clinic operating hours
+DECLARE
+    clinic_hours JSONB;
+    day_of_week TEXT;
+    day_hours JSONB;
+    is_clinic_open BOOLEAN := false;
+    open_time TIME;
+    close_time TIME;
+    requested_end_time TIME;
+BEGIN
+    -- Get clinic operating hours
+    SELECT operating_hours INTO clinic_hours
+    FROM clinics
+    WHERE id = p_clinic_id;
+    
+    IF clinic_hours IS NOT NULL THEN
+        -- Get day of week (0 = Sunday, 1 = Monday, etc.)
+        day_of_week := LOWER(to_char(p_appointment_date, 'Day'));
+        day_of_week := TRIM(day_of_week);
+        
+        -- Map full day names to keys (adjust based on your JSON structure)
+        -- Assuming format: {"monday": {"open": "09:00", "close": "18:00", "closed": false}, ...}
+        day_hours := clinic_hours->day_of_week;
+        
+        IF day_hours IS NOT NULL THEN
+            -- Check if clinic is closed that day
+            IF (day_hours->>'closed')::BOOLEAN IS TRUE THEN
+                RETURN jsonb_build_object(
+                    'success', false,
+                    'error', format('Clinic is closed on %s', INITCAP(day_of_week)),
+                    'data', jsonb_build_object(
+                        'reason', 'clinic_closed',
+                        'day', day_of_week
+                    )
+                );
+            END IF;
+            
+            -- Get opening and closing times
+            open_time := (day_hours->>'open')::TIME;
+            close_time := (day_hours->>'close')::TIME;
+            requested_end_time := p_appointment_time + (total_duration || ' minutes')::INTERVAL;
+            
+            -- Check if appointment is within operating hours
+            IF p_appointment_time < open_time THEN
+                RETURN jsonb_build_object(
+                    'success', false,
+                    'error', format('Clinic opens at %s. Please select a later time.', open_time::TEXT),
+                    'data', jsonb_build_object(
+                        'reason', 'before_opening',
+                        'clinic_opens_at', open_time,
+                        'requested_time', p_appointment_time
+                    )
+                );
+            END IF;
+            
+            IF requested_end_time > close_time THEN
+                RETURN jsonb_build_object(
+                    'success', false,
+                    'error', format('Appointment would end after closing time (%s). Please select an earlier time.', close_time::TEXT),
+                    'data', jsonb_build_object(
+                        'reason', 'after_closing',
+                        'clinic_closes_at', close_time,
+                        'appointment_ends_at', requested_end_time
+                    )
+                );
+            END IF;
+            
+            is_clinic_open := true;
+        END IF;
+    END IF;
+END;
+
+-- ✅ 5. Check doctor availability (time conflicts)
+IF NOT check_appointment_availability(
+    p_doctor_id, 
+    p_appointment_date, 
+    p_appointment_time, 
+    total_duration
+) THEN
+    RETURN jsonb_build_object(
+        'success', false, 
+        'error', 'Doctor is not available at this time. Please select a different time slot.',
+        'data', jsonb_build_object(
+            'reason', 'time_slot_unavailable',
+            'suggestion', 'View doctor''s available time slots'
+        )
+    );
+END IF;
 
     -- ✅ ADD: Get patient profile and clinic/doctor details for response
     SELECT 
@@ -2938,16 +3020,26 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.check_appointment_availability(p_doctor_id uuid, p_appointment_date date, p_appointment_time time without time zone, p_duration_minutes integer DEFAULT NULL::integer, p_exclude_appointment_id uuid DEFAULT NULL::uuid)
- RETURNS boolean
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public', 'pg_catalog', 'extensions'
-AS $function$DECLARE
+CREATE OR REPLACE FUNCTION public.check_appointment_availability(
+    p_doctor_id uuid, 
+    p_appointment_date date, 
+    p_appointment_time time without time zone, 
+    p_duration_minutes integer DEFAULT NULL::integer, 
+    p_exclude_appointment_id uuid DEFAULT NULL::uuid
+)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_catalog', 'extensions'
+AS $function$
+DECLARE
     conflict_count INTEGER;
     end_time TIME;
     clinic_operating_hours JSONB;
-    is_within_hours BOOLEAN := false;
+    day_of_week TEXT;
+    day_hours JSONB;
+    open_time TIME;
+    close_time TIME;
 BEGIN
     -- Input validation
     IF p_doctor_id IS NULL OR p_appointment_date IS NULL OR p_appointment_time IS NULL THEN
@@ -2964,19 +3056,14 @@ BEGIN
         RETURN FALSE;
     END IF;
 
-    -- ✅ Duration check (already good in your code)
-    IF p_duration_minutes IS NULL OR p_duration_minutes <= 0 THEN
-        p_duration_minutes := 30; -- fallback default
-    END IF;
-
-    -- ✅ Duration check (now NULL by default if not provided)
+    -- ✅ Duration check
     IF p_duration_minutes IS NULL OR p_duration_minutes <= 0 THEN
         p_duration_minutes := 30; -- fallback default
     END IF;
 
     end_time := p_appointment_time + (p_duration_minutes || ' minutes')::INTERVAL;
 
-    -- ✅ Check clinic operating hours
+    -- ✅ Check clinic operating hours (FIXED VERSION)
     SELECT c.operating_hours INTO clinic_operating_hours
     FROM clinics c
     JOIN doctor_clinics dc ON c.id = dc.clinic_id
@@ -2984,14 +3071,31 @@ BEGIN
     LIMIT 1;
 
     IF clinic_operating_hours IS NOT NULL THEN
-        -- Simplified hours check (you can enhance this based on your JSON structure)
-        is_within_hours := true; -- Placeholder
-    ELSE
-        is_within_hours := true; -- Default to available if no hours set
-    END IF;
-
-    IF NOT is_within_hours THEN
-        RETURN FALSE;
+        -- Get day of week (lowercase, trimmed)
+        day_of_week := LOWER(TRIM(to_char(p_appointment_date, 'Day')));
+        day_hours := clinic_operating_hours->day_of_week;
+        
+        IF day_hours IS NOT NULL THEN
+            -- Check if clinic is closed that day
+            IF (day_hours->>'closed')::BOOLEAN IS TRUE THEN
+                RETURN FALSE;
+            END IF;
+            
+            -- Validate time is within operating hours
+            BEGIN
+                open_time := (day_hours->>'open')::TIME;
+                close_time := (day_hours->>'close')::TIME;
+                
+                -- Check if appointment starts before opening or ends after closing
+                IF p_appointment_time < open_time OR end_time > close_time THEN
+                    RETURN FALSE;
+                END IF;
+            EXCEPTION
+                WHEN OTHERS THEN
+                    -- If time parsing fails, log and continue (allow booking)
+                    RAISE LOG 'Error parsing operating hours: %', SQLERRM;
+            END;
+        END IF;
     END IF;
 
     -- ✅ Check for appointment conflicts
@@ -3013,12 +3117,13 @@ BEGIN
         );
 
     RETURN conflict_count = 0;
+    
 EXCEPTION
     WHEN OTHERS THEN
         RAISE LOG 'Error in check_appointment_availability: %', SQLERRM;
         RETURN FALSE;
-END;$function$
-;
+END;
+$function$;
 
 CREATE OR REPLACE FUNCTION public.check_appointment_limit(p_patient_id uuid, p_clinic_id uuid, p_appointment_date date DEFAULT NULL::date)
  RETURNS jsonb
@@ -3238,6 +3343,92 @@ EXCEPTION
             'reason', 'system_error',
             'message', 'Unable to verify appointment limits',
             'error_details', SQLERRM
+        );
+END;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.check_appointments_feedback_status(p_appointment_ids uuid[])
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_catalog', 'extensions'
+AS $function$
+DECLARE
+    current_auth_id UUID;
+    current_user_id UUID;
+    result JSONB;
+BEGIN
+    -- Get current auth user
+    current_auth_id := auth.uid();
+    
+    IF current_auth_id IS NULL THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Not authenticated'
+        );
+    END IF;
+    
+    -- ✅ CRITICAL FIX: Convert auth.uid() to public.users.id
+    SELECT id INTO current_user_id
+    FROM public.users
+    WHERE auth_user_id = current_auth_id;
+    
+    IF current_user_id IS NULL THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'User profile not found',
+            'debug_auth_id', current_auth_id
+        );
+    END IF;
+    
+    -- Bypass RLS
+    SET LOCAL row_security = off;
+    
+    -- Get feedback status for these appointments
+    WITH feedback_check AS (
+        SELECT 
+            f.appointment_id,
+            f.id as feedback_id,
+            f.clinic_rating,
+            f.doctor_rating,
+            f.created_at,
+            TRUE as has_feedback
+        FROM feedback f
+        WHERE f.appointment_id = ANY(p_appointment_ids)
+        AND f.patient_id = current_user_id  -- ✅ Now using correct public.users.id
+    )
+    SELECT jsonb_build_object(
+        'success', true,
+        'data', COALESCE(
+            jsonb_object_agg(
+                appointment_id::text,
+                jsonb_build_object(
+                    'id', feedback_id,
+                    'clinic_rating', clinic_rating,
+                    'doctor_rating', doctor_rating,
+                    'created_at', created_at,
+                    'has_feedback', has_feedback
+                )
+            ),
+            '{}'::jsonb
+        ),
+        'debug', jsonb_build_object(
+            'auth_id', current_auth_id,
+            'user_id', current_user_id,
+            'appointments_checked', array_length(p_appointment_ids, 1)
+        )
+    ) INTO result
+    FROM feedback_check;
+    
+    RETURN result;
+    
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'Failed to check feedback status',
+            'details', SQLERRM
         );
 END;
 $function$
@@ -3524,96 +3715,6 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.check_appointments_feedback_status(
-    p_appointment_ids uuid[]
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_catalog', 'extensions'
-AS $function$
-DECLARE
-    current_auth_id UUID;
-    current_user_id UUID;
-    result JSONB;
-BEGIN
-    -- Get current auth user
-    current_auth_id := auth.uid();
-    
-    IF current_auth_id IS NULL THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Not authenticated'
-        );
-    END IF;
-    
-    -- ✅ CRITICAL FIX: Convert auth.uid() to public.users.id
-    SELECT id INTO current_user_id
-    FROM public.users
-    WHERE auth_user_id = current_auth_id;
-    
-    IF current_user_id IS NULL THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'User profile not found',
-            'debug_auth_id', current_auth_id
-        );
-    END IF;
-    
-    -- Bypass RLS
-    SET LOCAL row_security = off;
-    
-    -- Get feedback status for these appointments
-    WITH feedback_check AS (
-        SELECT 
-            f.appointment_id,
-            f.id as feedback_id,
-            f.clinic_rating,
-            f.doctor_rating,
-            f.created_at,
-            TRUE as has_feedback
-        FROM feedback f
-        WHERE f.appointment_id = ANY(p_appointment_ids)
-        AND f.patient_id = current_user_id  -- ✅ Now using correct public.users.id
-    )
-    SELECT jsonb_build_object(
-        'success', true,
-        'data', COALESCE(
-            jsonb_object_agg(
-                appointment_id::text,
-                jsonb_build_object(
-                    'id', feedback_id,
-                    'clinic_rating', clinic_rating,
-                    'doctor_rating', doctor_rating,
-                    'created_at', created_at,
-                    'has_feedback', has_feedback
-                )
-            ),
-            '{}'::jsonb
-        ),
-        'debug', jsonb_build_object(
-            'auth_id', current_auth_id,
-            'user_id', current_user_id,
-            'appointments_checked', array_length(p_appointment_ids, 1)
-        )
-    ) INTO result
-    FROM feedback_check;
-    
-    RETURN result;
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object(
-            'success', false,
-            'error', 'Failed to check feedback status',
-            'details', SQLERRM
-        );
-END;
-$function$;
-
--- Grant permissions
-GRANT EXECUTE ON FUNCTION check_appointments_feedback_status TO authenticated;
-
 CREATE OR REPLACE FUNCTION public.check_staff_profile_completion_status(p_user_id uuid DEFAULT NULL::uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -3849,17 +3950,19 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.complete_appointment(p_appointment_id uuid, p_completion_notes text DEFAULT NULL::text, p_services_completed uuid[] DEFAULT NULL::uuid[], p_follow_up_required boolean DEFAULT false, p_follow_up_notes text DEFAULT NULL::text)
+CREATE OR REPLACE FUNCTION public.complete_appointment(p_appointment_id uuid, p_completion_notes text DEFAULT NULL::text, p_services_completed uuid[] DEFAULT NULL::uuid[], p_follow_up_required boolean DEFAULT false, p_follow_up_notes text DEFAULT NULL::text, p_requires_treatment_plan boolean DEFAULT false, p_treatment_plan_notes text DEFAULT NULL::text, p_diagnosis_summary text DEFAULT NULL::text, p_recommended_treatment_name character varying DEFAULT NULL::character varying, p_recommended_visits integer DEFAULT NULL::integer)
  RETURNS jsonb
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_catalog', 'extensions'
-AS $function$DECLARE
+AS $function$
+DECLARE
     current_context JSONB;
     appointment_record RECORD;
     v_current_role TEXT;
     clinic_id_val UUID;
     completed_services JSONB;
+    medical_history_id UUID;
 BEGIN
     -- ✅ Get current user context
     current_context := get_current_user_context();
@@ -3958,7 +4061,7 @@ BEGIN
 
     -- ✅ Transaction
     BEGIN
-        -- Update appointment
+        -- Update appointment (ENHANCED with treatment plan flags)
         UPDATE appointments 
         SET 
             status = 'completed',
@@ -3971,11 +4074,14 @@ BEGIN
                 END, 
                 notes
             ),
+            -- NEW: Treatment plan flags
+            requires_treatment_plan = p_requires_treatment_plan,
+            treatment_plan_notes = p_treatment_plan_notes,
             updated_at = NOW()
         WHERE id = p_appointment_id;
 
-        -- ✅ Insert medical history (aligned with schema)
-        IF p_completion_notes IS NOT NULL OR p_services_completed IS NOT NULL THEN
+        -- ✅ Insert/Update medical history (ENHANCED with treatment recommendations)
+        IF p_completion_notes IS NOT NULL OR p_services_completed IS NOT NULL OR p_requires_treatment_plan THEN
             INSERT INTO patient_medical_history (
                 patient_id,
                 appointment_id,
@@ -3985,7 +4091,12 @@ BEGIN
                 medications,
                 treatment_notes,
                 follow_up_required,
-                follow_up_date
+                follow_up_date,
+                -- NEW: Treatment plan recommendations
+                requires_treatment_plan,
+                recommended_treatment_name,
+                recommended_visits,
+                diagnosis_summary
             ) VALUES (
                 appointment_record.patient_id,
                 p_appointment_id,
@@ -4002,8 +4113,14 @@ BEGIN
                 CASE 
                     WHEN p_follow_up_required THEN CURRENT_DATE + INTERVAL '7 days'
                     ELSE NULL
-                END
-            );
+                END,
+                -- NEW: Treatment recommendations
+                p_requires_treatment_plan,
+                p_recommended_treatment_name,
+                p_recommended_visits,
+                p_diagnosis_summary
+            )
+            RETURNING id INTO medical_history_id;
         END IF;
 
         -- ✅ Feedback request notification
@@ -4025,72 +4142,85 @@ BEGIN
         );
 
         -- ✅ Follow-up reminder notification
-        IF p_follow_up_required THEN
-            INSERT INTO notifications (
-                user_id, 
-                notification_type, 
-                title, 
-                message, 
-                related_appointment_id,
-                scheduled_for
-            ) VALUES (
-                (current_context->>'user_id')::UUID,
-                'follow_up_reminder',
-                'Follow-up Required',
-                format('Patient %s requires follow-up after appointment on %s. Notes: %s',
-                       appointment_record.patient_name,
-                       appointment_record.appointment_date,
-                       COALESCE(p_follow_up_notes, 'No specific notes')),
-                p_appointment_id,
-                NOW() + INTERVAL '1 week'
-            );
-        END IF;
+IF p_follow_up_required THEN
+    INSERT INTO notifications (
+        user_id, 
+        notification_type, 
+        title, 
+        message, 
+        related_appointment_id,
+        scheduled_for
+    ) VALUES (
+        (current_context->>'user_id')::UUID,
+        'admin_message',  -- ✅ FIXED: Use valid enum value
+        'Follow-up Required',
+        format('Patient %s requires follow-up after appointment on %s. Notes: %s',
+               appointment_record.patient_name,
+               appointment_record.appointment_date,
+               COALESCE(p_follow_up_notes, 'No specific notes')),
+        p_appointment_id,
+        NOW() + INTERVAL '1 week'
+    );
+END IF;
 
-        -- ✅ Final return
+        -- NEW: Treatment plan needed notification for staff
+IF p_requires_treatment_plan THEN
+    INSERT INTO notifications (
+        user_id, 
+        notification_type, 
+        title, 
+        message, 
+        related_appointment_id,
+        scheduled_for
+    ) VALUES (
+        (current_context->>'user_id')::UUID,
+        'admin_message',  -- ✅ FIXED: Use existing enum value
+        'Treatment Plan Needed',
+        format('Patient %s requires treatment plan creation. Recommended: %s (%s visits)',
+               appointment_record.patient_name,
+               COALESCE(p_recommended_treatment_name, 'Not specified'),
+               COALESCE(p_recommended_visits::text, 'TBD')),
+        p_appointment_id,
+        NOW()
+    );
+END IF;
+
+        -- ✅ Final return (ENHANCED with treatment plan info)
         RETURN jsonb_build_object(
             'success', true,
             'message', 'Appointment completed successfully',
             'data', jsonb_build_object(
                 'appointment_id', p_appointment_id,
-                'completed_at', NOW(),
-                'completed_by', current_context->>'full_name',
-                'appointment_details', jsonb_build_object(
-                    'patient_name', appointment_record.patient_name,
-                    'appointment_date', appointment_record.appointment_date,
-                    'appointment_time', appointment_record.appointment_time,
-                    'doctor_name', appointment_record.doctor_name,
-                    'clinic_name', appointment_record.clinic_name
-                ),
-                'completion_summary', jsonb_build_object(
-                    'services_scheduled', appointment_record.appointment_services,
-                    'services_completed', completed_services,
-                    'completion_notes', p_completion_notes,
-                    'follow_up_required', p_follow_up_required,
-                    'follow_up_notes', p_follow_up_notes
-                ),
-                'notifications_scheduled', jsonb_build_object(
-                    'feedback_request', jsonb_build_object(
-                        'scheduled_for', NOW() + INTERVAL '2 hours',
-                        'type', 'feedback_request'
-                    ),
-                    'follow_up_reminder', CASE 
-                        WHEN p_follow_up_required THEN
-                            jsonb_build_object(
-                                'scheduled_for', NOW() + INTERVAL '1 week',
-                                'type', 'follow_up_reminder'
-                            )
-                        ELSE NULL
-                    END
-                )
+                'patient_id', appointment_record.patient_id,
+                'patient_name', appointment_record.patient_name,
+                'clinic_name', appointment_record.clinic_name,
+                'doctor_name', appointment_record.doctor_name,
+                'appointment_date', appointment_record.appointment_date,
+                'status', 'completed',
+                'services_completed', completed_services,
+                'follow_up_required', p_follow_up_required,
+                -- NEW: Treatment plan indicators
+                'requires_treatment_plan', p_requires_treatment_plan,
+                'medical_history_id', medical_history_id,
+                'completed_by', current_context->>'user_id',
+                'completed_at', NOW()
             )
         );
 
     EXCEPTION
         WHEN OTHERS THEN
-            RAISE LOG 'complete_appointment error for appointment %: %', p_appointment_id, SQLERRM;
-            RETURN jsonb_build_object('success', false, 'error', 'Completion failed. Please try again.');
+            RAISE;
     END;
-END;$function$
+
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', format('Failed to complete appointment: %s', SQLERRM),
+            'details', SQLSTATE
+        );
+END;
+$function$
 ;
 
 CREATE OR REPLACE FUNCTION public.complete_staff_signup_from_invitation(p_invitation_id uuid, p_email character varying, p_password character varying, p_first_name character varying, p_last_name character varying, p_phone character varying DEFAULT NULL::character varying)
@@ -4737,136 +4867,220 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.create_treatment_plan(p_patient_id uuid, p_clinic_id uuid, p_treatment_name character varying, p_description text DEFAULT NULL::text, p_treatment_category character varying DEFAULT NULL::character varying, p_total_visits_planned integer DEFAULT NULL::integer, p_follow_up_interval_days integer DEFAULT 30, p_initial_appointment_id uuid DEFAULT NULL::uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public', 'pg_catalog', 'extensions'
+CREATE OR REPLACE FUNCTION public.create_treatment_plan(
+    p_patient_id uuid,
+    p_clinic_id uuid,
+    p_treatment_name character varying,
+    p_description text DEFAULT NULL::text,
+    p_treatment_category character varying DEFAULT NULL::character varying,
+    p_total_visits_planned integer DEFAULT NULL::integer,
+    p_follow_up_interval_days integer DEFAULT 30,
+    p_initial_appointment_id uuid DEFAULT NULL::uuid,
+    p_source_appointment_id uuid DEFAULT NULL::uuid,
+    p_diagnosis text DEFAULT NULL::text,
+    p_assigned_doctor_id uuid DEFAULT NULL::uuid,
+    p_start_date date DEFAULT CURRENT_DATE,
+    p_expected_end_date date DEFAULT NULL::date,
+    p_additional_notes text DEFAULT NULL::text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_catalog', 'extensions'
 AS $function$
 DECLARE
-  current_context JSONB;
-  treatment_plan_id UUID;
-  current_user_role TEXT;
-  staff_clinic_id UUID;
+    current_context JSONB;
+    v_treatment_plan_id UUID;
+    current_user_role TEXT;
+    staff_clinic_id UUID;
+    source_appointment_doctor_id UUID;
 BEGIN
-  -- Get current user context
-  current_context := get_current_user_context();
-  
-  IF NOT (current_context->>'authenticated')::boolean THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Authentication required');
-  END IF;
-  
-  current_user_role := current_context->>'user_type';
-  
-  -- Only staff can create treatment plans
-  IF current_user_role != 'staff' THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Only staff can create treatment plans');
-  END IF;
-  
-  -- Get staff's clinic_id from staff_profiles (CRITICAL FIX)
-  SELECT sp.clinic_id INTO staff_clinic_id
-  FROM staff_profiles sp
-  JOIN user_profiles up ON sp.user_profile_id = up.id
-  WHERE up.user_id = (current_context->>'user_id')::UUID
-  AND sp.is_active = true;
-  
-  IF staff_clinic_id IS NULL THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Staff profile not found or inactive');
-  END IF;
-  
-  -- Validate clinic access (FIXED: use staff_clinic_id)
-  IF staff_clinic_id != p_clinic_id THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Cannot create treatment plan for different clinic');
-  END IF;
-  
-  -- Validate patient exists
-  IF NOT EXISTS (SELECT 1 FROM users WHERE id = p_patient_id AND is_active = true) THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Patient not found');
-  END IF;
-  
-  -- Validate initial appointment belongs to this patient and clinic (CRITICAL FIX)
-  IF p_initial_appointment_id IS NOT NULL THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM appointments 
-      WHERE id = p_initial_appointment_id 
-      AND patient_id = p_patient_id 
-      AND clinic_id = p_clinic_id
-    ) THEN
-      RETURN jsonb_build_object('success', false, 'error', 'Invalid appointment for this patient/clinic');
+    current_context := get_current_user_context();
+    
+    IF NOT (current_context->>'authenticated')::boolean THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Authentication required');
     END IF;
-  END IF;
-  
-  -- Create treatment plan
-  INSERT INTO treatment_plans (
-    patient_id,
-    clinic_id,
-    created_by_staff_id,
-    treatment_name,
-    description,
-    treatment_category,
-    status,
-    start_date,
-    total_visits_planned,
-    follow_up_interval_days
-  ) VALUES (
-    p_patient_id,
-    p_clinic_id,
-    (current_context->>'user_id')::UUID,
-    p_treatment_name,
-    p_description,
-    p_treatment_category,
-    'active',
-    CURRENT_DATE,
-    p_total_visits_planned,
-    p_follow_up_interval_days
-  )
-  RETURNING id INTO treatment_plan_id;
-  
-  -- Link initial appointment if provided
-  IF p_initial_appointment_id IS NOT NULL THEN
-    INSERT INTO treatment_plan_appointments (
-      treatment_plan_id,
-      appointment_id,
-      visit_number,
-      visit_purpose
+    
+    current_user_role := current_context->>'user_type';
+    
+    IF current_user_role != 'staff' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Only staff can create treatment plans');
+    END IF;
+    
+    SELECT sp.clinic_id INTO staff_clinic_id
+    FROM staff_profiles sp
+    JOIN user_profiles up ON sp.user_profile_id = up.id
+    WHERE up.user_id = (current_context->>'user_id')::UUID
+    AND sp.is_active = true;
+    
+    IF staff_clinic_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Staff profile not found or inactive');
+    END IF;
+    
+    IF staff_clinic_id != p_clinic_id THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Cannot create treatment plan for different clinic');
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM users WHERE id = p_patient_id AND is_active = true) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Patient not found');
+    END IF;
+    
+    IF p_initial_appointment_id IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM appointments 
+            WHERE id = p_initial_appointment_id 
+            AND patient_id = p_patient_id 
+            AND clinic_id = p_clinic_id
+        ) THEN
+            RETURN jsonb_build_object('success', false, 'error', 'Invalid appointment for this patient/clinic');
+        END IF;
+    END IF;
+    
+    IF p_source_appointment_id IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM appointments 
+            WHERE id = p_source_appointment_id 
+            AND patient_id = p_patient_id 
+            AND clinic_id = p_clinic_id
+            AND status = 'completed'
+        ) THEN
+            RETURN jsonb_build_object('success', false, 'error', 'Invalid source appointment');
+        END IF;
+        
+        IF p_assigned_doctor_id IS NULL THEN
+            SELECT doctor_id INTO source_appointment_doctor_id
+            FROM appointments 
+            WHERE id = p_source_appointment_id;
+        END IF;
+    END IF;
+    
+IF p_assigned_doctor_id IS NOT NULL THEN
+    -- ✅ Check through doctor_clinics junction table
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM doctor_clinics dc
+        JOIN doctors d ON d.id = dc.doctor_id
+        WHERE dc.doctor_id = p_assigned_doctor_id 
+        AND dc.clinic_id = p_clinic_id
+        AND dc.is_active = true
+        AND d.is_available = true
+    ) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Invalid doctor assignment or doctor not associated with this clinic');
+    END IF;
+END IF;
+    
+    INSERT INTO treatment_plans (
+        patient_id,
+        clinic_id,
+        created_by_staff_id,
+        treatment_name,
+        description,
+        treatment_category,
+        status,
+        start_date,
+        expected_end_date,
+        total_visits_planned,
+        follow_up_interval_days,
+        diagnosis,
+        source_appointment_id,
+        assigned_doctor_id,
+        treatment_notes
     ) VALUES (
-      treatment_plan_id,
-      p_initial_appointment_id,
-      1,
-      'Initial Visit'
+        p_patient_id,
+        p_clinic_id,
+        (current_context->>'user_id')::UUID,
+        p_treatment_name,
+        p_description,
+        p_treatment_category,
+        'active',
+        COALESCE(p_start_date, CURRENT_DATE),
+        p_expected_end_date,
+        p_total_visits_planned,
+        p_follow_up_interval_days,
+        p_diagnosis,
+        p_source_appointment_id,
+        COALESCE(p_assigned_doctor_id, source_appointment_doctor_id),
+        p_additional_notes
+    )
+    RETURNING id INTO v_treatment_plan_id;
+    
+    IF p_initial_appointment_id IS NOT NULL THEN
+        INSERT INTO treatment_plan_appointments (
+            treatment_plan_id,
+            appointment_id,
+            visit_number,
+            visit_purpose
+        ) VALUES (
+            v_treatment_plan_id,
+            p_initial_appointment_id,
+            1,
+            'Initial Visit'
+        );
+        
+        UPDATE treatment_plans
+        SET 
+            next_visit_appointment_id = p_initial_appointment_id,
+            next_visit_date = (SELECT appointment_date FROM appointments WHERE id = p_initial_appointment_id)
+        WHERE id = v_treatment_plan_id;
+        
+        UPDATE appointment_services
+        SET treatment_plan_id = v_treatment_plan_id
+        WHERE appointment_id = p_initial_appointment_id;
+    END IF;
+    
+    IF p_source_appointment_id IS NOT NULL THEN
+        UPDATE appointments
+        SET 
+            treatment_plan_created_at = NOW(),
+            treatment_plan_created_by = (current_context->>'user_id')::UUID
+        WHERE id = p_source_appointment_id;
+        
+        UPDATE patient_medical_history
+        SET treatment_plan_id = v_treatment_plan_id
+        WHERE appointment_id = p_source_appointment_id;
+    END IF;
+
+    INSERT INTO notifications (
+        user_id, 
+        notification_type, 
+        title, 
+        message, 
+        scheduled_for
+    ) VALUES (
+        p_patient_id,
+        'admin_message',
+        'New Treatment Plan Created',
+        format('A treatment plan "%s" has been created for you. %s Please contact the clinic to schedule your first visit.',
+               p_treatment_name,
+               CASE 
+                   WHEN p_total_visits_planned IS NOT NULL 
+                   THEN format('This plan includes %s visits. ', p_total_visits_planned)
+                   ELSE ''
+               END),
+        NOW()
     );
     
-    -- Update next visit info (FIXED: get appointment date)
-    UPDATE treatment_plans
-    SET 
-      next_visit_appointment_id = p_initial_appointment_id,
-      next_visit_date = (SELECT appointment_date FROM appointments WHERE id = p_initial_appointment_id)
-    WHERE id = treatment_plan_id;
+    RETURN jsonb_build_object(
+        'success', true,
+        'message', 'Treatment plan created successfully',
+        'data', jsonb_build_object(
+            'treatment_plan_id', v_treatment_plan_id,
+            'patient_id', p_patient_id,
+            'clinic_id', p_clinic_id,
+            'status', 'active',
+            'initial_appointment_linked', p_initial_appointment_id IS NOT NULL,
+            'source_appointment_id', p_source_appointment_id,
+            'assigned_doctor_id', COALESCE(p_assigned_doctor_id, source_appointment_doctor_id),
+            'created_by', current_context->>'user_id',
+            'created_at', NOW()
+        )
+    );
     
-    -- Link appointment services to treatment plan (CRITICAL ADDITION)
-    UPDATE appointment_services 
-    SET treatment_plan_id = treatment_plan_id
-    WHERE appointment_id = p_initial_appointment_id;
-  END IF;
-  
-  RETURN jsonb_build_object(
-    'success', true,
-    'message', 'Treatment plan created successfully',
-    'data', jsonb_build_object(
-      'treatment_plan_id', treatment_plan_id,
-      'patient_id', p_patient_id,
-      'clinic_id', p_clinic_id,
-      'status', 'active',
-      'initial_appointment_linked', p_initial_appointment_id IS NOT NULL
-    )
-  );
-  
 EXCEPTION
-  WHEN OTHERS THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Failed to create treatment plan: ' || SQLERRM);
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Failed to create treatment plan: ' || SQLERRM);
 END;
-$function$
-;
+$function$;
 
 CREATE OR REPLACE FUNCTION public.create_user_email_only(p_email character varying, p_first_name character varying, p_last_name character varying, p_user_type user_type DEFAULT 'patient'::user_type)
  RETURNS jsonb
@@ -4957,8 +5171,7 @@ CREATE OR REPLACE FUNCTION public.create_user_profile_on_signup()
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_catalog'
-AS $function$
-DECLARE
+AS $function$DECLARE
     new_user_id UUID;
     new_profile_id UUID;
     user_type_val user_type := 'patient';
@@ -5210,8 +5423,7 @@ EXCEPTION
         RAISE LOG 'FATAL ERROR in create_user_profile_on_signup for %: %', 
                   COALESCE(NEW.email, 'unknown'), SQLERRM;
         RETURN NEW;
-END;
-$function$
+END;$function$
 ;
 
 CREATE OR REPLACE FUNCTION public.enforce_patient_profile_update_constraints()
@@ -6052,16 +6264,11 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.get_admin_system_analytics(
-    p_date_from date DEFAULT NULL::date,
-    p_date_to date DEFAULT NULL::date,
-    p_include_trends boolean DEFAULT true,
-    p_include_performance boolean DEFAULT true
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_catalog', 'extensions'
+CREATE OR REPLACE FUNCTION public.get_admin_system_analytics(p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date, p_include_trends boolean DEFAULT true, p_include_performance boolean DEFAULT true)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_catalog', 'extensions'
 AS $function$
 DECLARE
     current_context JSONB;
@@ -6292,7 +6499,8 @@ EXCEPTION
             'detail', SQLERRM
         );
 END;
-$function$;
+$function$
+;
 
 CREATE OR REPLACE FUNCTION public.get_appointment_with_patient_info(p_appointment_id uuid)
  RETURNS jsonb
@@ -6716,6 +6924,125 @@ EXCEPTION
 END;$function$
 ;
 
+CREATE OR REPLACE FUNCTION public.get_appointments_needing_treatment_plans(p_clinic_id uuid DEFAULT NULL::uuid, p_limit integer DEFAULT 20, p_offset integer DEFAULT 0)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_catalog', 'extensions'
+AS $function$
+DECLARE
+    current_context JSONB;
+    clinic_id_val UUID;
+    total_count INTEGER;
+BEGIN
+    current_context := get_current_user_context();
+    
+    -- Only staff can view
+    IF (current_context->>'user_type') != 'staff' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Staff access required');
+    END IF;
+    
+    -- Get staff's clinic
+    clinic_id_val := COALESCE(p_clinic_id, (current_context->>'clinic_id')::UUID);
+    
+    IF clinic_id_val IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Clinic ID required');
+    END IF;
+    
+    -- Get total count
+    SELECT COUNT(*) INTO total_count
+    FROM appointments a
+    WHERE a.clinic_id = clinic_id_val
+    AND a.status = 'completed'
+    AND a.requires_treatment_plan = TRUE
+    AND a.treatment_plan_created_at IS NULL;
+    
+    RETURN jsonb_build_object(
+        'success', true,
+        'total_count', total_count,
+        'data', (
+            SELECT COALESCE(jsonb_agg(appointment_data ORDER BY created_at DESC), '[]'::jsonb)
+            FROM (
+                SELECT jsonb_build_object(
+                    'appointment_id', a.id,
+                    'appointment_date', a.appointment_date,
+                    'appointment_time', a.appointment_time,
+                    'created_at', a.created_at,
+                    'completed_at', a.updated_at,
+                    'treatment_plan_notes', a.treatment_plan_notes,
+                    
+                    -- Patient details (auto-populated)
+                    'patient', jsonb_build_object(
+                        'id', a.patient_id,
+                        'name', up.first_name || ' ' || up.last_name,
+                        'phone', u.phone,
+                        'email', u.email,
+                        'age', EXTRACT(YEAR FROM AGE(up.date_of_birth))::INTEGER,
+                        'gender', up.gender
+                    ),
+                    
+                    -- Doctor details (pre-select for plan)
+                    'doctor', jsonb_build_object(
+                        'id', d.id,
+                        'name', d.first_name || ' ' || d.last_name,
+                        'specialization', d.specialization
+                    ),
+                    
+                    -- Medical history & recommendations
+                    'medical_history', (
+                        SELECT jsonb_build_object(
+                            'id', pmh.id,
+                            'diagnosis_summary', pmh.diagnosis_summary,
+                            'recommended_treatment_name', pmh.recommended_treatment_name,
+                            'recommended_visits', pmh.recommended_visits,
+                            'treatment_notes', pmh.treatment_notes,
+                            'follow_up_required', pmh.follow_up_required,
+                            'conditions', pmh.conditions,
+                            'allergies', pmh.allergies
+                        )
+                        FROM patient_medical_history pmh
+                        WHERE pmh.appointment_id = a.id
+                        ORDER BY pmh.created_at DESC
+                        LIMIT 1
+                    ),
+                    
+                    -- Services performed (context for treatment)
+                    'services', COALESCE((
+                        SELECT jsonb_agg(jsonb_build_object(
+                            'id', s.id,
+                            'name', s.name,
+                            'category', s.category
+                        ))
+                        FROM appointment_services aps
+                        JOIN services s ON s.id = aps.service_id
+                        WHERE aps.appointment_id = a.id
+                    ), '[]'::jsonb),
+                    
+                    -- Clinic info
+                    'clinic', jsonb_build_object(
+                        'id', c.id,
+                        'name', c.name
+                    )
+                ) as appointment_data
+                FROM appointments a
+                JOIN users u ON a.patient_id = u.id
+                JOIN user_profiles up ON u.id = up.user_id
+                JOIN doctors d ON a.doctor_id = d.id
+                JOIN clinics c ON a.clinic_id = c.id
+                WHERE a.clinic_id = clinic_id_val
+                AND a.status = 'completed'
+                AND a.requires_treatment_plan = TRUE
+                AND a.treatment_plan_created_at IS NULL
+                ORDER BY a.created_at DESC
+                LIMIT p_limit
+                OFFSET p_offset
+            ) subquery
+        )
+    );
+END;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.get_available_time_slots(p_doctor_id uuid, p_appointment_date date, p_service_ids uuid[] DEFAULT NULL::uuid[])
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -6810,17 +7137,11 @@ EXCEPTION
 END;$function$
 ;
 
-REATE OR REPLACE FUNCTION public.get_clinic_growth_analytics(
-    p_clinic_id uuid DEFAULT NULL::uuid,
-    p_date_from date DEFAULT NULL::date,
-    p_date_to date DEFAULT NULL::date,
-    p_include_comparisons boolean DEFAULT true,
-    p_include_patient_insights boolean DEFAULT true
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_catalog', 'extensions'
+CREATE OR REPLACE FUNCTION public.get_clinic_growth_analytics(p_clinic_id uuid DEFAULT NULL::uuid, p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date, p_include_comparisons boolean DEFAULT true, p_include_patient_insights boolean DEFAULT true)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_catalog', 'extensions'
 AS $function$
 DECLARE
     current_context JSONB;
@@ -7146,7 +7467,7 @@ EXCEPTION
             'error', 'Analytics unavailable: ' || SQLERRM
         );
 END;
-$function$;
+$function$
 ;
 
 CREATE OR REPLACE FUNCTION public.get_clinic_performance_ranking(days_period integer DEFAULT 30, result_limit integer DEFAULT 10)
@@ -7182,16 +7503,11 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.get_clinic_resource_analytics(
-    p_clinic_id uuid DEFAULT NULL::uuid,
-    p_date_from date DEFAULT NULL::date,
-    p_date_to date DEFAULT NULL::date,
-    p_include_forecasting boolean DEFAULT true
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_catalog', 'extensions'
+CREATE OR REPLACE FUNCTION public.get_clinic_resource_analytics(p_clinic_id uuid DEFAULT NULL::uuid, p_date_from date DEFAULT NULL::date, p_date_to date DEFAULT NULL::date, p_include_forecasting boolean DEFAULT true)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_catalog', 'extensions'
 AS $function$
 DECLARE
     current_context JSONB;
@@ -7280,7 +7596,8 @@ EXCEPTION
             'error', 'Resource analytics unavailable: ' || SQLERRM
         );
 END;
-$function$;
+$function$
+;
 
 CREATE OR REPLACE FUNCTION public.get_clinic_timezone(p_clinic_id uuid)
  RETURNS character varying
@@ -7325,8 +7642,7 @@ CREATE OR REPLACE FUNCTION public.get_current_user_context()
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
  SET search_path TO 'public', 'pg_catalog', 'extensions'
-AS $function$
-DECLARE
+AS $function$DECLARE
     current_auth_uid UUID;
     user_record RECORD;
     result JSONB;
@@ -7390,18 +7706,6 @@ BEGIN
         );
     END IF;
 
-BEGIN
-    UPDATE users 
-    SET last_login = NOW(),
-        updated_at = NOW()
-    WHERE auth_user_id = current_auth_uid 
-      AND (last_login IS NULL OR last_login < NOW() - INTERVAL '5 minutes');
-EXCEPTION
-    WHEN OTHERS THEN
-        -- Silently ignore errors (login tracking shouldn't break authentication)
-        NULL;
-END;
-    
     -- ✅ REFACTOR: Email-centric result building
     result := jsonb_build_object(
         'authenticated', true,
@@ -7448,8 +7752,7 @@ EXCEPTION
             'authenticated', false,
             'error', 'Database error: ' || SQLERRM
         );
-END;
-$function$
+END;$function$
 ;
 
 CREATE OR REPLACE FUNCTION public.get_current_user_id()
@@ -7675,15 +7978,11 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.get_doctor_feedback(
-    p_doctor_id uuid, 
-    p_limit integer DEFAULT 20, 
-    p_offset integer DEFAULT 0
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_catalog', 'extensions'
+CREATE OR REPLACE FUNCTION public.get_doctor_feedback(p_doctor_id uuid, p_limit integer DEFAULT 20, p_offset integer DEFAULT 0)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_catalog', 'extensions'
 AS $function$
 DECLARE
   result JSONB;
@@ -7774,7 +8073,8 @@ EXCEPTION
       'details', SQLERRM
     );
 END;
-$function$;
+$function$
+;
 
 CREATE OR REPLACE FUNCTION public.get_incomplete_staff_signups(p_limit integer DEFAULT 50, p_offset integer DEFAULT 0)
  RETURNS jsonb
@@ -8413,34 +8713,46 @@ BEGIN
     END IF;
     
     -- ✅ OPTIMIZED: Filter by clinic_id in SQL (not client-side)
-    SELECT jsonb_build_object(
-        'success', true,
-        'data', jsonb_build_object(
-            'has_ongoing_treatments', COUNT(*) > 0,
-            'treatments', COALESCE(jsonb_agg(
-                jsonb_build_object(
-                    'id', tp.id,
-                    'treatment_name', tp.treatment_name,
-                    'treatment_category', tp.treatment_category,
-                    'clinic_name', c.name,
-                    'clinic_id', tp.clinic_id,
-                    'visits_completed', tp.visits_completed,
-                    'total_visits_planned', tp.total_visits_planned,
-                    'progress_percentage', tp.progress_percentage,
-                    'next_visit_due', tp.next_visit_date,
-                    'is_overdue', CASE 
-                        WHEN tp.next_visit_date IS NOT NULL AND tp.next_visit_date < CURRENT_DATE THEN true
-                        ELSE false
-                    END
-                )
-            ), '[]'::jsonb)
-        )
-    ) INTO result
-    FROM treatment_plans tp
-    JOIN clinics c ON tp.clinic_id = c.id
-    WHERE tp.patient_id = p_patient_id
-    AND tp.status = 'active'
-    AND (p_clinic_id IS NULL OR tp.clinic_id = p_clinic_id);  -- ✅ NEW: Clinic filter
+SELECT jsonb_build_object(
+    'success', true,
+    'data', jsonb_build_object(
+        'has_ongoing_treatments', COUNT(*) > 0,
+        'treatments', COALESCE(jsonb_agg(
+            jsonb_build_object(
+                'id', tp.id,
+                'treatment_name', tp.treatment_name,
+                'treatment_category', tp.treatment_category,
+                'clinic_name', c.name,
+                'clinic_id', tp.clinic_id,
+                'visits_completed', tp.visits_completed,
+                'total_visits_planned', tp.total_visits_planned,
+                'progress_percentage', tp.progress_percentage,
+                'next_visit_due', tp.next_visit_date,
+                -- ✅ ADD THESE:
+                'next_visit_time', tp.next_visit_time,
+                'assigned_doctor_id', tp.assigned_doctor_id,
+                'assigned_doctor', CASE 
+                    WHEN d.id IS NOT NULL THEN jsonb_build_object(
+                        'id', d.id,
+                        'name', d.first_name || ' ' || d.last_name,
+                        'specialization', d.specialization
+                    )
+                    ELSE NULL
+                END,
+                'is_overdue', CASE 
+                    WHEN tp.next_visit_date IS NOT NULL AND tp.next_visit_date < CURRENT_DATE THEN true
+                    ELSE false
+                END
+            )
+        ), '[]'::jsonb)
+    )
+) INTO result
+FROM treatment_plans tp
+JOIN clinics c ON tp.clinic_id = c.id
+LEFT JOIN doctors d ON d.id = tp.assigned_doctor_id  -- ✅ ADD THIS JOIN
+WHERE tp.patient_id = p_patient_id
+AND tp.status = 'active'
+AND (p_clinic_id IS NULL OR tp.clinic_id = p_clinic_id);
     
     RETURN COALESCE(result, jsonb_build_object(
         'success', true,
@@ -8551,16 +8863,11 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.get_staff_feedback_list(
-    p_clinic_id uuid DEFAULT NULL::uuid, 
-    p_include_responses boolean DEFAULT true, 
-    p_limit integer DEFAULT 50, 
-    p_offset integer DEFAULT 0
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_catalog', 'extensions'
+CREATE OR REPLACE FUNCTION public.get_staff_feedback_list(p_clinic_id uuid DEFAULT NULL::uuid, p_include_responses boolean DEFAULT true, p_limit integer DEFAULT 50, p_offset integer DEFAULT 0)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_catalog', 'extensions'
 AS $function$
 DECLARE
     current_context JSONB;
@@ -8709,12 +9016,8 @@ EXCEPTION
             'sqlstate', SQLSTATE
         );
 END;
-$function$;
-
--- 3️⃣ Grant permissions
-GRANT EXECUTE ON FUNCTION get_staff_feedback_list TO authenticated;
-GRANT EXECUTE ON FUNCTION get_doctor_feedback TO authenticated;
-GRANT EXECUTE ON FUNCTION respond_to_feedback TO authenticated;
+$function$
+;
 
 CREATE OR REPLACE FUNCTION public.get_staff_invitation_status(p_invitation_id uuid)
  RETURNS jsonb
@@ -9767,8 +10070,39 @@ BEGIN
                 WHEN 'staff' THEN (
                     SELECT jsonb_build_object(
                         'clinic_name', c.name,
+                        'clinic_id', sp.clinic_id,
                         'position', sp.position,
-                        'is_active', sp.is_active
+                        'is_active', sp.is_active,
+                        -- Clinic appointments managed by this staff
+                        'total_appointments', COALESCE((
+                            SELECT COUNT(a.id)
+                            FROM appointments a
+                            WHERE a.clinic_id = sp.clinic_id
+                            AND a.status IN ('confirmed', 'completed', 'pending')
+                            AND (v_current_role = 'admin' OR a.clinic_id = current_clinic_id)
+                        ), 0),
+                        'last_appointment', (
+                            SELECT MAX(a.appointment_date)
+                            FROM appointments a
+                            WHERE a.clinic_id = sp.clinic_id
+                            AND a.status IN ('confirmed', 'completed')
+                            AND (v_current_role = 'admin' OR a.clinic_id = current_clinic_id)
+                        ),
+                        -- Additional clinic metrics
+                        'pending_appointments', COALESCE((
+                            SELECT COUNT(a.id)
+                            FROM appointments a
+                            WHERE a.clinic_id = sp.clinic_id
+                            AND a.status = 'pending'
+                            AND (v_current_role = 'admin' OR a.clinic_id = current_clinic_id)
+                        ), 0),
+                        'completed_appointments', COALESCE((
+                            SELECT COUNT(a.id)
+                            FROM appointments a
+                            WHERE a.clinic_id = sp.clinic_id
+                            AND a.status = 'completed'
+                            AND (v_current_role = 'admin' OR a.clinic_id = current_clinic_id)
+                        ), 0)
                     )
                     FROM staff_profiles sp
                     LEFT JOIN clinics c ON sp.clinic_id = c.id
@@ -11646,14 +11980,11 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.respond_to_feedback(
-    p_feedback_id uuid,
-    p_response text
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'pg_catalog', 'extensions'
+CREATE OR REPLACE FUNCTION public.respond_to_feedback(p_feedback_id uuid, p_response text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_catalog', 'extensions'
 AS $function$
 DECLARE
     current_context JSONB;
@@ -11735,10 +12066,8 @@ EXCEPTION
             'sqlstate', SQLSTATE
         );
 END;
-$function$;
-
--- Grant permissions
-GRANT EXECUTE ON FUNCTION respond_to_feedback TO authenticated;
+$function$
+;
 
 CREATE OR REPLACE FUNCTION public.restrict_notification_updates()
  RETURNS trigger
@@ -11819,6 +12148,123 @@ EXCEPTION
 END;
 $function$
 ;
+
+CREATE OR REPLACE FUNCTION public.get_treatment_plan_details(p_treatment_plan_id UUID)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  current_context JSONB;
+  result JSONB;
+BEGIN
+  -- Step 1: Auth check
+  current_context := get_current_user_context();
+
+  IF NOT (current_context->>'authenticated')::boolean THEN
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Authentication required'
+    );
+  END IF;
+
+  -- Step 2: Fetch nested JSON with ALL fields
+  SELECT jsonb_build_object(
+    'success', true,
+    'data', jsonb_build_object(
+      'id', tp.id,
+      'status', tp.status,
+      'treatment_notes', tp.treatment_notes,
+      'created_at', tp.created_at,
+      
+      -- ✅ ADD THESE MISSING FIELDS:
+      'treatment_name', tp.treatment_name,
+      'treatment_category', tp.treatment_category,
+      'description', tp.description,
+      'progress_percentage', tp.progress_percentage,
+      'visits_completed', tp.visits_completed,
+      'total_visits_planned', tp.total_visits_planned,
+      'start_date', tp.start_date,
+      'expected_end_date', tp.expected_end_date,
+      'actual_end_date', tp.actual_end_date,
+      'follow_up_interval_days', tp.follow_up_interval_days,
+      'next_visit_date', tp.next_visit_date,
+      'patient_id', tp.patient_id,
+      'clinic_id', tp.clinic_id,
+      'assigned_doctor_id', tp.assigned_doctor_id,
+      'source_appointment_id', tp.source_appointment_id,
+      'diagnosis', tp.diagnosis,                        -- ✅ ADD
+      'requires_follow_up', tp.requires_follow_up,      -- ✅ ADD
+      'next_visit_appointment_id', tp.next_visit_appointment_id, -- ✅ ADD
+      'completed_at', tp.completed_at,                  -- ✅ ADD
+      'updated_at', tp.updated_at,                      -- ✅ ADD
+
+      -- Clinic
+      'clinic', to_jsonb(c.*),
+
+      -- Created by (staff/admin user)
+      'created_by', jsonb_build_object(
+        'id', u.id,
+        'email', u.email,
+        'user_profiles', to_jsonb(up.*)
+      ),
+
+      -- Appointments + their nested data
+'treatment_plan_appointments', (
+  SELECT jsonb_agg(
+    jsonb_build_object(
+      'id', tpa.id,
+      'visit_number', tpa.visit_number,
+      'visit_purpose', tpa.visit_purpose,
+      'is_completed', tpa.is_completed,
+      'completion_notes', tpa.completion_notes,
+      'recommended_next_visit_days', tpa.recommended_next_visit_days,
+      'created_at', tpa.created_at,
+      'appointment', jsonb_build_object(
+        'id', a.id,
+        'appointment_date', a.appointment_date,
+        'appointment_time', a.appointment_time,
+        'status', a.status,
+        'doctor', to_jsonb(d.*),
+        'services', (
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'service', to_jsonb(s.*)
+            )
+          )
+          FROM appointment_services aps
+          JOIN services s ON s.id = aps.service_id
+          WHERE aps.appointment_id = a.id
+        )
+      )
+    )
+    ORDER BY tpa.visit_number ASC
+  )
+  FROM treatment_plan_appointments tpa
+  JOIN appointments a ON a.id = tpa.appointment_id
+  LEFT JOIN doctors d ON d.id = a.doctor_id
+  WHERE tpa.treatment_plan_id = tp.id
+)
+    )
+  )
+  INTO result
+  FROM treatment_plans tp
+  LEFT JOIN clinics c ON c.id = tp.clinic_id
+  LEFT JOIN users u ON u.id = tp.created_by_staff_id
+  LEFT JOIN user_profiles up ON up.user_id = u.id
+  WHERE tp.id = p_treatment_plan_id
+  AND (
+    tp.patient_id = (current_context->>'user_id')::UUID
+    OR (current_context->>'user_type') IN ('staff', 'admin')
+  );
+
+  -- Step 3: Return
+  RETURN COALESCE(result, jsonb_build_object(
+    'success', false,
+    'error', 'Treatment plan not found or unauthorized'
+  ));
+END;
+$$;
 
 CREATE OR REPLACE FUNCTION public.send_condition_report(p_clinic_id uuid, p_subject text, p_message text, p_attachment_urls text[] DEFAULT NULL::text[])
  RETURNS jsonb
@@ -12324,8 +12770,7 @@ CREATE OR REPLACE FUNCTION public.submit_feedback(p_clinic_rating integer DEFAUL
  LANGUAGE plpgsql
  SECURITY DEFINER
  SET search_path TO 'public', 'pg_catalog', 'extensions'
-AS $function$
-DECLARE
+AS $function$DECLARE
     current_context JSONB;
     patient_id_val UUID;
     appointment_record RECORD;
@@ -12467,7 +12912,7 @@ BEGIN
     WHERE patient_id = patient_id_val
     AND created_at >= CURRENT_DATE;
     
-    IF existing_feedback_count >= 3 THEN
+    IF existing_feedback_count >= 5 THEN
         RETURN jsonb_build_object(
             'success', false, 
             'error', 'Maximum 3 feedback submissions per day reached. Please try again tomorrow.'
@@ -12609,8 +13054,7 @@ EXCEPTION
             'error', 'An error occurred while submitting feedback',
             'details', SQLERRM
         );
-END;
-$function$
+END;$function$
 ;
 
 CREATE OR REPLACE FUNCTION public.track_appointment_deletion_in_history()
@@ -15042,30 +15486,20 @@ to public
 using ((auth.role() = 'service_role'::text));
 
 
-create policy "Feedback view access"
-on "public"."feedback"
-as permissive
-for select
-to public
-using (
-CASE get_current_user_role()
-    WHEN 'admin'::user_type THEN true
-    WHEN 'staff'::user_type THEN ((clinic_id = get_current_staff_clinic_id()) AND
-    CASE
-        WHEN (is_anonymous = true) THEN true
-        ELSE true
-    END)
-    WHEN 'patient'::user_type THEN (patient_id = get_current_user_id())
-    ELSE false
-END);
-
-
 create policy "Only patient can create feedback"
 on "public"."feedback"
 as permissive
 for insert
 to authenticated
 with check (((get_current_user_role() = 'patient'::user_type) AND (patient_id = get_current_user_id())));
+
+
+create policy "Patients can view own feedback"
+on "public"."feedback"
+as permissive
+for select
+to authenticated
+using (((get_current_user_role() = 'patient'::user_type) AND (patient_id = get_current_user_id())));
 
 
 create policy "Staff can response to feedback patient can update it"
@@ -15092,13 +15526,20 @@ on "public"."feedback"
 as permissive
 for select
 to authenticated
-using (
-CASE get_current_user_role()
-    WHEN 'staff'::user_type THEN (clinic_id = get_current_staff_clinic_id())
-    WHEN 'admin'::user_type THEN true
-    WHEN 'patient'::user_type THEN (patient_id = get_current_user_id())
-    ELSE false
-END);
+using ((EXISTS ( SELECT 1
+   FROM (staff_profiles sp
+     JOIN user_profiles up ON ((sp.user_profile_id = up.id)))
+  WHERE ((up.user_id = auth.uid()) AND (sp.clinic_id = feedback.clinic_id) AND (sp.is_active = true)))));
+
+
+create policy "active users only"
+on "public"."feedback"
+as permissive
+for all
+to public
+using ((EXISTS ( SELECT 1
+   FROM users u
+  WHERE ((u.id = auth.uid()) AND (u.is_active = true)))));
 
 
 create policy "File access control for each role"

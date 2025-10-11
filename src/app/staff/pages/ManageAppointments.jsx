@@ -27,10 +27,14 @@ import {
   Mail,
   FileText,
   ChevronRight,
+  Sparkles,
+  Target,
+  FileWarning,
 } from "lucide-react";
 
 // UI Components
 import { Button } from "@/core/components/ui/button";
+import { Input } from "@/core/components/ui/input";
 import { Textarea } from "@/core/components/ui/text-area";
 import {
   Card,
@@ -62,6 +66,7 @@ import {
   TabsTrigger,
 } from "@/core/components/ui/tabs";
 import { Checkbox } from "@/core/components/ui/checkbox";
+import { Label } from "@/core/components/ui/label";
 import {
   Alert,
   AlertDescription,
@@ -99,14 +104,12 @@ const ManageAppointments = () => {
     isOpen: false,
     appointment: null,
   });
-  const [treatmentModal, setTreatmentModal] = useState({
-    isOpen: false,
-    appointment: null,
-  });
   const [detailsModal, setDetailsModal] = useState({
     isOpen: false,
     appointment: null,
   });
+
+  // ✅ ENHANCED: Action form with treatment plan fields
   const [actionForm, setActionForm] = useState({
     notes: "",
     reason: "",
@@ -114,7 +117,14 @@ const ManageAppointments = () => {
     sendRescheduleReminder: false,
     followUpRequired: false,
     followUpNotes: "",
+    // NEW: Treatment plan fields
+    requiresTreatmentPlan: false,
+    treatmentPlanNotes: "",
+    diagnosisSummary: "",
+    recommendedTreatmentName: "",
+    recommendedVisits: "",
   });
+
   const [toast, setToast] = useState({
     show: false,
     message: "",
@@ -138,6 +148,12 @@ const ManageAppointments = () => {
       sendRescheduleReminder: false,
       followUpRequired: false,
       followUpNotes: "",
+      // Reset treatment fields
+      requiresTreatmentPlan: false,
+      treatmentPlanNotes: "",
+      diagnosisSummary: "",
+      recommendedTreatmentName: "",
+      recommendedVisits: "",
     });
   };
 
@@ -156,26 +172,11 @@ const ManageAppointments = () => {
     );
 
     if (result.success) {
-      showToast(" Appointment approved and patient notified!", "success");
+      showToast("✅ Appointment approved and patient notified!", "success");
       closeModal();
       appointmentManager.refreshData();
     } else {
       showToast(result.error || "Failed to approve appointment", "error");
-    }
-  };
-
-  // Treatment Plan Decision
-  const handleTreatmentDecision = (needsTreatment) => {
-    const appointment = treatmentModal.appointment;
-    setTreatmentModal({ isOpen: false, appointment: null });
-
-    if (needsTreatment) {
-      navigate("/staff/treatment-plan", {
-        state: {
-          fromAppointment: true,
-          appointment,
-        },
-      });
     }
   };
 
@@ -208,12 +209,12 @@ const ManageAppointments = () => {
           );
         } else {
           showToast(
-            "Appointment rejected and reschedule options sent to patient!",
+            "✅ Appointment rejected and reschedule options sent to patient!",
             "success"
           );
         }
       } else {
-        showToast("Appointment rejected and patient notified", "success");
+        showToast("✅ Appointment rejected and patient notified", "success");
       }
 
       closeModal();
@@ -223,7 +224,7 @@ const ManageAppointments = () => {
     }
   };
 
-  // COMPLETE
+  // ✅ ENHANCED: Complete appointment with treatment plan support
   const handleComplete = async () => {
     if (!actionModal.appointment) return;
 
@@ -233,21 +234,39 @@ const ManageAppointments = () => {
         notes: actionForm.notes,
         followUpRequired: actionForm.followUpRequired,
         followUpNotes: actionForm.followUpNotes,
+        // NEW: Treatment plan parameters
+        requiresTreatmentPlan: actionForm.requiresTreatmentPlan,
+        treatmentPlanNotes: actionForm.treatmentPlanNotes,
+        diagnosisSummary: actionForm.diagnosisSummary,
+        recommendedTreatmentName: actionForm.recommendedTreatmentName,
+        recommendedVisits: actionForm.recommendedVisits
+          ? parseInt(actionForm.recommendedVisits)
+          : null,
       }
     );
 
     if (result.success) {
-      showToast("Appointment completed successfully!", "success");
+      showToast("✅ Appointment completed successfully!", "success");
+
+      console.log("Appointment completed:", {
+        appointmentId: actionModal.appointment.id,
+        requiresTreatmentPlan: result.data?.requires_treatment_plan,
+        medicalHistoryId: result.data?.medical_history_id,
+      });
+
       closeModal();
       appointmentManager.refreshData();
 
-      // Always show treatment plan option after completion
-      setTimeout(() => {
-        setTreatmentModal({
-          isOpen: true,
-          appointment: actionModal.appointment,
-        });
-      }, 500);
+      if (result.data?.requires_treatment_plan) {
+        setTimeout(() => {
+          const confirmed = window.confirm(
+            "Treatment plan flagged! Would you like to create it now?"
+          );
+          if (confirmed) {
+            navigate("/staff/treatment-plans");
+          }
+        }, 500);
+      }
     } else {
       showToast(result.error || "Failed to complete appointment", "error");
     }
@@ -263,7 +282,10 @@ const ManageAppointments = () => {
     );
 
     if (result.success) {
-      showToast("Marked as no-show. Patient reliability updated.", "success");
+      showToast(
+        "✅ Marked as no-show. Patient reliability updated.",
+        "success"
+      );
       closeModal();
       appointmentManager.refreshData();
     } else {
@@ -374,8 +396,6 @@ const ManageAppointments = () => {
     );
   };
 
-  console.log(filteredAppointments);
-
   // Patient Reliability Alert Component
   const ReliabilityAlert = ({ reliability }) => {
     if (!reliability || reliability.risk_level === "reliable") return null;
@@ -390,7 +410,7 @@ const ManageAppointments = () => {
       >
         <AlertTriangle className="h-4 w-4" />
         <AlertTitle className="font-semibold">
-          {isHighRisk ? " High Risk Patient" : " Moderate Risk Patient"}
+          {isHighRisk ? "⚠️ High Risk Patient" : "⚠️ Moderate Risk Patient"}
         </AlertTitle>
         <AlertDescription className="text-xs space-y-1 mt-2">
           <div className="flex items-center gap-4">
@@ -673,6 +693,11 @@ const ManageAppointments = () => {
 
     const showCompletionButtons = isConfirmed && isPast;
 
+    // ✅ Check if services require multiple visits (suggest treatment plan)
+    const hasMultiVisitServices = appointment.services?.some(
+      (s) => s.requires_multiple_visits
+    );
+
     return (
       <Card
         className={`hover:shadow-lg transition-all border-l-4 ${
@@ -709,6 +734,13 @@ const ManageAppointments = () => {
                   <Badge variant="outline" className="text-xs">
                     <Clock className="w-3 h-3 mr-1" />
                     {timeUntil}
+                  </Badge>
+                )}
+                {/* ✅ NEW: Multi-visit indicator */}
+                {hasMultiVisitServices && (
+                  <Badge className="bg-purple-100 text-purple-800 border-purple-300 border text-xs">
+                    <Sparkles className="w-3 h-3 mr-1" />
+                    Multi-Visit
                   </Badge>
                 )}
               </div>
@@ -913,7 +945,7 @@ const ManageAppointments = () => {
           </Button>
         </div>
 
-        {/* ✅ FIXED: Stats Cards - Use activeCounts */}
+        {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="border-l-4 border-l-yellow-500">
             <CardContent className="pt-6">
@@ -1015,7 +1047,7 @@ const ManageAppointments = () => {
           )}
         </AnimatePresence>
 
-        {/* ✅ FIXED: Tabs - Use activeCounts */}
+        {/* Tabs */}
         <Tabs
           value={activeTab}
           onValueChange={setActiveTab}
@@ -1138,73 +1170,9 @@ const ManageAppointments = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Treatment Plan Decision Modal */}
-        <Dialog
-          open={treatmentModal.isOpen}
-          onOpenChange={() =>
-            setTreatmentModal({ isOpen: false, appointment: null })
-          }
-        >
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Heart className="w-5 h-5 text-purple-600" />
-                Treatment Plan Needed?
-              </DialogTitle>
-              <DialogDescription>
-                Does{" "}
-                <strong>{treatmentModal.appointment?.patient?.name}</strong>{" "}
-                require a treatment plan for ongoing care?
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="py-4 space-y-3">
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription className="text-sm">
-                  Treatment plans help track multi-visit procedures, monitor
-                  progress, and ensure comprehensive patient care.
-                </AlertDescription>
-              </Alert>
-
-              {treatmentModal.appointment?.services?.some(
-                (s) => s.requires_multiple_visits
-              ) && (
-                <Alert
-                  variant="default"
-                  className="border-purple-300 bg-purple-50"
-                >
-                  <AlertTriangle className="h-4 w-4 text-purple-600" />
-                  <AlertDescription className="text-sm">
-                    This appointment includes services that typically require
-                    multiple visits.
-                  </AlertDescription>
-                </Alert>
-              )}
-            </div>
-
-            <DialogFooter className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => handleTreatmentDecision(false)}
-                className="flex-1"
-              >
-                No, Not Needed
-              </Button>
-              <Button
-                onClick={() => handleTreatmentDecision(true)}
-                className="flex-1 bg-purple-600 hover:bg-purple-700"
-              >
-                <Heart className="w-4 h-4 mr-2" />
-                Yes, Create Plan
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
         {/* Action Modals */}
         <Dialog open={actionModal.isOpen} onOpenChange={closeModal}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-xl">
                 {actionModal.type === "approve" && (
@@ -1271,17 +1239,16 @@ const ManageAppointments = () => {
                   )}
 
                   <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      Staff Notes (Optional)
-                    </label>
+                    <Label htmlFor="approveNotes">Staff Notes (Optional)</Label>
                     <Textarea
+                      id="approveNotes"
                       value={actionForm.notes}
                       onChange={(e) =>
                         setActionForm({ ...actionForm, notes: e.target.value })
                       }
                       placeholder="Add any notes, special instructions, or reminders for the appointment..."
                       rows={4}
-                      className="resize-none"
+                      className="resize-none mt-2"
                     />
                   </div>
                 </>
@@ -1291,16 +1258,14 @@ const ManageAppointments = () => {
               {actionModal.type === "reject" && (
                 <>
                   <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      Rejection Category
-                    </label>
+                    <Label htmlFor="rejectCategory">Rejection Category</Label>
                     <Select
                       value={actionForm.category}
                       onValueChange={(value) =>
                         setActionForm({ ...actionForm, category: value })
                       }
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="mt-2">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1319,10 +1284,11 @@ const ManageAppointments = () => {
                   </div>
 
                   <div>
-                    <label className="text-sm font-medium mb-2 block">
+                    <Label htmlFor="rejectReason">
                       Rejection Reason <span className="text-red-600">*</span>
-                    </label>
+                    </Label>
                     <Textarea
+                      id="rejectReason"
                       value={actionForm.reason}
                       onChange={(e) =>
                         setActionForm({ ...actionForm, reason: e.target.value })
@@ -1330,7 +1296,7 @@ const ManageAppointments = () => {
                       placeholder="Provide a clear and professional reason that will be sent to the patient..."
                       rows={4}
                       required
-                      className="resize-none"
+                      className="resize-none mt-2"
                     />
                     {!actionForm.reason && (
                       <p className="text-xs text-red-600 mt-1">
@@ -1340,15 +1306,17 @@ const ManageAppointments = () => {
                   </div>
 
                   <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg border">
-                    <Checkbox
+                    <input
+                      type="checkbox"
                       id="sendReminder"
                       checked={actionForm.sendRescheduleReminder}
-                      onCheckedChange={(checked) =>
+                      onChange={(e) =>
                         setActionForm({
                           ...actionForm,
-                          sendRescheduleReminder: checked,
+                          sendRescheduleReminder: e.target.checked,
                         })
                       }
+                      className="mt-1 h-4 w-4 accent-primary cursor-pointer"
                     />
                     <div className="flex-1">
                       <label
@@ -1366,7 +1334,7 @@ const ManageAppointments = () => {
                 </>
               )}
 
-              {/* Complete Form */}
+              {/* ✅ ENHANCED: Complete Form with Treatment Plan Fields */}
               {actionModal.type === "complete" && (
                 <>
                   <Alert>
@@ -1377,31 +1345,161 @@ const ManageAppointments = () => {
                     </AlertDescription>
                   </Alert>
 
+                  {/* ✅ NEW: Treatment Plan Flag */}
+                  <div className="flex items-start gap-3 p-4 bg-purple-50 dark:bg-purple-950 rounded-lg border-2 border-purple-200 dark:border-purple-800">
+                    <input
+                      type="checkbox"
+                      id="requiresTreatmentPlan"
+                      checked={actionForm.requiresTreatmentPlan}
+                      onChange={(e) =>
+                        setActionForm({
+                          ...actionForm,
+                          requiresTreatmentPlan: e.target.checked,
+                        })
+                      }
+                      className="mt-1 h-4 w-4 accent-purple-600 cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <label
+                        htmlFor="requiresTreatmentPlan"
+                        className="text-sm font-semibold cursor-pointer flex items-center gap-2"
+                      >
+                        <Heart className="w-4 h-4 text-purple-600" />
+                        This patient requires a treatment plan
+                      </label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Flag this appointment for multi-visit treatment plan
+                        creation
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* ✅ NEW: Treatment Plan Fields (shown when flagged) */}
+                  {actionForm.requiresTreatmentPlan && (
+                    <div className="space-y-4 p-4 bg-purple-50/50 dark:bg-purple-950/30 rounded-lg border border-purple-200 dark:border-purple-800">
+                      <Alert className="border-purple-300 bg-purple-100/50">
+                        <Sparkles className="h-4 w-4 text-purple-600" />
+                        <AlertDescription className="text-xs">
+                          Complete these fields to help staff create the
+                          treatment plan faster. All fields auto-populate in the
+                          treatment plan form.
+                        </AlertDescription>
+                      </Alert>
+
+                      <div>
+                        <Label htmlFor="diagnosisSummary">
+                          Diagnosis Summary
+                        </Label>
+                        <Textarea
+                          id="diagnosisSummary"
+                          value={actionForm.diagnosisSummary}
+                          onChange={(e) =>
+                            setActionForm({
+                              ...actionForm,
+                              diagnosisSummary: e.target.value,
+                            })
+                          }
+                          placeholder="E.g., Deep cavity in tooth #14 with pulp involvement..."
+                          rows={3}
+                          className="resize-none mt-2"
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="recommendedTreatmentName">
+                          Recommended Treatment Name
+                        </Label>
+                        <Input
+                          id="recommendedTreatmentName"
+                          value={actionForm.recommendedTreatmentName}
+                          onChange={(e) =>
+                            setActionForm({
+                              ...actionForm,
+                              recommendedTreatmentName: e.target.value,
+                            })
+                          }
+                          placeholder="E.g., Root Canal Treatment"
+                          className="mt-2"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label htmlFor="recommendedVisits">
+                            Recommended Visits
+                          </Label>
+                          <Input
+                            id="recommendedVisits"
+                            type="number"
+                            value={actionForm.recommendedVisits}
+                            onChange={(e) =>
+                              setActionForm({
+                                ...actionForm,
+                                recommendedVisits: e.target.value,
+                              })
+                            }
+                            placeholder="E.g., 3"
+                            min="1"
+                            className="mt-2"
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <Badge variant="outline" className="text-xs">
+                            <Target className="w-3 h-3 mr-1" />
+                            Helps plan scheduling
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="treatmentPlanNotes">
+                          Treatment Plan Notes
+                        </Label>
+                        <Textarea
+                          id="treatmentPlanNotes"
+                          value={actionForm.treatmentPlanNotes}
+                          onChange={(e) =>
+                            setActionForm({
+                              ...actionForm,
+                              treatmentPlanNotes: e.target.value,
+                            })
+                          }
+                          placeholder="E.g., Patient needs 3-session root canal therapy. Schedule follow-ups every 2 weeks..."
+                          rows={2}
+                          className="resize-none mt-2"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <Separator />
+
                   <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      Completion Notes
-                    </label>
+                    <Label htmlFor="completionNotes">Completion Notes</Label>
                     <Textarea
+                      id="completionNotes"
                       value={actionForm.notes}
                       onChange={(e) =>
                         setActionForm({ ...actionForm, notes: e.target.value })
                       }
                       placeholder="Summary of appointment, treatments performed, patient condition..."
                       rows={4}
-                      className="resize-none"
+                      className="resize-none mt-2"
                     />
                   </div>
 
                   <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg border">
-                    <Checkbox
+                    <input
+                      type="checkbox"
                       id="followUp"
                       checked={actionForm.followUpRequired}
-                      onCheckedChange={(checked) =>
+                      onChange={(e) =>
                         setActionForm({
                           ...actionForm,
-                          followUpRequired: checked,
+                          followUpRequired: e.target.checked,
                         })
                       }
+                      className="mt-1 h-4 w-4 accent-primary cursor-pointer"
                     />
                     <div className="flex-1">
                       <label
@@ -1418,10 +1516,11 @@ const ManageAppointments = () => {
 
                   {actionForm.followUpRequired && (
                     <div>
-                      <label className="text-sm font-medium mb-2 block">
+                      <Label htmlFor="followUpNotes">
                         Follow-up Instructions
-                      </label>
+                      </Label>
                       <Textarea
+                        id="followUpNotes"
                         value={actionForm.followUpNotes}
                         onChange={(e) =>
                           setActionForm({
@@ -1431,7 +1530,7 @@ const ManageAppointments = () => {
                         }
                         placeholder="Recommended timeframe, specific concerns to address..."
                         rows={3}
-                        className="resize-none"
+                        className="resize-none mt-2"
                       />
                     </div>
                   )}
@@ -1457,17 +1556,16 @@ const ManageAppointments = () => {
                   </Alert>
 
                   <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      Staff Notes (Optional)
-                    </label>
+                    <Label htmlFor="noShowNotes">Staff Notes (Optional)</Label>
                     <Textarea
+                      id="noShowNotes"
                       value={actionForm.notes}
                       onChange={(e) =>
                         setActionForm({ ...actionForm, notes: e.target.value })
                       }
                       placeholder="Any additional context about the no-show (contacted patient, left message, etc.)..."
                       rows={3}
-                      className="resize-none"
+                      className="resize-none mt-2"
                     />
                   </div>
                 </>

@@ -333,7 +333,7 @@ const OngoingTreatments = ({
                     <Button
                       size="sm"
                       className="w-full"
-                      onClick={() => navigate("/patient/book-appointment")}
+                      onClick={() => navigate("/patient/appointments/book")}
                     >
                       <CalendarPlus className="w-4 h-4 mr-2" />
                       Schedule Next Visit

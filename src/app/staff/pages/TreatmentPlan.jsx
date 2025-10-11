@@ -14,7 +14,6 @@ import {
   CheckCircle,
   Loader2,
   Eye,
-  Edit,
   Pause,
   PlayCircle,
   Ban,
@@ -40,6 +39,8 @@ import {
   RefreshCw,
   Shield,
   AlertOctagon,
+  FileWarning,
+  Sparkle,
 } from "lucide-react";
 
 // UI Components
@@ -53,7 +54,6 @@ import {
   CardTitle,
   CardDescription,
 } from "@/core/components/ui/card";
-import { Badge } from "@/core/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -84,6 +84,7 @@ import { Label } from "@/core/components/ui/label";
 import { Separator } from "@/core/components/ui/separator";
 import { Progress } from "@/core/components/ui/progress";
 import { ScrollArea } from "@/core/components/ui/scroll-area";
+import { Badge } from "@/core/components/ui/badge";
 
 // Hooks
 import { useTreatmentPlans } from "@/hooks/appointment/useTreatmentPlans";
@@ -131,7 +132,7 @@ const TREATMENT_CATEGORIES = [
     value: "cosmetic",
     label: "Cosmetic Dentistry",
     description: "Aesthetic Enhancement",
-    icon: Sparkles,
+    icon: Sparkle,
     color: "bg-cyan-500",
   },
   {
@@ -180,11 +181,12 @@ const TreatmentPlans = () => {
     updateTreatmentPlanStatus,
     createTreatmentPlan: createPlan,
     getAppointmentsAwaitingTreatmentPlans,
+    createTreatmentPlanFromAppointment,
     clearError,
   } = useTreatmentPlans();
 
   // State Management
-  const [activeTab, setActiveTab] = useState("pending"); // ✅ START WITH PENDING
+  const [activeTab, setActiveTab] = useState("pending");
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [selectedTreatment, setSelectedTreatment] = useState(null);
@@ -204,13 +206,20 @@ const TreatmentPlans = () => {
   const [pendingAppointments, setPendingAppointments] = useState([]);
   const [loadingPending, setLoadingPending] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
-  // Create Treatment Form State
+  const [availableDoctors, setAvailableDoctors] = useState([]);
+
+  // Create Treatment Form State (ENHANCED)
   const [createFormData, setCreateFormData] = useState({
     treatmentName: "",
     treatmentCategory: "",
     description: "",
+    diagnosis: "",
     totalVisitsPlanned: "",
     followUpIntervalDays: "30",
+    assignedDoctorId: "",
+    startDate: new Date().toISOString().split("T")[0],
+    endDate: "",
+    additionalNotes: "",
   });
   const [formErrors, setFormErrors] = useState({});
 
@@ -223,38 +232,105 @@ const TreatmentPlans = () => {
     );
   };
 
+  // ✅ Helper Functions - Moved to component scope
+  const resetCreateForm = () => {
+    setCreateFormData({
+      treatmentName: "",
+      treatmentCategory: "",
+      description: "",
+      diagnosis: "",
+      totalVisitsPlanned: "",
+      followUpIntervalDays: "30",
+      assignedDoctorId: "",
+      startDate: new Date().toISOString().split("T")[0],
+      endDate: "",
+      additionalNotes: "",
+    });
+    setFormErrors({});
+  };
+
+  const getCategoryInfo = (categoryValue) => {
+    return (
+      TREATMENT_CATEGORIES.find((c) => c.value === categoryValue) ||
+      TREATMENT_CATEGORIES[9]
+    );
+  };
+
   const loadPendingAppointments = async () => {
     setLoadingPending(true);
     const result = await getAppointmentsAwaitingTreatmentPlans();
     setLoadingPending(false);
 
     if (result.success) {
-      setPendingAppointments(result.appointments);
+      console.log("📋 Pending appointments loaded:", result.appointments);
+      setPendingAppointments(result.appointments || []);
     } else {
-      showToast(result.error || "Failed to load pending appointments", "error");
+      const errorMessage =
+        result.error || "Failed to load pending appointments";
+      console.error("Error loading pending appointments:", errorMessage);
+
+      if (!errorMessage.includes("Clinic not loaded") || profile?.user_id) {
+        showToast(errorMessage, "error");
+      }
+    }
+  };
+
+  // ✅ Load Available Doctors - FIXED to use doctor_clinics junction table
+  const loadAvailableDoctors = async () => {
+    const clinicId =
+      profile?.clinic_id || profile?.role_specific_data?.clinic_id;
+
+    if (!clinicId) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("doctor_clinics")
+        .select(
+          `
+          doctor_id,
+          doctors (
+            id, 
+            first_name, 
+            last_name, 
+            specialization,
+            is_available
+          )
+        `
+        )
+        .eq("clinic_id", clinicId)
+        .eq("is_active", true)
+        .order("doctors(first_name)");
+
+      if (error) throw error;
+
+      const doctorsList = (data || [])
+        .map((dc) => dc.doctors)
+        .filter((doctor) => doctor && doctor.is_available);
+
+      setAvailableDoctors(doctorsList);
+    } catch (err) {
+      console.error("Failed to load doctors:", err);
     }
   };
 
   useEffect(() => {
-    if ((isStaff || isAdmin) && profile?.clinic_id) {
+    if ((isStaff || isAdmin) && profile?.user_id) {
       loadPendingAppointments();
       loadAllTreatments();
+      loadAvailableDoctors();
     }
-  }, [isStaff, isAdmin, profile?.clinic_id]);
+  }, [isStaff, isAdmin, profile?.user_id]);
 
-  // Handle navigation from ManageAppointments
   useEffect(() => {
     if (location.state?.fromAppointment) {
       const { appointment } = location.state;
       setSelectedAppointment(appointment);
       setShowCreateModal(true);
       setActiveTab("pending");
-      // Clear state
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
 
-  // Load ALL treatments
   const loadAllTreatments = async () => {
     await getOngoingTreatments(null, true);
   };
@@ -263,7 +339,6 @@ const TreatmentPlans = () => {
   const filteredTreatments = useMemo(() => {
     let filtered = ongoingTreatments || [];
 
-    // Filter by status (tab)
     if (activeTab === "active") {
       filtered = filtered.filter((t) => t.status === "active");
     } else if (activeTab === "paused") {
@@ -274,14 +349,12 @@ const TreatmentPlans = () => {
       filtered = filtered.filter((t) => t.timeline?.is_overdue);
     }
 
-    // Filter by category
     if (categoryFilter !== "all") {
       filtered = filtered.filter(
         (t) => t.treatment_category === categoryFilter
       );
     }
 
-    // Filter by search query
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
@@ -295,20 +368,18 @@ const TreatmentPlans = () => {
     return filtered;
   }, [ongoingTreatments, activeTab, categoryFilter, searchQuery]);
 
-  // ✅ Filter Pending Appointments
   const filteredPendingAppointments = useMemo(() => {
     if (!searchQuery) return pendingAppointments;
 
     const query = searchQuery.toLowerCase();
     return pendingAppointments.filter(
       (apt) =>
-        apt.patient_name?.toLowerCase().includes(query) ||
-        apt.patient_email?.toLowerCase().includes(query) ||
-        apt.services.some((s) => s.name?.toLowerCase().includes(query))
+        apt.patient?.name?.toLowerCase().includes(query) ||
+        apt.patient?.email?.toLowerCase().includes(query) ||
+        apt.medical_history?.diagnosis_summary?.toLowerCase().includes(query)
     );
   }, [pendingAppointments, searchQuery]);
 
-  // Handle View Details
   const handleViewDetails = async (treatmentId) => {
     const result = await getTreatmentPlanDetails(treatmentId);
     if (result.success) {
@@ -319,7 +390,6 @@ const TreatmentPlans = () => {
     }
   };
 
-  // Handle Status Update
   const handleStatusUpdate = async () => {
     if (!selectedTreatment || !statusUpdateData.status) return;
 
@@ -343,19 +413,87 @@ const TreatmentPlans = () => {
     }
   };
 
-  // ✅ Handle Create Treatment Plan (from appointment)
+  const handleSelectAppointment = (appointment) => {
+    setSelectedAppointment(appointment);
+
+    const medicalHistory = appointment.medical_history || {};
+    const doctor = appointment.doctor || {};
+
+    const detectCategory = (treatmentName) => {
+      if (!treatmentName) return "";
+      const name = treatmentName.toLowerCase();
+
+      if (name.includes("root canal") || name.includes("endodontic"))
+        return "root_canal";
+      if (
+        name.includes("brace") ||
+        name.includes("align") ||
+        name.includes("orthodontic")
+      )
+        return "orthodontics";
+      if (name.includes("implant")) return "implants";
+      if (name.includes("gum") || name.includes("periodontal"))
+        return "periodontics";
+      if (
+        name.includes("crown") ||
+        name.includes("bridge") ||
+        name.includes("denture")
+      )
+        return "prosthodontics";
+      if (
+        name.includes("whitening") ||
+        name.includes("veneer") ||
+        name.includes("cosmetic")
+      )
+        return "cosmetic";
+      if (name.includes("extraction") || name.includes("surgery"))
+        return "oral_surgery";
+      if (name.includes("cleaning") || name.includes("preventive"))
+        return "preventive";
+      if (name.includes("filling") || name.includes("restoration"))
+        return "restorative";
+
+      return "other";
+    };
+
+    const recommendedTreatment =
+      medicalHistory.recommended_treatment_name || "";
+
+    setCreateFormData({
+      treatmentName: recommendedTreatment,
+      treatmentCategory: detectCategory(recommendedTreatment),
+      description: medicalHistory.diagnosis_summary || "",
+      diagnosis: medicalHistory.diagnosis_summary || "",
+      totalVisitsPlanned: medicalHistory.recommended_visits?.toString() || "",
+      followUpIntervalDays: "30",
+      assignedDoctorId: doctor.id || "",
+      startDate: new Date().toISOString().split("T")[0],
+      endDate: "",
+      additionalNotes: "",
+    });
+
+    setFormErrors({});
+    setShowCreateModal(true);
+  };
+
   const handleCreateTreatment = async () => {
     if (!selectedAppointment) {
       showToast("No appointment selected", "error");
       return;
     }
 
-    // Validation
     const errors = {};
     if (!createFormData.treatmentName.trim())
       errors.treatmentName = "Treatment name is required";
     if (!createFormData.treatmentCategory)
       errors.category = "Category is required";
+    if (!createFormData.startDate) errors.startDate = "Start date is required";
+    if (
+      createFormData.endDate &&
+      createFormData.endDate < createFormData.startDate
+    ) {
+      errors.endDate = "End date must be after start date";
+    }
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -363,9 +501,41 @@ const TreatmentPlans = () => {
       return;
     }
 
+    const clinicId =
+      profile?.clinic_id ||
+      profile?.role_specific_data?.clinic_id ||
+      selectedAppointment.clinic?.id ||
+      null;
+
+    const patientId =
+      selectedAppointment.patient?.id || selectedAppointment.patient_id || null;
+
+    console.log("🔍 Treatment Creation Debug:", {
+      patientId,
+      clinicId,
+      treatmentName: createFormData.treatmentName,
+      profile,
+      selectedAppointment,
+    });
+
+    if (!patientId) {
+      showToast("Patient ID is missing from appointment data", "error");
+      return;
+    }
+
+    if (!clinicId) {
+      showToast("Clinic ID is missing. Please refresh and try again.", "error");
+      return;
+    }
+
+    if (!createFormData.treatmentName.trim()) {
+      showToast("Treatment name is required", "error");
+      return;
+    }
+
     const treatmentData = {
-      patientId: selectedAppointment.patient_id,
-      clinicId: profile?.clinic_id,
+      patientId,
+      clinicId,
       treatmentName: createFormData.treatmentName,
       description: createFormData.description || null,
       treatmentCategory: createFormData.treatmentCategory,
@@ -373,8 +543,17 @@ const TreatmentPlans = () => {
         ? parseInt(createFormData.totalVisitsPlanned)
         : null,
       followUpIntervalDays: parseInt(createFormData.followUpIntervalDays),
-      initialAppointmentId: selectedAppointment.id,
+      initialAppointmentId: null,
+      sourceAppointmentId:
+        selectedAppointment.appointment_id || selectedAppointment.id,
+      diagnosis: createFormData.diagnosis || null,
+      assignedDoctorId: createFormData.assignedDoctorId || null,
+      startDate: createFormData.startDate,
+      endDate: createFormData.endDate || null,
+      additionalNotes: createFormData.additionalNotes || null,
     };
+
+    console.log("📤 Sending treatment data:", treatmentData);
 
     const result = await createPlan(treatmentData);
 
@@ -384,37 +563,30 @@ const TreatmentPlans = () => {
       resetCreateForm();
       setSelectedAppointment(null);
       await loadAllTreatments();
-      await loadPendingAppointments(); // ✅ REFRESH PENDING LIST
+      await loadPendingAppointments();
     } else {
+      console.error("Treatment plan creation failed:", {
+        error: result.error,
+        treatmentData,
+        profile,
+        selectedAppointment,
+      });
       showToast(result.error || "Failed to create treatment plan", "error");
     }
   };
 
-  const resetCreateForm = () => {
-    setCreateFormData({
-      treatmentName: "",
-      treatmentCategory: "",
-      description: "",
-      totalVisitsPlanned: "",
-      followUpIntervalDays: "30",
-    });
-    setFormErrors({});
-  };
-
-  // Get category info
-  const getCategoryInfo = (categoryValue) => {
-    return (
-      TREATMENT_CATEGORIES.find((c) => c.value === categoryValue) ||
-      TREATMENT_CATEGORIES[9]
-    );
-  };
-
-  // ✅ Pending Appointment Card (new design!)
+  // ✅ Pending Appointment Card Component - Moved to component scope
   const PendingAppointmentCard = ({ appointment }) => {
     const appointmentDate = new Date(appointment.appointment_date);
     const daysAgo = Math.floor(
       (new Date() - appointmentDate) / (1000 * 60 * 60 * 24)
     );
+
+    const medicalHistory = appointment.medical_history || {};
+    const patient = appointment.patient || {};
+    const doctor = appointment.doctor || {};
+    const services = appointment.services || [];
+    const hasMedicalRecommendation = medicalHistory.recommended_treatment_name;
 
     return (
       <motion.div
@@ -423,37 +595,64 @@ const TreatmentPlans = () => {
         exit={{ opacity: 0, scale: 0.95 }}
         whileHover={{ scale: 1.01 }}
       >
-        <Card className="cursor-pointer hover:shadow-lg transition-all border-l-4 border-l-orange-500 bg-orange-50/30">
+        <Card
+          className={`cursor-pointer hover:shadow-lg transition-all border-l-4 ${
+            hasMedicalRecommendation
+              ? "border-l-purple-500 bg-purple-50/30"
+              : "border-l-orange-500 bg-orange-50/30"
+          }`}
+        >
           <CardContent className="p-6">
             <div className="space-y-4">
-              {/* Header */}
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <Badge
                       variant="warning"
-                      className="bg-orange-500 text-white"
+                      className={
+                        hasMedicalRecommendation
+                          ? "bg-purple-500 text-white"
+                          : "bg-orange-500 text-white"
+                      }
                     >
                       <AlertOctagon className="w-3 h-3 mr-1" />
-                      Awaiting Treatment Plan
+                      {hasMedicalRecommendation
+                        ? "Has Diagnosis"
+                        : "Awaiting Treatment Plan"}
                     </Badge>
                     <Badge variant="outline" className="text-xs">
                       {daysAgo} day{daysAgo !== 1 ? "s" : ""} ago
                     </Badge>
+                    {medicalHistory.requires_treatment_plan && (
+                      <Badge variant="destructive" className="text-xs">
+                        <FileWarning className="w-3 h-3 mr-1" />
+                        Flagged
+                      </Badge>
+                    )}
                   </div>
                   <h3 className="text-lg font-semibold flex items-center gap-2">
                     <User className="w-5 h-5 text-muted-foreground" />
-                    {appointment.patient_name}
+                    {patient.name || "Unknown Patient"}
                   </h3>
                   <p className="text-sm text-muted-foreground">
-                    {appointment.patient_email}
+                    {patient.email || "No email"}
                   </p>
+                  {patient.phone && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                      <Phone className="w-3 h-3" />
+                      {patient.phone}
+                    </p>
+                  )}
+                  {patient.age && (
+                    <p className="text-xs text-muted-foreground">
+                      Age: {patient.age} years
+                    </p>
+                  )}
                 </div>
               </div>
 
               <Separator />
 
-              {/* Appointment Details */}
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Calendar className="w-4 h-4" />
@@ -465,46 +664,93 @@ const TreatmentPlans = () => {
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground col-span-2">
                   <Stethoscope className="w-4 h-4" />
-                  <span className="font-medium">{appointment.doctor_name}</span>
+                  <span className="font-medium">
+                    {doctor.name || "Unassigned"}
+                  </span>
+                  {doctor.specialization && (
+                    <Badge variant="outline" className="text-xs ml-auto">
+                      {doctor.specialization}
+                    </Badge>
+                  )}
                 </div>
               </div>
 
-              {/* Services */}
-              {appointment.services.length > 0 && (
+              {hasMedicalRecommendation && (
+                <div className="bg-purple-100 dark:bg-purple-950 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+                  <div className="flex items-start gap-2 mb-2">
+                    <Sparkles className="w-4 h-4 text-purple-600 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-purple-900 dark:text-purple-100">
+                        Recommended Treatment
+                      </p>
+                      <p className="text-base font-bold text-purple-700 dark:text-purple-300 mt-1">
+                        {medicalHistory.recommended_treatment_name}
+                      </p>
+                    </div>
+                  </div>
+
+                  {medicalHistory.recommended_visits && (
+                    <div className="flex items-center gap-2 text-sm text-purple-700 dark:text-purple-300 mb-2">
+                      <Target className="w-3 h-3" />
+                      <span>
+                        {medicalHistory.recommended_visits} visits planned
+                      </span>
+                    </div>
+                  )}
+
+                  {medicalHistory.diagnosis_summary && (
+                    <div className="mt-3 pt-3 border-t border-purple-200 dark:border-purple-800">
+                      <p className="text-xs font-semibold text-purple-900 dark:text-purple-100 mb-1">
+                        Diagnosis:
+                      </p>
+                      <p className="text-sm text-purple-800 dark:text-purple-200 line-clamp-3">
+                        {medicalHistory.diagnosis_summary}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {services.length > 0 && (
                 <div>
                   <p className="text-xs text-muted-foreground mb-2">
                     Services Completed:
                   </p>
                   <div className="flex flex-wrap gap-1">
-                    {appointment.services.map((service, idx) => (
+                    {services.map((service, idx) => (
                       <Badge key={idx} variant="secondary" className="text-xs">
                         {service.name}
+                        {service.category && (
+                          <span className="ml-1 opacity-60">
+                            ({service.category})
+                          </span>
+                        )}
                       </Badge>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Symptoms/Notes */}
-              {appointment.symptoms && (
+              {appointment.treatment_plan_notes && (
                 <div className="bg-muted/50 rounded-lg p-3 border">
                   <p className="text-xs text-muted-foreground mb-1">
-                    Patient Concerns:
+                    Staff Notes:
                   </p>
-                  <p className="text-sm line-clamp-2">{appointment.symptoms}</p>
+                  <p className="text-sm line-clamp-2">
+                    {appointment.treatment_plan_notes}
+                  </p>
                 </div>
               )}
 
-              {/* Action Button */}
               <Button
-                onClick={() => {
-                  setSelectedAppointment(appointment);
-                  setShowCreateModal(true);
-                }}
+                onClick={() => handleSelectAppointment(appointment)}
                 className="w-full"
+                variant={hasMedicalRecommendation ? "default" : "outline"}
               >
                 <Plus className="w-4 h-4 mr-2" />
-                Create Treatment Plan
+                {hasMedicalRecommendation
+                  ? "Create from Diagnosis"
+                  : "Create Treatment Plan"}
               </Button>
             </div>
           </CardContent>
@@ -513,7 +759,7 @@ const TreatmentPlans = () => {
     );
   };
 
-  // Progress Ring Component
+  // ✅ Progress Ring Component - Moved to component scope
   const ProgressRing = ({ progress, size = 120, strokeWidth = 8 }) => {
     const radius = (size - strokeWidth) / 2;
     const circumference = radius * 2 * Math.PI;
@@ -560,7 +806,7 @@ const TreatmentPlans = () => {
     );
   };
 
-  // Treatment Card Component
+  // ✅ Treatment Card Component - Moved to component scope
   const TreatmentCard = ({ treatment }) => {
     const category = getCategoryInfo(treatment.treatment_category);
     const IconComponent = category.icon;
@@ -786,7 +1032,7 @@ const TreatmentPlans = () => {
 
         {/* Summary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="bg-orange-50 border-orange-200">
+          <Card className="bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -890,26 +1136,32 @@ const TreatmentPlans = () => {
             <TabsTrigger value="pending">
               <div className="flex items-center gap-2">
                 <AlertOctagon className="w-4 h-4" />
-                <span>Pending ({pendingAppointments.length})</span>
+                <span className="hidden sm:inline">Pending</span>
+                <span>({pendingAppointments.length})</span>
               </div>
             </TabsTrigger>
             <TabsTrigger value="active">
-              Active (
+              <span className="hidden sm:inline">Active</span>
+              <span className="sm:hidden">Act.</span> (
               {ongoingTreatments?.filter((t) => t.status === "active").length ||
                 0}
               )
             </TabsTrigger>
             <TabsTrigger value="overdue">
-              Overdue ({summary?.overdue_count || 0})
+              <span className="hidden sm:inline">Overdue</span>
+              <span className="sm:hidden">Over.</span> (
+              {summary?.overdue_count || 0})
             </TabsTrigger>
             <TabsTrigger value="paused">
-              Paused (
+              <span className="hidden sm:inline">Paused</span>
+              <span className="sm:hidden">Paus.</span> (
               {ongoingTreatments?.filter((t) => t.status === "paused").length ||
                 0}
               )
             </TabsTrigger>
             <TabsTrigger value="completed">
-              Completed (
+              <span className="hidden sm:inline">Completed</span>
+              <span className="sm:hidden">Comp.</span> (
               {ongoingTreatments?.filter((t) => t.status === "completed")
                 .length || 0}
               )
@@ -947,15 +1199,15 @@ const TreatmentPlans = () => {
                     <Alert className="mb-4">
                       <Info className="w-4 h-4" />
                       <AlertDescription>
-                        These completed appointments don't have treatment plans
-                        yet. Click "Create Treatment Plan" to set up a treatment
-                        journey for the patient.
+                        These completed appointments are flagged for treatment
+                        plan creation. Appointments with diagnosis
+                        recommendations will auto-populate the form.
                       </AlertDescription>
                     </Alert>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       {filteredPendingAppointments.map((apt) => (
                         <PendingAppointmentCard
-                          key={apt.id}
+                          key={apt.appointment_id}
                           appointment={apt}
                         />
                       ))}
@@ -1003,7 +1255,7 @@ const TreatmentPlans = () => {
         </Tabs>
       </div>
 
-      {/* Create Treatment Plan Modal */}
+      {/* Create Treatment Plan Modal - ENHANCED */}
       <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1013,7 +1265,8 @@ const TreatmentPlans = () => {
             </DialogTitle>
             <DialogDescription>
               Create a comprehensive treatment plan for{" "}
-              {selectedAppointment?.patient_name}
+              {selectedAppointment?.patient?.name ||
+                selectedAppointment?.patient_name}
             </DialogDescription>
           </DialogHeader>
 
@@ -1028,178 +1281,226 @@ const TreatmentPlans = () => {
                         Patient
                       </p>
                       <p className="font-semibold">
-                        {selectedAppointment.patient_name}
+                        {selectedAppointment.patient?.name ||
+                          selectedAppointment.patient_name}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {selectedAppointment.patient_email}
+                        {selectedAppointment.patient?.email ||
+                          selectedAppointment.patient_email}
                       </p>
+                      {selectedAppointment.patient?.age && (
+                        <p className="text-xs text-muted-foreground">
+                          Age: {selectedAppointment.patient.age}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground mb-1">
-                        Appointment
+                        Consultation
                       </p>
                       <p className="font-medium">
                         {new Date(
                           selectedAppointment.appointment_date
                         ).toLocaleDateString()}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        {selectedAppointment.doctor_name}
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Stethoscope className="w-3 h-3" />
+                        {selectedAppointment.doctor?.name ||
+                          selectedAppointment.doctor_name}
                       </p>
                     </div>
-                    {selectedAppointment.services.length > 0 && (
-                      <div className="col-span-2">
-                        <p className="text-xs text-muted-foreground mb-2">
-                          Services Completed:
-                        </p>
-                        <div className="flex flex-wrap gap-1">
-                          {selectedAppointment.services.map((service, idx) => (
-                            <Badge
-                              key={idx}
-                              variant="secondary"
-                              className="text-xs"
-                            >
-                              {service.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </CardContent>
               </Card>
 
+              {/* Medical History Auto-Populated Info */}
+              {selectedAppointment.medical_history?.diagnosis_summary && (
+                <Alert className="bg-purple-50 dark:bg-purple-950 border-purple-200">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  <AlertTitle>Diagnosis from Consultation</AlertTitle>
+                  <AlertDescription className="mt-2 space-y-2">
+                    <p className="text-sm">
+                      {selectedAppointment.medical_history.diagnosis_summary}
+                    </p>
+                    {selectedAppointment.medical_history
+                      .recommended_treatment_name && (
+                      <div className="mt-3 pt-3 border-t border-purple-200">
+                        <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">
+                          📋 Treatment:{" "}
+                          {
+                            selectedAppointment.medical_history
+                              .recommended_treatment_name
+                          }
+                        </p>
+                        {selectedAppointment.medical_history
+                          .recommended_visits && (
+                          <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+                            <Target className="w-3 h-3 inline mr-1" />
+                            {
+                              selectedAppointment.medical_history
+                                .recommended_visits
+                            }{" "}
+                            visits planned
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <Separator />
 
-              {/* Treatment Plan Form */}
+              {/* ✅ SIMPLIFIED: Staff Input Fields Only */}
               <div className="space-y-4">
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription className="text-xs">
+                    Treatment details are auto-filled from the consultation. You
+                    only need to set the timeline and add any additional notes.
+                  </AlertDescription>
+                </Alert>
+
+                {/* Read-only Treatment Name */}
                 <div>
-                  <Label htmlFor="treatmentName">Treatment Name *</Label>
+                  <Label>Treatment Plan Name</Label>
                   <Input
-                    id="treatmentName"
-                    placeholder="e.g., Full Orthodontic Treatment with Braces"
                     value={createFormData.treatmentName}
-                    onChange={(e) => {
-                      setCreateFormData((prev) => ({
-                        ...prev,
-                        treatmentName: e.target.value,
-                      }));
-                      setFormErrors((prev) => ({
-                        ...prev,
-                        treatmentName: undefined,
-                      }));
-                    }}
-                    className={
-                      formErrors.treatmentName ? "border-destructive" : ""
-                    }
+                    disabled
+                    className="bg-muted/50 cursor-not-allowed"
                   />
-                  {formErrors.treatmentName && (
-                    <p className="text-sm text-destructive mt-1">
-                      {formErrors.treatmentName}
-                    </p>
-                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Auto-populated from diagnosis
+                  </p>
                 </div>
 
+                {/* ✅ NEW: Start Date */}
                 <div>
-                  <Label htmlFor="category">Treatment Category *</Label>
-                  <Select
-                    value={createFormData.treatmentCategory}
-                    onValueChange={(value) => {
-                      setCreateFormData((prev) => ({
-                        ...prev,
-                        treatmentCategory: value,
-                      }));
-                      setFormErrors((prev) => ({
-                        ...prev,
-                        category: undefined,
-                      }));
-                    }}
-                  >
-                    <SelectTrigger
-                      className={
-                        formErrors.category ? "border-destructive" : ""
-                      }
-                    >
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TREATMENT_CATEGORIES.map((cat) => {
-                        const Icon = cat.icon;
-                        return (
-                          <SelectItem key={cat.value} value={cat.value}>
-                            <div className="flex items-center gap-2">
-                              <div
-                                className={`p-1 rounded ${cat.color} text-white`}
-                              >
-                                <Icon className="w-3 h-3" />
-                              </div>
-                              <span>{cat.label}</span>
-                            </div>
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                  {formErrors.category && (
-                    <p className="text-sm text-destructive mt-1">
-                      {formErrors.category}
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <Label htmlFor="description">Treatment Description</Label>
-                  <Textarea
-                    id="description"
-                    placeholder="Describe the treatment plan, goals, and procedures..."
-                    value={createFormData.description}
+                  <Label htmlFor="startDate">
+                    Start Date <span className="text-red-600">*</span>
+                  </Label>
+                  <Input
+                    type="date"
+                    id="startDate"
+                    value={createFormData.startDate}
                     onChange={(e) =>
                       setCreateFormData((prev) => ({
                         ...prev,
-                        description: e.target.value,
+                        startDate: e.target.value,
                       }))
                     }
+                    min={new Date().toISOString().split("T")[0]}
+                    className={formErrors.startDate ? "border-destructive" : ""}
+                  />
+                  {formErrors.startDate && (
+                    <p className="text-sm text-destructive mt-1">
+                      {formErrors.startDate}
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    When will the treatment begin?
+                  </p>
+                </div>
+
+                {/* ✅ NEW: End Date (Optional) */}
+                <div>
+                  <Label htmlFor="endDate">Estimated End Date (Optional)</Label>
+                  <Input
+                    type="date"
+                    id="endDate"
+                    value={createFormData.endDate}
+                    onChange={(e) =>
+                      setCreateFormData((prev) => ({
+                        ...prev,
+                        endDate: e.target.value,
+                      }))
+                    }
+                    min={createFormData.startDate}
+                    disabled={!createFormData.startDate}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Expected completion date (can be updated later)
+                  </p>
+                </div>
+
+                {/* ✅ NEW: Additional Notes */}
+                <div>
+                  <Label htmlFor="additionalNotes">
+                    Additional Notes (Optional)
+                  </Label>
+                  <Textarea
+                    id="additionalNotes"
+                    value={createFormData.additionalNotes}
+                    onChange={(e) =>
+                      setCreateFormData((prev) => ({
+                        ...prev,
+                        additionalNotes: e.target.value,
+                      }))
+                    }
+                    placeholder="Add any special instructions, precautions, or notes for this treatment plan..."
                     rows={4}
+                    className="resize-none"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="totalVisits">Total Visits Planned</Label>
-                    <Input
-                      id="totalVisits"
-                      type="number"
-                      placeholder="e.g., 6"
-                      value={createFormData.totalVisitsPlanned}
-                      onChange={(e) =>
-                        setCreateFormData((prev) => ({
-                          ...prev,
-                          totalVisitsPlanned: e.target.value,
-                        }))
-                      }
-                      min="1"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Leave empty for ongoing treatment
-                    </p>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="followUp">Follow-up Interval (days)</Label>
-                    <Input
-                      id="followUp"
-                      type="number"
-                      value={createFormData.followUpIntervalDays}
-                      onChange={(e) =>
-                        setCreateFormData((prev) => ({
-                          ...prev,
-                          followUpIntervalDays: e.target.value,
-                        }))
-                      }
-                      min="1"
-                    />
-                  </div>
-                </div>
+                {/* Auto-Populated Info Summary */}
+                <Card className="bg-blue-50 dark:bg-blue-950 border-blue-200">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Info className="w-4 h-4 text-blue-600" />
+                      Auto-Populated Details
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Category:</span>
+                      <span className="font-medium">
+                        {TREATMENT_CATEGORIES.find(
+                          (c) => c.value === createFormData.treatmentCategory
+                        )?.label || "Other"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        Assigned Doctor:
+                      </span>
+                      <span className="font-medium">
+                        {availableDoctors.find(
+                          (d) => d.id === createFormData.assignedDoctorId
+                        )
+                          ? `Dr. ${
+                              availableDoctors.find(
+                                (d) => d.id === createFormData.assignedDoctorId
+                              ).first_name
+                            } ${
+                              availableDoctors.find(
+                                (d) => d.id === createFormData.assignedDoctorId
+                              ).last_name
+                            }`
+                          : selectedAppointment.doctor?.name ||
+                            "Consultation Doctor"}
+                      </span>
+                    </div>
+                    {createFormData.totalVisitsPlanned && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          Planned Visits:
+                        </span>
+                        <span className="font-medium">
+                          {createFormData.totalVisitsPlanned} visits
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        Follow-up Interval:
+                      </span>
+                      <span className="font-medium">
+                        Every {createFormData.followUpIntervalDays} days
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             </div>
           )}

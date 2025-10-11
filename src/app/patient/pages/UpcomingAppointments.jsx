@@ -263,7 +263,7 @@ Consultation Fee: ₱${appointment.consultation_fee_charged || 0}
             description="You don't have any upcoming appointments scheduled. Book your next dental visit today."
             action={
               <button
-                onClick={() => navigate("/patient/book-appointment")}
+                onClick={() => navigate("/patient/appointments/book")}
                 className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium"
               >
                 <Plus className="w-4 h-4" />

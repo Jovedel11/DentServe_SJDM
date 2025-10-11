@@ -64,10 +64,10 @@ export const useTreatmentPlans = () => {
     if (!isStaff && !isAdmin) {
       return { success: false, error: 'Only staff can create treatment plans' };
     }
-
+  
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
-
+  
       const {
         patientId,
         clinicId,
@@ -76,13 +76,25 @@ export const useTreatmentPlans = () => {
         treatmentCategory,
         totalVisitsPlanned,
         followUpIntervalDays = 30,
-        initialAppointmentId
+        initialAppointmentId,
+        sourceAppointmentId,
+        diagnosis,
+        assignedDoctorId,
+        // ✅ NEW: Date parameters
+        startDate,
+        endDate,
+        additionalNotes
       } = planData;
-
+  
       if (!patientId || !clinicId || !treatmentName) {
         throw new Error('Patient ID, Clinic ID, and Treatment Name are required');
       }
-
+  
+      // ✅ NEW: Validate start date
+      if (!startDate) {
+        throw new Error('Start date is required');
+      }
+  
       const { data, error } = await supabase.rpc('create_treatment_plan', {
         p_patient_id: patientId,
         p_clinic_id: clinicId,
@@ -91,7 +103,14 @@ export const useTreatmentPlans = () => {
         p_treatment_category: treatmentCategory || null,
         p_total_visits_planned: totalVisitsPlanned || null,
         p_follow_up_interval_days: followUpIntervalDays,
-        p_initial_appointment_id: initialAppointmentId || null
+        p_initial_appointment_id: initialAppointmentId || null,
+        p_source_appointment_id: sourceAppointmentId || null,
+        p_diagnosis: diagnosis || null,
+        p_assigned_doctor_id: assignedDoctorId || null,
+        // ✅ FIXED: Use correct parameter name
+        p_start_date: startDate,
+        p_expected_end_date: endDate || null,  // ✅ FIXED: Changed to p_expected_end_date
+        p_additional_notes: additionalNotes || null
       });
 
       if (error) throw error;
@@ -102,7 +121,7 @@ export const useTreatmentPlans = () => {
 
       setState(prev => ({ ...prev, loading: false }));
 
-      //Refresh treatments after creation
+      // Refresh treatments after creation
       if (isPatient) {
         await getOngoingTreatments();
       }
@@ -120,9 +139,6 @@ export const useTreatmentPlans = () => {
     }
   }, [isStaff, isAdmin, isPatient, getOngoingTreatments]);
 
-  // ====================================================================
-  // Get Detailed Treatment Plan (Direct Query)
-  // ====================================================================
   const getTreatmentPlanDetails = useCallback(async (treatmentPlanId) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
@@ -303,97 +319,48 @@ export const useTreatmentPlans = () => {
     }
   }, [isStaff, isAdmin, getOngoingTreatments]);
 
-  const getAppointmentsAwaitingTreatmentPlans = useCallback(async () => {
+  const getAppointmentsAwaitingTreatmentPlans = useCallback(async (options = {}) => {
     if (!isStaff && !isAdmin) {
       return { success: false, error: 'Only staff can access this' };
-    }
-
-    if (!profile?.clinic_id) {
-      return { success: false, error: 'Clinic not loaded' };
     }
 
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
 
-      // Get completed appointments with their services
-      const { data, error } = await supabase
-        .from('appointments')
-        .select(`
-          id,
-          appointment_date,
-          appointment_time,
-          status,
-          symptoms,
-          notes,
-          created_at,
-          patient_id,
-          patient:users!appointments_patient_id_fkey (
-            id,
-            email,
-            user_profiles (
-              first_name,
-              last_name,
-              phone
-            )
-          ),
-          doctor:doctors (
-            id,
-            first_name,
-            last_name,
-            specialization
-          ),
-          services:appointment_services (
-            id,
-            treatment_plan_id,
-            service:services (
-              id,
-              name,
-              category,
-              duration_minutes
-            )
-          )
-        `)
-        .eq('clinic_id', profile.clinic_id)
-        .eq('status', 'completed')
-        .order('appointment_date', { ascending: false })
-        .limit(50);
+      const {
+        limit = 20,
+        offset = 0
+      } = options;
+
+      // Get clinic_id from multiple possible locations
+      const clinicId = 
+        profile?.clinic_id || 
+        profile?.role_specific_data?.clinic_id || 
+        null; // Let RPC get it from context if null
+
+      // Use the new RPC function
+      const { data, error } = await supabase.rpc('get_appointments_needing_treatment_plans', {
+        p_clinic_id: clinicId,
+        p_limit: limit,
+        p_offset: offset
+      });
 
       if (error) throw error;
 
-      // Filter to only appointments where NO services have a treatment_plan_id
-      const awaitingPlans = data.filter(apt => {
-        // If no services, include the appointment
-        if (!apt.services || apt.services.length === 0) return true;
-        
-        // Check if ALL services have no treatment_plan_id
-        return apt.services.every(s => !s.treatment_plan_id);
-      });
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to fetch appointments');
+      }
 
-      // Format the data
-      const formatted = awaitingPlans.map(apt => {
-        const profiles = apt.patient?.user_profiles;
-        return {
-          ...apt,
-          patient_name: profiles
-            ? `${profiles.first_name} ${profiles.last_name}`
-            : 'Unknown Patient',
-          patient_email: apt.patient?.email || '',
-          patient_phone: profiles?.phone || '',
-          doctor_name: apt.doctor
-            ? `Dr. ${apt.doctor.first_name} ${apt.doctor.last_name}`
-            : 'Unassigned',
-          services: apt.services
-            ?.map(s => s.service)
-            .filter(Boolean) || [],
-        };
-      });
+      const appointments = data.data || [];
+      const totalCount = data.total_count || 0;
 
       setState(prev => ({ ...prev, loading: false }));
 
       return {
         success: true,
-        appointments: formatted,
-        count: formatted.length
+        appointments,
+        totalCount,
+        hasMore: appointments.length === limit
       };
 
     } catch (err) {
@@ -401,7 +368,50 @@ export const useTreatmentPlans = () => {
       setState(prev => ({ ...prev, loading: false, error: errorMsg }));
       return { success: false, error: errorMsg };
     }
-  }, [isStaff, isAdmin, profile?.clinic_id]);
+  }, [isStaff, isAdmin, profile]);
+
+    const createTreatmentPlanFromAppointment = useCallback(async (appointmentData) => {
+    if (!isStaff && !isAdmin) {
+      return { success: false, error: 'Only staff can create treatment plans' };
+    }
+
+    const {
+      appointmentId,
+      patientId,
+      clinicId,
+      doctorId,
+      // From medical history
+      recommendedTreatmentName,
+      diagnosisSummary,
+      recommendedVisits,
+      // Optional overrides
+      treatmentCategory,
+      followUpIntervalDays,
+      assignedDoctorId
+    } = appointmentData;
+
+    // Validate required fields
+    if (!appointmentId || !patientId || !clinicId || !recommendedTreatmentName) {
+      return {
+        success: false,
+        error: 'Missing required fields: appointmentId, patientId, clinicId, and treatment name are required'
+      };
+    }
+
+    return await createTreatmentPlan({
+      patientId,
+      clinicId,
+      treatmentName: recommendedTreatmentName,
+      description: diagnosisSummary || null,
+      treatmentCategory: treatmentCategory || null,
+      totalVisitsPlanned: recommendedVisits || null,
+      followUpIntervalDays: followUpIntervalDays || 30,
+      initialAppointmentId: null, // Can be set separately
+      sourceAppointmentId: appointmentId, // Link to the appointment that created this plan
+      diagnosis: diagnosisSummary || null,
+      assignedDoctorId: assignedDoctorId || doctorId // Default to appointment's doctor
+    });
+  }, [isStaff, isAdmin, createTreatmentPlan]);
 
   //Computed Values (Based on Database Response)
   const computed = useMemo(() => {
@@ -460,6 +470,8 @@ export const useTreatmentPlans = () => {
     updateTreatmentPlanStatus,
     linkAppointmentToPlan,
     getAppointmentsAwaitingTreatmentPlans,
+    createTreatmentPlanFromAppointment,
+    
     // Utilities
     refreshTreatments: () => getOngoingTreatments(),
     clearError: () => setState(prev => ({ ...prev, error: null })),

@@ -172,7 +172,7 @@ export const useAppointmentManagement = (options = {}) => {
     }
   }, [isStaff, isAdmin]);
 
-  // ✅ STAFF - Complete appointment
+  // Complete appointment
   const completeAppointment = useCallback(async (appointmentId, completionData = {}) => {
     if (!isStaff && !isAdmin) return { success: false, error: 'Access denied' };
 
@@ -184,7 +184,13 @@ export const useAppointmentManagement = (options = {}) => {
         p_completion_notes: completionData.notes || '',
         p_services_completed: completionData.servicesCompleted || [],
         p_follow_up_required: completionData.followUpRequired || false,
-        p_follow_up_notes: completionData.followUpNotes || ''
+        p_follow_up_notes: completionData.followUpNotes || '',
+        // NEW: Treatment plan parameters
+        p_requires_treatment_plan: completionData.requiresTreatmentPlan || false,
+        p_treatment_plan_notes: completionData.treatmentPlanNotes || null,
+        p_diagnosis_summary: completionData.diagnosisSummary || null,
+        p_recommended_treatment_name: completionData.recommendedTreatmentName || null,
+        p_recommended_visits: completionData.recommendedVisits || null
       });
 
       if (error) throw error;
@@ -195,12 +201,24 @@ export const useAppointmentManagement = (options = {}) => {
         loading: false,
         appointments: prev.appointments.map(apt => 
           apt.id === appointmentId 
-            ? { ...apt, status: 'completed', notes: completionData.notes || apt.notes }
+            ? { 
+                ...apt, 
+                status: 'completed', 
+                notes: completionData.notes || apt.notes,
+                requires_treatment_plan: completionData.requiresTreatmentPlan || false,
+                treatment_plan_notes: completionData.treatmentPlanNotes || null
+              }
             : apt
         )
       }));
 
-      return { success: true, data: data.data, message: data.message };
+      return { 
+        success: true, 
+        data: data.data, 
+        message: data.message,
+        // ✅ FIXED: Get the value from database response, not input
+        requiresTreatmentPlan: data.data?.requires_treatment_plan || false
+      };
 
     } catch (err) {
       setState(prev => ({ ...prev, loading: false, error: err.message }));
@@ -208,7 +226,7 @@ export const useAppointmentManagement = (options = {}) => {
     }
   }, [isStaff, isAdmin]);
 
-  // ✅ STAFF - Mark no-show
+  // Mark no-show
   const markNoShow = useCallback(async (appointmentId, staffNotes = '') => {
     if (!isStaff && !isAdmin) return { success: false, error: 'Access denied' };
 

@@ -2,15 +2,45 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 
-/**
- * ✅ ENHANCED Appointment Booking Hook
- * Implements real-world treatment plan workflow:
- * - Detects ongoing treatments during booking
- * - Shows smart link prompt
- * - Auto-links to treatment plans
- * - Provides treatment context
- */
-export const useAppointmentBooking = () => {
+const ERROR_MESSAGES = {
+  doctor_unavailable: {
+    title: "Doctor Unavailable",
+    message: "The selected doctor is currently unavailable. Please choose another doctor or try again later.",
+    suggestion: "View other available doctors"
+  },
+  doctor_not_at_clinic: {
+    title: "Doctor Not at Clinic",
+    message: "This doctor does not work at the selected clinic.",
+    suggestion: "Please select a different doctor or clinic"
+  },
+  clinic_closed: {
+    title: "Clinic Closed",
+    message: "The clinic is closed on the selected day.",
+    suggestion: "Please choose a different date"
+  },
+  before_opening: {
+    title: "Before Opening Hours",
+    message: "The selected time is before clinic opening hours.",
+    suggestion: "Please select a later time"
+  },
+  after_closing: {
+    title: "After Closing Hours",
+    message: "The appointment would end after clinic closing time.",
+    suggestion: "Please select an earlier time"
+  },
+  time_slot_unavailable: {
+    title: "Time Slot Unavailable",
+    message: "The doctor is not available at this time.",
+    suggestion: "Please select a different time slot"
+  },
+  clinic_not_available: {
+    title: "Clinic Not Available",
+    message: "The clinic is not currently accepting bookings.",
+    suggestion: "Please try another clinic"
+  }
+};
+
+const useAppointmentBooking = () => {
   const { user, profile, isPatient } = useAuth();
   
   const [loading, setLoading] = useState(false);
@@ -25,10 +55,10 @@ export const useAppointmentBooking = () => {
     time: null,
     services: [],
     symptoms: '',
-    treatmentPlanId: null,  // ✅ NEW: Selected treatment plan to link
+    treatmentPlanId: null,  
   });
 
-  // ✅ NEW: Ongoing treatments state
+  // Ongoing treatments state
   const [ongoingTreatments, setOngoingTreatments] = useState([]);
   const [showTreatmentLinkPrompt, setShowTreatmentLinkPrompt] = useState(false);
   const [checkingTreatments, setCheckingTreatments] = useState(false);
@@ -95,112 +125,128 @@ export const useAppointmentBooking = () => {
     }));
   }, []);
 
-const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
-  if (!isPatient) {
-    setError('Only patients can book appointments');
-    return { success: false, error: 'Access denied' };
-  }
-
-  const { clinic, doctor, date, time, services, symptoms, treatmentPlanId } = bookingData;
-
-  // ✅ FIXED: Services are now OPTIONAL
-  const requiredFields = [
-    { field: clinic?.id, name: 'clinic' },
-    { field: doctor?.id, name: 'doctor' },
-    { field: date, name: 'date' },
-    { field: time, name: 'time' },
-    // ❌ REMOVED: { field: services?.length > 0, name: 'services' }
-  ];
-
-  const missingField = requiredFields.find(({ field }) => !field);
-  if (missingField) {
-    setError(`Please select ${missingField.name}`);
-    return { success: false, error: 'Missing required fields' };
-  }
-
-  // ✅ FIXED: Only validate services length if services provided
-  if (services && services.length > 3) {
-    setError('Maximum 3 services can be selected');
-    return { success: false, error: 'Too many services' };
-  }
-
-  if (sameDayConflict) {
-    setError('You already have an appointment on this date. Please cancel it first or choose another date.');
-    return { 
-      success: false, 
-      error: 'Same-day appointment exists',
-      conflict: sameDayConflict
-    };
-  }
-
-  try {
-    setLoading(true);
-    setError(null);
-
-    // ✅ ENHANCED: Support consultation-only (services can be null or empty array)
-    const { data, error } = await supabase.rpc('book_appointment', {
-      p_clinic_id: clinic.id,
-      p_doctor_id: doctor.id,
-      p_appointment_date: date,
-      p_appointment_time: time,
-      p_service_ids: services && services.length > 0 ? services : null,
-      p_symptoms: symptoms || null,
-      p_treatment_plan_id: treatmentPlanId || null,
-      p_skip_consultation: skipConsultationOverride ?? false  // ✅ NEW PARAMETER
-    });
-    if (error) throw new Error(error.message);
-
-    if (data?.authenticated === false) {
-      setError('Please log in to continue');
-      return { success: false, error: 'Authentication required' };
+  const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
+    if (!isPatient) {
+      setError('Only patients can book appointments');
+      return { success: false, error: 'Access denied' };
     }
 
-    if (!data?.success) {
-      if (data?.reason === 'daily_limit_exceeded' || data?.reason === 'same_day_conflict') {
-        setSameDayConflict(data?.data?.existing_appointment || null);
-        setError('You already have an appointment scheduled for this date. Please cancel it first or choose another date.');
-      } else {
-        setError(data?.error || 'Booking failed');
+    const { clinic, doctor, date, time, services, symptoms, treatmentPlanId } = bookingData;
+
+    const requiredFields = [
+      { field: clinic?.id, name: 'clinic' },
+      { field: doctor?.id, name: 'doctor' },
+      { field: date, name: 'date' },
+      { field: time, name: 'time' },
+    ];
+
+    const missingField = requiredFields.find(({ field }) => !field);
+    if (missingField) {
+      setError(`Please select ${missingField.name}`);
+      return { success: false, error: 'Missing required fields' };
+    }
+
+    if (services && services.length > 3) {
+      setError('Maximum 3 services can be selected');
+      return { success: false, error: 'Too many services' };
+    }
+
+    if (sameDayConflict) {
+      setError('You already have an appointment on this date. Please cancel it first or choose another date.');
+      return { 
+        success: false, 
+        error: 'Same-day appointment exists',
+        conflict: sameDayConflict
+      };
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const { data, error } = await supabase.rpc('book_appointment', {
+        p_clinic_id: clinic.id,
+        p_doctor_id: doctor.id,
+        p_appointment_date: date,
+        p_appointment_time: time,
+        p_service_ids: services && services.length > 0 ? services : null,
+        p_symptoms: symptoms || null,
+        p_treatment_plan_id: treatmentPlanId || null,
+        p_skip_consultation: skipConsultationOverride ?? false
+      });
+
+      if (error) throw new Error(error.message);
+
+      if (data?.authenticated === false) {
+        setError('Please log in to continue');
+        return { success: false, error: 'Authentication required' };
       }
-      return { success: false, error: data?.error, reason: data?.reason };
+
+      if (!data?.success) {
+        // ✅ Enhanced error handling with specific messages
+        const errorReason = data?.data?.reason || data?.reason;
+        const errorInfo = ERROR_MESSAGES[errorReason];
+        
+        if (errorInfo) {
+          return {
+            success: false,
+            error: data?.error || errorInfo.message,
+            errorType: errorReason,
+            errorDetails: {
+              title: errorInfo.title,
+              message: data?.error || errorInfo.message,
+              suggestion: errorInfo.suggestion,
+              data: data?.data
+            }
+          };
+        }
+
+        // Handle same-day conflict
+        if (errorReason === 'daily_limit_exceeded' || errorReason === 'same_day_conflict') {
+          setSameDayConflict(data?.data?.existing_appointment || null);
+          setError('You already have an appointment scheduled for this date. Please cancel it first or choose another date.');
+        } else {
+          setError(data?.error || 'Booking failed');
+        }
+        
+        return { success: false, error: data?.error, reason: errorReason, details: data?.data };
+      }
+
+      const appointmentData = data.data;
+      resetBooking();
+      
+      return {
+        success: true,
+        appointment: {
+          id: appointmentData.appointment_id,
+          status: appointmentData.status,
+          bookingType: appointmentData.booking_type,
+          consultationFeeCharged: appointmentData.consultation_fee_charged,
+          treatmentPlanLink: appointmentData.treatment_plan_link,
+          patient_info: appointmentData.patient_info,
+          details: appointmentData.appointment_details,
+          clinic: appointmentData.clinic,
+          doctor: appointmentData.doctor,
+          services: appointmentData.services,
+          pricing: appointmentData.pricing_estimate,
+          cancellation_policy: appointmentData.cancellation_policy,
+          reliability: appointmentData.patient_reliability,
+          cross_clinic_context: appointmentData.cross_clinic_context,
+        },
+        message: data.message
+      };
+
+    } catch (err) {
+      const errorMsg = err?.message || 'Failed to book appointment';
+      setError(errorMsg);
+      return { 
+        success: false, 
+        error: errorMsg 
+      };
+    } finally {
+      setLoading(false);
     }
-
-    const appointmentData = data.data;
-
-    resetBooking();
-    
-    return {
-      success: true,
-      appointment: {
-        id: appointmentData.appointment_id,
-        status: appointmentData.status,
-        bookingType: appointmentData.booking_type,  // ✅ NEW
-        consultationFeeCharged: appointmentData.consultation_fee_charged,  // ✅ NEW
-        treatmentPlanLink: appointmentData.treatment_plan_link,
-        patient_info: appointmentData.patient_info,
-        details: appointmentData.appointment_details,
-        clinic: appointmentData.clinic,
-        doctor: appointmentData.doctor,
-        services: appointmentData.services,
-        pricing: appointmentData.pricing_estimate,
-        cancellation_policy: appointmentData.cancellation_policy,
-        reliability: appointmentData.patient_reliability,
-        cross_clinic_context: appointmentData.cross_clinic_context,
-      },
-      message: data.message
-    };
-
-  } catch (err) {
-    const errorMsg = err?.message || 'Failed to book appointment';
-    setError(errorMsg);
-    return { 
-      success: false, 
-      error: errorMsg 
-    };
-  } finally {
-    setLoading(false);
-  }
-}, [bookingData, isPatient, sameDayConflict]);
+  }, [bookingData, isPatient, sameDayConflict]);
 
   // Browser back button handler
   useEffect(() => {
@@ -251,15 +297,15 @@ const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
       time: null,
       services: [],
       symptoms: '',
-      treatmentPlanId: null,  // ✅ Reset treatment plan link
+      treatmentPlanId: null,
     });
     setBookingStep('clinic');
     setAvailableTimes([]);
     setError(null);
     setSameDayConflict(null);
     setAppointmentLimitCheck(null);
-    setOngoingTreatments([]);  // ✅ Clear treatments
-    setShowTreatmentLinkPrompt(false);  // ✅ Hide prompt
+    setOngoingTreatments([]);
+    setShowTreatmentLinkPrompt(false);
     
     window.history.replaceState({ step: 'clinic' }, '', window.location.pathname);
   }, []);
@@ -284,7 +330,6 @@ const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
         }
       }
 
-      // ✅ NEW: Check ongoing treatments when clinic is selected
       if (updates.clinic && updates.clinic.id !== prev.clinic?.id) {
         checkOngoingTreatments(updates.clinic.id);
       }
@@ -337,6 +382,7 @@ const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
           certifications: doctor?.certifications,
           awards: doctor?.awards,
           experience_years: doctor?.experience_years,
+          is_available: doctor?.is_available,
           rating: doctor?.rating,
           name: `Dr. ${firstName} ${lastName}`.trim(),
           display_name: `${firstName} ${lastName}`.trim() || doctor?.specialization || 'Unknown',
@@ -532,7 +578,6 @@ const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
 
       previousBookingDataRef.current = currentBookingData;
 
-      // ✅ FIXED: Also check for consultation-only (no services)
       if (!currentBookingData.doctorId || !currentBookingData.date) {
         setAvailableTimes([]);
         return;
@@ -544,7 +589,7 @@ const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
         const result = await checkAllAvailableTimes(
           currentBookingData.doctorId,
           currentBookingData.date,
-          currentBookingData.services || []  // ✅ FIXED: empty array for consultation-only
+          currentBookingData.services || []
         );
 
         if (result.success && Array.isArray(result.slots)) {
@@ -572,20 +617,17 @@ const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
       case 'clinic':
         return Boolean(bookingData.clinic?.id);
       case 'services':
-        // ✅ FIXED: Services step is ALWAYS valid (can skip for consultation-only)
         return true;
       case 'doctor':
         return Boolean(bookingData.doctor?.id);
       case 'datetime':
         return Boolean(bookingData.date && bookingData.time);
       case 'confirm':
-        // ✅ FIXED: Services are NOT required for confirmation
         return Boolean(
           bookingData.clinic?.id && 
           bookingData.doctor?.id && 
           bookingData.date && 
           bookingData.time
-          // ❌ REMOVED: && bookingData.services?.length > 0
         );
       default:
         return false;
@@ -602,15 +644,11 @@ const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
     const steps = ['clinic', 'services', 'doctor', 'datetime', 'confirm'];
     const currentIndex = steps.indexOf(bookingStep);
     
-    if (currentIndex < steps.length - 1 && validateStep(bookingStep)) {
-      const nextStepName = steps[currentIndex + 1];
-      setBookingStep(nextStepName);
+    if (currentIndex < steps.length - 1) {
+      setBookingStep(steps[currentIndex + 1]);
       setError(null);
-      window.history.pushState({ step: nextStepName }, '', window.location.pathname);
-    } else if (!validateStep(bookingStep)) {
-      setError(`Please complete the ${bookingStep} selection`);
     }
-  }, [bookingStep, validateStep]);
+  }, [bookingStep]);
 
   const previousStep = useCallback(() => {
     const steps = ['clinic', 'services', 'doctor', 'datetime', 'confirm'];
@@ -630,7 +668,6 @@ const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
     
     const selectedTreatment = ongoingTreatments.find(t => t.id === bookingData.treatmentPlanId);
     
-    // ✅ NEW: Determine booking type
     const isConsultationOnly = !bookingData.services || bookingData.services.length === 0;
     
     return {
@@ -643,7 +680,6 @@ const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
       totalServices: bookingData.services?.length || 0,
       maxServicesReached: bookingData.services?.length >= 3,
 
-      // ✅ NEW: Booking type detection
       isConsultationOnly,
       bookingType: bookingData.treatmentPlanId 
         ? 'treatment_plan_follow_up'
@@ -651,7 +687,6 @@ const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
           ? 'consultation_only'
           : 'consultation_with_service',
 
-      // Treatment plan context
       hasOngoingTreatments: ongoingTreatments.length > 0,
       isLinkedToTreatment: Boolean(bookingData.treatmentPlanId),
       selectedTreatment,
@@ -668,13 +703,11 @@ const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
     appointmentLimitCheck,
     sameDayConflict,
     
-    // ✅ NEW: Treatment plan support
     ongoingTreatments,
     showTreatmentLinkPrompt,
     checkingTreatments,
     checkConsultationRequirement,
     
-    // Actions
     updateBookingData,
     resetBooking,
     bookAppointment,
@@ -686,7 +719,6 @@ const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
     checkAllAvailableTimes,
     checkAppointmentLimits,
     
-    // ✅ NEW: Treatment plan actions
     checkOngoingTreatments,
     selectTreatmentPlan,
     clearTreatmentPlanLink,
@@ -696,3 +728,5 @@ const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
     validateStep,
   };
 };
+
+export { useAppointmentBooking, ERROR_MESSAGES };

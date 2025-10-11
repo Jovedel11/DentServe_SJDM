@@ -168,234 +168,167 @@ const DoctorSelectionStep = ({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
         {doctors.map((doctor) => {
           const isSelected = selectedDoctor?.id === doctor.id;
-          const fullName =
-            `Dr. ${doctor.first_name} ${doctor.last_name}`.trim();
-          const certifications = doctor.certifications || {};
-          const awards = doctor.awards || [];
-          const languages = doctor.languages_spoken || [];
+          const isUnavailable = !doctor.is_available; // ✅ Check availability
 
           return (
             <Card
               key={doctor.id}
               className={cn(
-                "cursor-pointer transition-all duration-200 hover:shadow-lg overflow-hidden touch-manipulation",
-                "border-2",
+                "cursor-pointer transition-all duration-300 hover:shadow-lg border-2 relative",
                 isSelected
-                  ? "ring-2 ring-primary border-primary shadow-md bg-primary/5"
-                  : "border-border hover:border-primary/50"
+                  ? "border-green-500 bg-green-50 dark:bg-green-950/20 ring-2 ring-green-500 ring-offset-2"
+                  : isUnavailable
+                  ? "border-gray-300 bg-gray-100 dark:bg-gray-900/50 opacity-70" // ✅ Grayed out
+                  : "border-border hover:border-green-300 dark:hover:border-green-700",
+                isUnavailable && "cursor-not-allowed" // ✅ Change cursor
               )}
-              onClick={() => onDoctorSelect(doctor)}
+              onClick={() => {
+                if (!isUnavailable) {
+                  onDoctorSelect(doctor);
+                }
+              }}
             >
-              <CardContent className="p-0">
-                {/* Doctor Header with Gradient Background */}
-                <div className="bg-gradient-to-r from-primary/10 to-purple-500/10 p-5 sm:p-6 border-b">
-                  <div className="flex items-start gap-4">
-                    <Avatar className="w-16 h-16 sm:w-20 sm:h-20 border-4 border-background shadow-md">
-                      <AvatarImage src={doctor.image_url} alt={fullName} />
-                      <AvatarFallback className="bg-primary text-primary-foreground font-bold text-xl">
-                        {doctor.first_name?.[0]}
-                        {doctor.last_name?.[0]}
-                      </AvatarFallback>
-                    </Avatar>
+              <CardContent className="p-4 sm:p-6">
+                {/* ✅ NEW: Unavailable Badge */}
+                {isUnavailable && (
+                  <div className="absolute top-3 right-3 z-10">
+                    <Badge
+                      variant="destructive"
+                      className="text-xs flex items-center gap-1"
+                    >
+                      <Ban className="w-3 h-3" />
+                      Unavailable
+                    </Badge>
+                  </div>
+                )}
 
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg sm:text-xl font-bold text-foreground mb-1 truncate">
-                        {doctor.display_name || fullName}
-                      </h3>
-                      <p className="text-primary font-semibold text-sm sm:text-base mb-2">
-                        {doctor.specialization}
-                      </p>
+                {/* Existing doctor card content */}
+                <div className="flex flex-col sm:flex-row gap-4">
+                  {/* Avatar */}
+                  <Avatar className="h-16 w-16 sm:h-20 sm:w-20 flex-shrink-0">
+                    <AvatarImage src={doctor.image_url} alt={doctor.name} />
+                    <AvatarFallback className="text-lg font-semibold bg-gradient-to-br from-green-100 to-blue-100 dark:from-green-900 dark:to-blue-900">
+                      {doctor.name
+                        ?.split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .toUpperCase()
+                        .slice(0, 2) || "DR"}
+                    </AvatarFallback>
+                  </Avatar>
 
-                      {doctor.rating > 0 && (
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-1">
-                            {[...Array(5)].map((_, i) => (
-                              <Star
-                                key={i}
-                                className={cn(
-                                  "w-4 h-4",
-                                  i < Math.floor(doctor.rating)
-                                    ? "text-yellow-500 fill-yellow-500"
-                                    : "text-gray-300"
-                                )}
-                              />
-                            ))}
-                          </div>
-                          <span className="text-sm font-medium">
+                  {/* Doctor Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex-1 min-w-0">
+                        <h3
+                          className={cn(
+                            "font-bold text-lg sm:text-xl truncate",
+                            isUnavailable && "text-muted-foreground"
+                          )}
+                        >
+                          {doctor.name}
+                        </h3>
+                        {doctor.specialization && (
+                          <Badge variant="outline" className="mt-1 text-xs">
+                            <Stethoscope className="w-3 h-3 mr-1" />
+                            {doctor.specialization}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {isSelected && !isUnavailable && (
+                        <CheckCircle2 className="w-6 h-6 text-green-600 flex-shrink-0" />
+                      )}
+                    </div>
+
+                    {/* Experience & Rating */}
+                    <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-3">
+                      {doctor.experience_years > 0 && (
+                        <div className="flex items-center gap-1">
+                          <Briefcase className="w-4 h-4" />
+                          <span>
+                            {formatExperience(doctor.experience_years)} exp.
+                          </span>
+                        </div>
+                      )}
+                      {doctor.rating && (
+                        <div className="flex items-center gap-1">
+                          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                          <span className="font-medium">
                             {doctor.rating.toFixed(1)}
                           </span>
-                          {doctor.total_reviews > 0 && (
-                            <span className="text-xs text-muted-foreground">
-                              ({doctor.total_reviews})
-                            </span>
-                          )}
                         </div>
                       )}
                     </div>
 
-                    {isSelected && (
-                      <CheckCircle2 className="w-6 h-6 text-primary flex-shrink-0" />
-                    )}
-                  </div>
-                </div>
-
-                {/* Doctor Details */}
-                <div className="p-5 sm:p-6 space-y-4">
-                  {/* Consultation Fee */}
-                  <div className="bg-gradient-to-r from-primary/5 to-purple-500/5 rounded-lg p-4 border">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium flex items-center gap-2">
-                        <CreditCard className="w-4 h-4 text-primary" />
-                        Consultation Fee
-                      </span>
-                      <div className="text-right">
-                        {skipConsultation &&
-                        consultationCheckResult?.canSkipConsultation ? (
-                          <>
-                            <span className="line-through text-muted-foreground text-sm mr-2">
-                              {formatConsultationFee(doctor.consultation_fee)}
-                            </span>
-                            <span className="font-bold text-green-600 text-lg">
-                              FREE
-                            </span>
-                          </>
-                        ) : (
-                          <span className="font-bold text-primary text-lg">
-                            {formatConsultationFee(doctor.consultation_fee)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Quick Stats */}
-                  <div className="grid grid-cols-2 gap-3">
+                    {/* Consultation Fee */}
                     <div className="flex items-center gap-2 text-sm">
-                      <Briefcase className="w-4 h-4 text-muted-foreground" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">
-                          Experience
-                        </p>
-                        <p className="font-medium">
-                          {formatExperience(doctor.experience_years)}
-                        </p>
-                      </div>
+                      <CreditCard className="w-4 h-4 text-muted-foreground" />
+                      <span
+                        className={cn(
+                          "font-semibold",
+                          isUnavailable
+                            ? "text-muted-foreground"
+                            : "text-primary"
+                        )}
+                      >
+                        {formatConsultationFee(doctor.consultation_fee)}
+                      </span>
                     </div>
 
-                    {doctor.is_available !== undefined && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <CheckCheck className="w-4 h-4 text-muted-foreground" />
-                        <div>
-                          <p className="text-xs text-muted-foreground">
-                            Status
-                          </p>
-                          <Badge
-                            variant={
-                              doctor.is_available ? "default" : "secondary"
-                            }
-                            className="text-xs"
-                          >
-                            {doctor.is_available ? "Available" : "Busy"}
-                          </Badge>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Education */}
-                  {doctor.education && (
-                    <div className="flex items-start gap-2 text-sm">
-                      <GraduationCap className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">
-                          Education
-                        </p>
-                        <p className="text-foreground">{doctor.education}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Languages */}
-                  {languages.length > 0 && (
-                    <div className="flex items-start gap-2 text-sm">
-                      <Languages className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">
-                          Languages
-                        </p>
-                        <div className="flex flex-wrap gap-1">
-                          {languages.map((lang, idx) => (
-                            <Badge
-                              key={idx}
-                              variant="outline"
-                              className="text-xs"
-                            >
-                              {lang}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Bio */}
-                  {doctor.bio && (
-                    <p className="text-sm text-muted-foreground line-clamp-3 border-t pt-3">
-                      {doctor.bio}
-                    </p>
-                  )}
-
-                  {/* Certifications & Awards */}
-                  {(Object.keys(certifications).length > 0 ||
-                    awards.length > 0) && (
-                    <div className="border-t pt-3 space-y-2">
-                      {Object.keys(certifications).length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {Object.entries(certifications)
-                            .slice(0, 3)
-                            .map(([cert, details]) => (
+                    {/* Certifications */}
+                    {doctor.certifications &&
+                      doctor.certifications.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-1">
+                          {doctor.certifications
+                            .slice(0, 2)
+                            .map((cert, idx) => (
                               <Badge
-                                key={cert}
+                                key={idx}
                                 variant="secondary"
                                 className="text-xs"
                               >
-                                {details.name || cert}
+                                <Award className="w-3 h-3 mr-1" />
+                                {cert}
                               </Badge>
                             ))}
+                          {doctor.certifications.length > 2 && (
+                            <Badge variant="secondary" className="text-xs">
+                              +{doctor.certifications.length - 2} more
+                            </Badge>
+                          )}
                         </div>
                       )}
+                  </div>
+                </div>
 
-                      {awards.length > 0 && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <Award className="w-4 h-4 text-yellow-500" />
-                          <span className="text-muted-foreground">
-                            {awards.length} professional award
-                            {awards.length !== 1 ? "s" : ""}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Action Button */}
-                  <Button
-                    variant={isSelected ? "default" : "outline"}
-                    className="w-full mt-4"
-                    size="lg"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDoctorSelect(doctor);
-                    }}
-                  >
-                    {isSelected ? (
+                {/* ✅ NEW: Availability Status Footer */}
+                <div className="mt-4 pt-4 border-t flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm">
+                    {isUnavailable ? (
                       <>
-                        <CheckCircle2 className="w-4 h-4 mr-2" />
-                        Selected
+                        <div className="w-2 h-2 rounded-full bg-red-500" />
+                        <span className="text-muted-foreground">
+                          Currently Unavailable
+                        </span>
                       </>
                     ) : (
-                      "Select Doctor"
+                      <>
+                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                        <span className="text-green-600 dark:text-green-400 font-medium">
+                          Available Now
+                        </span>
+                      </>
                     )}
-                  </Button>
+                  </div>
+
+                  {isSelected && !isUnavailable && (
+                    <Badge className="bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 border-green-300">
+                      <CheckCheck className="w-3 h-3 mr-1" />
+                      Selected
+                    </Badge>
+                  )}
                 </div>
               </CardContent>
             </Card>

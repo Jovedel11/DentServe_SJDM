@@ -40,32 +40,6 @@ export const useAppointmentManagement = () => {
   }, []);
 
   // Real-time updates
-  const { enableRealtimeUpdates, disableRealtimeUpdates, isConnected } =
-    useAppointmentRealtime({
-      onAppointmentUpdate: useCallback(
-        (update) => {
-          console.log("Real-time appointment update:", update);
-          appointmentHook.refresh();
-          fetchOngoingTreatments();
-        },
-        [appointmentHook]
-      ),
-      onAppointmentStatusChange: useCallback(
-        (statusUpdate) => {
-          console.log("Appointment status changed:", statusUpdate);
-          showToast(
-            `Appointment status changed to ${statusUpdate.newStatus}`,
-            "info"
-          );
-          appointmentHook.refresh();
-        },
-        [appointmentHook, showToast]
-      ),
-      enableAppointments: true,
-      enableNotifications: true,
-    });
-
-  // Fetch ongoing treatments
   const fetchOngoingTreatments = useCallback(async () => {
     if (!isPatient || !profile?.user_id) return;
   
@@ -92,30 +66,38 @@ export const useAppointmentManagement = () => {
     }
   }, [isPatient, profile?.user_id]);
 
+  // ✅ NOW: Real-time updates can reference fetchOngoingTreatments
+  const { enableRealtimeUpdates, disableRealtimeUpdates, isConnected } =
+    useAppointmentRealtime({
+      onAppointmentUpdate: useCallback(
+        (update) => {
+          console.log("Real-time appointment update:", update);
+          appointmentHook.refresh();
+          fetchOngoingTreatments(); // ✅ Now this is defined
+        },
+        [appointmentHook, fetchOngoingTreatments] 
+      ),
+      onAppointmentStatusChange: useCallback(
+        (statusUpdate) => {
+          console.log("Appointment status changed:", statusUpdate);
+          showToast(
+            `Appointment status changed to ${statusUpdate.newStatus}`,
+            "info"
+          );
+          appointmentHook.refresh();
+        },
+        [appointmentHook, showToast]
+      ),
+      enableAppointments: true,
+      enableNotifications: true,
+    });
+
   // Fetch detailed treatment plan
   const fetchTreatmentDetails = useCallback(async (treatmentId) => {
     try {
-      const { data, error } = await supabase
-        .from('treatment_plans')
-        .select(`
-          *,
-          clinic:clinics(*),
-          created_by:users!treatment_plans_created_by_staff_id_fkey(
-            id,
-            email,
-            user_profiles(first_name, last_name)
-          ),
-          treatment_plan_appointments(
-            *,
-            appointment:appointments(
-              *,
-              doctor:doctors(*),
-              services:appointment_services(service:services(*))
-            )
-          )
-        `)
-        .eq('id', treatmentId)
-        .single();
+      const { data, error } = await supabase.rpc('get_treatment_plan_details', {
+        p_treatment_plan_id: treatmentId
+      });
 
       if (error) throw error;
       return { success: true, data };
