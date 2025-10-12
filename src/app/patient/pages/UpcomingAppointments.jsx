@@ -85,6 +85,9 @@ const UpcomingAppointments = () => {
     handleViewDetails,
     handleViewTreatmentPlan,
     closeCancelModal,
+
+    handleBookFollowUp,
+    followUpBooking,
   } = useAppointmentManagement();
 
   // Utility functions
@@ -418,6 +421,15 @@ Consultation Fee: ₱${appointment.consultation_fee_charged || 0}
           formatDate={formatDate}
           formatTime={formatTime}
           onViewDetails={handleViewTreatmentPlan}
+          onBookFollowUp={async (treatmentId) => {
+            const result = await handleBookFollowUp(treatmentId);
+            if (result.success) {
+              // Navigate to follow-up booking with pre-filled data
+              navigate(`/patient/appointments/book-follow-up/${treatmentId}`, {
+                state: { bookingInfo: result.bookingInfo },
+              });
+            }
+          }}
         />
 
         {/* Appointments List */}

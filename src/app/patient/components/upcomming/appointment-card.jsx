@@ -187,13 +187,28 @@ const AppointmentCard = ({
             <div className="flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm font-medium text-foreground">
-                Consultation Fee:
+                {/* ✅ FIXED: Show correct label based on booking type */}
+                {appointment.booking_type === "consultation_only"
+                  ? "Consultation Fee:"
+                  : appointment.booking_type === "service_only"
+                  ? "Service Fee:"
+                  : appointment.booking_type === "treatment_plan_follow_up"
+                  ? "Treatment Fee:"
+                  : "Estimated Fee:"}
               </span>
             </div>
             <span className="font-bold text-foreground">
               ₱{Number(appointment.consultation_fee_charged).toLocaleString()}
             </span>
           </div>
+          {/* ✅ NEW: Show breakdown hint for non-consultation bookings */}
+          {appointment.booking_type !== "consultation_only" &&
+            appointment.services &&
+            appointment.services.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Includes {appointment.services.map((s) => s.name).join(", ")}
+              </p>
+            )}
         </div>
       )}
 

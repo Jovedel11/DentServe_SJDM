@@ -24,7 +24,7 @@ const ClinicSelectionStep = ({
   clinicsLoading,
   selectedClinic,
   onClinicSelect,
-  profile = null, // ✅ NEW: For same-day check
+  profile = null,
 }) => {
   const isMobile = useIsMobile();
 

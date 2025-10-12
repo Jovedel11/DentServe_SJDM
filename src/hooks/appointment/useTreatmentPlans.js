@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
+import { useTreatmentPlanFollowUp } from './useTreatmentFollowUp';
 
 export const useTreatmentPlans = () => {
   const { user, profile, isPatient, isStaff, isAdmin } = useAuth();
@@ -14,21 +15,27 @@ export const useTreatmentPlans = () => {
     treatmentPlans: []
   });
 
+  const followUpBooking = useTreatmentPlanFollowUp();
+
+  const startFollowUpBooking = useCallback(async (treatmentPlanId) => {
+    return await followUpBooking.getFollowUpBookingInfo(treatmentPlanId);
+  }, [followUpBooking]);
+
   const getOngoingTreatments = useCallback(async (patientId = null, includePaused = false) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
-
+  
       const { data, error } = await supabase.rpc('get_ongoing_treatments', {
         p_patient_id: patientId || (isPatient ? profile?.user_id : null),
         p_include_paused: includePaused
       });
-
+  
       if (error) throw error;
-
+  
       if (!data?.success) {
         throw new Error(data?.error || 'Failed to fetch ongoing treatments');
       }
-
+  
       // ✅ CRITICAL FIX: Database returns 'ongoing_treatments' not 'treatments'
       const treatments = data.data?.ongoing_treatments || [];
       const summary = data.data?.summary || {
@@ -38,7 +45,7 @@ export const useTreatmentPlans = () => {
         needs_scheduling: 0,
         completion_avg: 0
       };
-
+  
       setState(prev => ({
         ...prev,
         loading: false,
@@ -46,13 +53,13 @@ export const useTreatmentPlans = () => {
         summary,
         treatmentPlans: treatments
       }));
-
+  
       return { 
         success: true, 
         treatments,
         summary
       };
-
+  
     } catch (err) {
       const errorMsg = err.message || 'Failed to fetch ongoing treatments';
       setState(prev => ({ ...prev, loading: false, error: errorMsg }));
@@ -142,55 +149,28 @@ export const useTreatmentPlans = () => {
   const getTreatmentPlanDetails = useCallback(async (treatmentPlanId) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
-
-      const { data, error } = await supabase
-        .from('treatment_plans')
-        .select(`
-          *,
-          patient:users!treatment_plans_patient_id_fkey (
-            id,
-            email,
-            user_profiles (first_name, last_name, phone)
-          ),
-          clinic:clinics (
-            id,
-            name,
-            address,
-            phone
-          ),
-          created_by:users!treatment_plans_created_by_staff_id_fkey (
-            id,
-            user_profiles (first_name, last_name)
-          ),
-          visits:treatment_plan_appointments (
-            id,
-            visit_number,
-            visit_purpose,
-            is_completed,
-            completion_notes,
-            recommended_next_visit_days,
-            appointment:appointments (
-              id,
-              appointment_date,
-              appointment_time,
-              status,
-              notes
-            )
-          )
-        `)
-        .eq('id', treatmentPlanId)
-        .single();
-
+  
+      // ✅ USE THE EXISTING RPC FUNCTION
+      const { data, error } = await supabase.rpc('get_treatment_plan_details', {
+        p_treatment_plan_id: treatmentPlanId
+      });
+  
       if (error) throw error;
-
+  
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to fetch treatment plan details');
+      }
+  
+      const planData = data.data;
+  
       setState(prev => ({
         ...prev,
         loading: false,
-        selectedPlan: data
+        selectedPlan: planData
       }));
-
-      return { success: true, plan: data };
-
+  
+      return { success: true, plan: planData };
+  
     } catch (err) {
       const errorMsg = err.message || 'Failed to fetch treatment plan details';
       setState(prev => ({ ...prev, loading: false, error: errorMsg }));
@@ -323,52 +303,49 @@ export const useTreatmentPlans = () => {
     if (!isStaff && !isAdmin) {
       return { success: false, error: 'Only staff can access this' };
     }
-
+  
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
-
+  
       const {
         limit = 20,
         offset = 0
       } = options;
-
-      // Get clinic_id from multiple possible locations
-      const clinicId = 
-        profile?.clinic_id || 
-        profile?.role_specific_data?.clinic_id || 
-        null; // Let RPC get it from context if null
-
+  
+      // ✅ FIXED: Get clinic_id from role_specific_data
+      const clinicId = profile?.role_specific_data?.clinic_id || null;
+  
       // Use the new RPC function
       const { data, error } = await supabase.rpc('get_appointments_needing_treatment_plans', {
         p_clinic_id: clinicId,
         p_limit: limit,
         p_offset: offset
       });
-
+  
       if (error) throw error;
-
+  
       if (!data?.success) {
         throw new Error(data?.error || 'Failed to fetch appointments');
       }
-
+  
       const appointments = data.data || [];
       const totalCount = data.total_count || 0;
-
+  
       setState(prev => ({ ...prev, loading: false }));
-
+  
       return {
         success: true,
         appointments,
         totalCount,
         hasMore: appointments.length === limit
       };
-
+  
     } catch (err) {
       const errorMsg = err.message || 'Failed to fetch appointments';
       setState(prev => ({ ...prev, loading: false, error: errorMsg }));
       return { success: false, error: errorMsg };
     }
-  }, [isStaff, isAdmin, profile]);
+  }, [isStaff, isAdmin, profile?.role_specific_data?.clinic_id]);
 
     const createTreatmentPlanFromAppointment = useCallback(async (appointmentData) => {
     if (!isStaff && !isAdmin) {
@@ -478,6 +455,15 @@ export const useTreatmentPlans = () => {
     
     // Helper methods
     getTreatmentById: (id) => state.ongoingTreatments.find(t => t.id === id),
-    getTreatmentsByAlert: (alertLevel) => state.ongoingTreatments.filter(t => t.alert_level === alertLevel)
+    getTreatmentsByAlert: (alertLevel) => state.ongoingTreatments.filter(t => t.alert_level === alertLevel),
+
+    followUpBooking,
+    startFollowUpBooking,
+    
+    // Helper: Check if treatment needs follow-up booking
+    needsFollowUpBooking: (treatmentId) => {
+      const treatment = state.ongoingTreatments.find(t => t.id === treatmentId);
+      return treatment && !treatment.next_visit_due && treatment.status === 'active';
+    }
   };
 };

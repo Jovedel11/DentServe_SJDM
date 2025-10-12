@@ -10,6 +10,7 @@ import {
   Repeat,
   Sparkles,
   Package,
+  Activity,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/core/components/ui/card";
 import { Button } from "@/core/components/ui/button";
@@ -23,6 +24,9 @@ const ServicesSelectionStep = ({
   selectedServices,
   onServiceToggle,
   isConsultationOnly = false,
+  ongoingTreatments = [],
+  onTreatmentSelect,
+  selectedTreatment = null,
 }) => {
   const isMobile = useIsMobile();
   const selectedCount = selectedServices?.length || 0;
@@ -195,6 +199,43 @@ const ServicesSelectionStep = ({
             )}
           </CardContent>
         </Card>
+      )}
+
+      {ongoingTreatments &&
+        ongoingTreatments.length > 0 &&
+        !selectedTreatment && (
+          <Alert className="mb-6 border-purple-200 bg-purple-50">
+            <Activity className="h-4 w-4 text-purple-600" />
+            <AlertDescription>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-medium text-purple-900 mb-1">
+                    You have {ongoingTreatments.length} ongoing treatment
+                    {ongoingTreatments.length > 1 ? "s" : ""} at this clinic
+                  </p>
+                  <p className="text-sm text-purple-700">
+                    You can link this appointment to an existing treatment plan
+                    for continuity of care.
+                  </p>
+                </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
+      {/* Show selected treatment if linked */}
+      {selectedTreatment && (
+        <Alert className="mb-6 border-green-200 bg-green-50">
+          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          <AlertDescription>
+            <p className="font-medium text-green-900">
+              Linked to: {selectedTreatment.treatment_name}
+            </p>
+            <p className="text-sm text-green-700">
+              This appointment will be part of your ongoing treatment plan.
+            </p>
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Consultation Requirements Alert */}

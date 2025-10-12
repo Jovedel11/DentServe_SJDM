@@ -3,6 +3,7 @@ import { useAuth } from "@/auth/context/AuthProvider";
 import { usePatientAppointments } from "@/hooks/appointment/usePatientAppointment";
 import { useAppointmentCancellation } from "@/hooks/appointment/useAppointmentCancellation";
 import { useAppointmentRealtime } from "@/hooks/appointment/useAppointmentRealtime";
+import { useTreatmentPlans } from "@/hooks/appointment/useTreatmentPlans";  // ✅ ADD THIS
 import { supabase } from "@/lib/supabaseClient";
 
 export const useAppointmentManagement = () => {
@@ -11,6 +12,7 @@ export const useAppointmentManagement = () => {
   // Hook integrations
   const appointmentHook = usePatientAppointments();
   const cancellationHook = useAppointmentCancellation();
+  const { followUpBooking, startFollowUpBooking } = useTreatmentPlans();  // ✅ ADD THIS
   
   // Local state
   const [searchTerm, setSearchTerm] = useState("");
@@ -73,7 +75,7 @@ export const useAppointmentManagement = () => {
         (update) => {
           console.log("Real-time appointment update:", update);
           appointmentHook.refresh();
-          fetchOngoingTreatments(); // ✅ Now this is defined
+          fetchOngoingTreatments();
         },
         [appointmentHook, fetchOngoingTreatments] 
       ),
@@ -140,12 +142,10 @@ export const useAppointmentManagement = () => {
 
     if (bookingTypeFilter !== "all") {
       if (bookingTypeFilter === "with_services") {
-        // Special case: filter appointments with services
         filtered = filtered.filter(apt => 
           ['consultation_with_service', 'service_only'].includes(apt.booking_type)
         );
       } else {
-        // Direct match for other types
         filtered = filtered.filter(apt => apt.booking_type === bookingTypeFilter);
       }
     }
@@ -183,29 +183,23 @@ export const useAppointmentManagement = () => {
     );
   }, [upcomingAppointments]);
 
-  // ✅ FIXED: Better stat names and clearer categorization
   const stats = useMemo(() => {
-    // Count by booking type - CLEARER NAMES
     const consultationOnly = upcomingAppointments.filter(
       a => a.booking_type === 'consultation_only'
     ).length;
 
-    // ✅ RENAMED: "withServices" instead of "withTreatment"
     const withServices = upcomingAppointments.filter(
       a => ['consultation_with_service', 'service_only'].includes(a.booking_type)
     ).length;
 
-    // ✅ SEPARATE: Treatment plan follow-ups
     const treatmentFollowUps = upcomingAppointments.filter(
       a => a.booking_type === 'treatment_plan_follow_up'
     ).length;
 
-    // ✅ RENAMED: "linkedToTreatmentPlan" instead of "treatmentPlanLinked"
     const linkedToTreatmentPlan = upcomingAppointments.filter(
-      a => a.treatment_plan != null  // Has treatment plan from DB
+      a => a.treatment_plan != null
     ).length;
 
-    // Overdue treatments
     const overduetreatments = ongoingTreatments.filter(t => {
       if (!t.next_visit_date) return false;
       return new Date(t.next_visit_date) < new Date();
@@ -216,13 +210,10 @@ export const useAppointmentManagement = () => {
       pending: upcomingAppointments.filter((a) => a.status === "pending").length,
       confirmed: upcomingAppointments.filter((a) => a.status === "confirmed").length,
       ongoingTreatments: ongoingTreatments.length,
-      
-      // ✅ FIXED: Clearer names
-      consultationOnly,           // Only consultation, no services
-      withServices,              // Has services (consultation + service OR service only)
-      treatmentFollowUps,        // Follow-up visits for treatment plans
-      linkedToTreatmentPlan,     // Appointments linked to active treatment plans
-      
+      consultationOnly,
+      withServices,
+      treatmentFollowUps,
+      linkedToTreatmentPlan,
       urgentCount: urgentAppointments.length,
       overduetreatments,
     };
@@ -231,8 +222,6 @@ export const useAppointmentManagement = () => {
     
     return result;
   }, [upcomingAppointments, ongoingTreatments, urgentAppointments]);
-
-  // ... rest of the handlers remain the same ...
 
   // Event handlers
   const handleCancelAppointment = useCallback(
@@ -330,6 +319,28 @@ export const useAppointmentManagement = () => {
     }
   }, [fetchTreatmentDetails, showToast]);
 
+  // ✅ NEW: Handle follow-up booking
+  const handleBookFollowUp = useCallback(async (treatmentId) => {
+    try {
+      setTreatmentsLoading(true);
+      const result = await startFollowUpBooking(treatmentId);
+      
+      if (!result.success) {
+        showToast(result.error || "Failed to load booking information", "error");
+        setTreatmentsLoading(false);
+        return { success: false, error: result.error };
+      }
+      
+      setTreatmentsLoading(false);
+      return { success: true, bookingInfo: result.info };
+    } catch (err) {
+      console.error("Error starting follow-up booking:", err);
+      showToast("Failed to start booking process", "error");
+      setTreatmentsLoading(false);
+      return { success: false, error: err.message };
+    }
+  }, [startFollowUpBooking, showToast]);
+
   const closeCancelModal = useCallback(() => {
     setCancelModal({
       isOpen: false,
@@ -377,6 +388,8 @@ export const useAppointmentManagement = () => {
     selectedTreatment,
     setSelectedTreatment,
     handleViewTreatmentPlan,
+    handleBookFollowUp,   
+    followUpBooking,      
     
     // Search & Filters
     searchTerm,

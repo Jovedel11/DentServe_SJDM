@@ -86,6 +86,9 @@ const AdminLayout = lazy(() => import("./app/admin/layout/AdminLayout"));
 const PatientDashboard = lazy(() =>
   import("./app/patient/pages/PatientDashboard")
 );
+const AppointmentsLayout = lazy(() =>
+  import("./app/patient/layout/AppointmentLayout")
+);
 const BookAppointment = lazy(() =>
   import("./app/patient/pages/BookAppointment")
 );
@@ -99,6 +102,9 @@ const PatientSettings = lazy(() =>
 const PatientHelp = lazy(() => import("@/app/patient/pages/PatientHelp"));
 const AppointmentHistory = lazy(() =>
   import("@/app/patient/pages/AppointmentHistory")
+);
+const TreatmentFollowUpBooking = lazy(() =>
+  import("@/app/patient/components/booking/treatment-follow-up-booking")
 );
 const PatientFeedback = lazy(() =>
   import("@/app/patient/pages/PatientFeedback")
@@ -187,11 +193,16 @@ export const router = createBrowserRouter([
           { path: "dashboard", element: withSuspense(PatientDashboard) },
           {
             path: "appointments",
+            element: withSuspense(AppointmentsLayout),
             children: [
               { index: true, element: withSuspense(BookAppointment) },
               { path: "book", element: withSuspense(BookAppointment) },
               { path: "upcoming", element: withSuspense(UpcomingAppointments) },
               { path: "history", element: withSuspense(AppointmentHistory) },
+              {
+                path: "book-follow-up/:id",
+                element: withSuspense(TreatmentFollowUpBooking),
+              },
             ],
           },
           { path: "clinics/map", element: withSuspense(MapView) },

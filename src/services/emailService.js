@@ -1,73 +1,261 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
-export const sendStaffInvitation = async (emailData) => {
+const sendEmail = async (endpoint, payload) => {
   try {
-    console.log('📧 Sending staff invitation email:', emailData);
-
-    const response = await fetch(`${API_BASE_URL}/api/email/send-staff-invitation`, {
+    const response = await fetch(`${BACKEND_URL}/api/email/${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        to_email: emailData.to_email,
-        subject: emailData.subject,
-        clinic_name: emailData.clinic_name,
-        position: emailData.position,
-        first_name: emailData.first_name,
-        last_name: emailData.last_name,
-        invitation_id: emailData.invitation_id,
-        invitation_token: emailData.invitation_token,
-      }),
+      body: JSON.stringify(payload),
     });
 
-    const result = await response.json();
+    const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(result.error || `HTTP error! status: ${response.status}`);
+      console.error(`Email API error [${endpoint}]:`, data);
+      return {
+        success: false,
+        error: data.error || 'Failed to send email',
+      };
     }
 
-    console.log('✅ Email sent successfully:', result);
-    return { success: true, data: result.data };
-
+    console.log(`Email sent [${endpoint}]:`, data);
+    return { success: true, data };
   } catch (error) {
-    console.error('❌ Email service error:', error);
-    return { success: false, error: error.message };
+    console.error(`Email service error [${endpoint}]:`, error);
+    return {
+      success: false,
+      error: error.message || 'Network error sending email',
+    };
   }
 };
 
-export const sendEmail = async ({ to, subject, html, from }) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/email/send-email`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ to, subject, html, from }),
-    });
-
-    const result = await response.json();
-
-    if (!response.ok) {
-      throw new Error(result.error || `HTTP error! status: ${response.status}`);
-    }
-
-    return { success: true, data: result.data };
-
-  } catch (error) {
-    console.error('Email service error:', error);
-    return { success: false, error: error.message };
-  }
+ // notification to staff when patient books appointment
+export const notifyStaffNewAppointment = async ({
+  staff_email,
+  patient,
+  appointment,
+  clinic,
+  doctor,
+  services = [],
+  symptoms = null,
+}) => {
+  return sendEmail('new-appointment-notification', {
+    staff_email,
+    patient,
+    appointment,
+    clinic,
+    doctor,
+    services,
+    symptoms,
+  });
 };
 
-// Test email service connection
-export const testEmailService = async () => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/email/health`);
-    const result = await response.json();
-    return result;
-  } catch (error) {
-    console.error('Email service health check failed:', error);
-    return { success: false, error: error.message };
-  }
+ // notify patient when appointment is confirmed
+export const notifyPatientAppointmentConfirmed = async ({
+  patient,
+  appointment,
+  clinic,
+  doctor,
+  services = [],
+}) => {
+  return sendEmail('appointment-confirmed', {
+    patient,
+    appointment,
+    clinic,
+    doctor,
+    services,
+  });
+};
+
+ // notify patient when appointment is rejected
+export const notifyPatientAppointmentRejected = async ({
+  patient,
+  appointment,
+  clinic,
+  doctor,
+  rejection,
+}) => {
+  return sendEmail('appointment-rejected', {
+    patient,
+    appointment,
+    clinic,
+    doctor,
+    rejection,
+  });
+};
+
+ // send appointment reminder to patient (manual trigger)
+export const sendAppointmentReminder = async ({
+  patient,
+  appointment,
+  clinic,
+  doctor,
+  services = [],
+}) => {
+  return sendEmail('appointment-reminder', {
+    patient,
+    appointment,
+    clinic,
+    doctor,
+    services,
+  });
+};
+
+ // notify staff when patient cancels
+export const notifyStaffAppointmentCancelled = async ({
+  staff_email,
+  patient,
+  appointment,
+  clinic,
+  doctor,
+  cancellation,
+}) => {
+  return sendEmail('appointment-cancelled-by-patient', {
+    staff_email,
+    patient,
+    appointment,
+    clinic,
+    doctor,
+    cancellation,
+  });
+};
+
+ // notify patient when staff cancels
+export const notifyPatientAppointmentCancelled = async ({
+  patient,
+  appointment,
+  clinic,
+  doctor,
+  cancellation,
+}) => {
+  return sendEmail('appointment-cancelled-by-staff', {
+    patient,
+    appointment,
+    clinic,
+    doctor,
+    cancellation,
+  });
+};
+
+ // notify patient when appointment is completed
+export const notifyPatientAppointmentCompleted = async ({
+  patient,
+  appointment,
+  clinic,
+  doctor,
+  services = [],
+  feedbackUrl = null,
+}) => {
+  return sendEmail('appointment-completed', {
+    patient,
+    appointment,
+    clinic,
+    doctor,
+    services,
+    feedbackUrl,
+  });
+};
+
+ // notify patient of no-show
+export const notifyPatientNoShow = async ({
+  patient,
+  appointment,
+  clinic,
+  doctor,
+}) => {
+  return sendEmail('no-show-notice', {
+    patient,
+    appointment,
+    clinic,
+    doctor,
+  });
+};
+
+ // notify patient of new treatment plan
+export const notifyPatientTreatmentPlanCreated = async ({
+  patient,
+  treatmentPlan,
+  clinic,
+  doctor,
+}) => {
+  return sendEmail('treatment-plan-created', {
+    patient,
+    treatmentPlan,
+    clinic,
+    doctor,
+  });
+};
+
+ // send treatment follow-up reminder (manual trigger)
+export const sendTreatmentFollowUpReminder = async ({
+  patient,
+  treatmentPlan,
+  clinic,
+  doctor,
+  recommendedDate = null,
+}) => {
+  return sendEmail('treatment-followup-reminder', {
+    patient,
+    treatmentPlan,
+    clinic,
+    doctor,
+    recommendedDate,
+  });
+};
+
+ // notify patient of treatment plan completion
+export const notifyPatientTreatmentCompleted = async ({
+  patient,
+  treatmentPlan,
+  clinic,
+  doctor,
+}) => {
+  return sendEmail('treatment-plan-completed', {
+    patient,
+    treatmentPlan,
+    clinic,
+    doctor,
+  });
+};
+
+ // send daily digest to staff (manual trigger)
+export const sendDailyStaffDigest = async ({
+  staff,
+  clinic,
+  todayAppointments,
+  stats,
+  pendingActions = [],
+}) => {
+  return sendEmail('daily-staff-digest', {
+    staff,
+    clinic,
+    todayAppointments,
+    stats,
+    pendingActions,
+  });
+};
+
+ // send bulk appointment reminders (manual trigger)
+export const sendBulkAppointmentReminders = async (appointments) => {
+  return sendEmail('bulk-appointment-reminders', {
+    appointments,
+  });
+};
+
+export default {
+  notifyStaffNewAppointment,
+  notifyPatientAppointmentConfirmed,
+  notifyPatientAppointmentRejected,
+  sendAppointmentReminder,
+  notifyStaffAppointmentCancelled,
+  notifyPatientAppointmentCancelled,
+  notifyPatientAppointmentCompleted,
+  notifyPatientNoShow,
+  notifyPatientTreatmentPlanCreated,
+  sendTreatmentFollowUpReminder,
+  notifyPatientTreatmentCompleted,
+  sendDailyStaffDigest,
+  sendBulkAppointmentReminders,
 };

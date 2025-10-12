@@ -330,13 +330,18 @@ const OngoingTreatments = ({
                         </p>
                       </div>
                     </div>
+                    {/* ✅ NEW: Direct Follow-Up Booking Button */}
                     <Button
                       size="sm"
                       className="w-full"
-                      onClick={() => navigate("/patient/appointments/book")}
+                      onClick={() =>
+                        navigate(
+                          `/patient/appointments/book-follow-up/${treatment.id}`
+                        )
+                      }
                     >
                       <CalendarPlus className="w-4 h-4 mr-2" />
-                      Schedule Next Visit
+                      Book Next Visit
                     </Button>
                   </div>
                 ) : (

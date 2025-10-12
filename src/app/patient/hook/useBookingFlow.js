@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { useAppointmentBooking } from "@/hooks/appointment/useAppointmentBooking";
 import { supabase } from "@/lib/supabaseClient";
@@ -368,6 +368,17 @@ export const useBookingFlow = () => {
     }
   }, [bookingData.clinic?.id, updateBookingData, checkBookingEligibility]);
 
+  const handleTreatmentPlanSelect = useCallback((treatmentId) => {
+    if (!treatmentId) return;
+    
+    // When a treatment is selected, link it to the booking
+    const treatment = appointmentHook.ongoingTreatments?.find(t => t.id === treatmentId);
+    if (treatment) {
+      appointmentHook.selectTreatmentPlan(treatmentId);
+      showToast(`Linked to treatment: ${treatment.treatment_name}`, 'success');
+    }
+  }, [appointmentHook, showToast]);
+
   // Enhanced cancellation policy info
   const getCancellationInfo = useCallback(() => {
     if (!bookingData.clinic) return null;
@@ -480,7 +491,7 @@ export const useBookingFlow = () => {
     handleDateSelect,
     handleSubmit,
     handleClearDate,
-    
+    handleTreatmentPlanSelect,
     // Enhanced methods
     checkBookingEligibility,
     getCancellationInfo,

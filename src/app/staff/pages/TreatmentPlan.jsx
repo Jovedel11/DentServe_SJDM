@@ -82,14 +82,13 @@ import {
 } from "@/core/components/ui/alert";
 import { Label } from "@/core/components/ui/label";
 import { Separator } from "@/core/components/ui/separator";
-import { Progress } from "@/core/components/ui/progress";
-import { ScrollArea } from "@/core/components/ui/scroll-area";
 import { Badge } from "@/core/components/ui/badge";
 
 // Hooks
 import { useTreatmentPlans } from "@/hooks/appointment/useTreatmentPlans";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
+import { useAppointmentRealtime } from "@/hooks/appointment/useAppointmentRealtime";
 
 // Treatment Categories with Icons & Colors
 const TREATMENT_CATEGORIES = [
@@ -185,6 +184,14 @@ const TreatmentPlans = () => {
     clearError,
   } = useTreatmentPlans();
 
+  useAppointmentRealtime({
+    onAppointmentUpdate: () => {
+      console.log("📡 Appointment updated - refreshing treatment plans");
+      loadAllTreatments();
+    },
+    enableAppointments: true,
+  });
+
   // State Management
   const [activeTab, setActiveTab] = useState("pending");
   const [searchQuery, setSearchQuery] = useState("");
@@ -277,8 +284,7 @@ const TreatmentPlans = () => {
 
   // ✅ Load Available Doctors - FIXED to use doctor_clinics junction table
   const loadAvailableDoctors = async () => {
-    const clinicId =
-      profile?.clinic_id || profile?.role_specific_data?.clinic_id;
+    const clinicId = profile?.role_specific_data?.clinic_id;
 
     if (!clinicId) return;
 
@@ -502,7 +508,6 @@ const TreatmentPlans = () => {
     }
 
     const clinicId =
-      profile?.clinic_id ||
       profile?.role_specific_data?.clinic_id ||
       selectedAppointment.clinic?.id ||
       null;
@@ -815,6 +820,11 @@ const TreatmentPlans = () => {
     const visitsCompleted = treatment.progress?.visits_completed || 0;
     const totalVisits = treatment.progress?.total_visits_planned || 0;
 
+    const hasNextAppointment = treatment.next_appointment?.date != null;
+    const nextAppointmentDate = hasNextAppointment
+      ? new Date(treatment.next_appointment.date)
+      : null;
+
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -827,6 +837,8 @@ const TreatmentPlans = () => {
           className={`cursor-pointer transition-all hover:shadow-lg border-l-4 ${
             isOverdue
               ? "border-l-red-500"
+              : hasNextAppointment // ✅ NEW: Green border if next appointment is scheduled
+              ? "border-l-green-500"
               : category.color.replace("bg-", "border-l-")
           }`}
         >
@@ -854,22 +866,37 @@ const TreatmentPlans = () => {
                     </p>
                   </div>
 
-                  {isOverdue && (
-                    <Badge
-                      variant="destructive"
-                      className="flex items-center gap-1"
-                    >
-                      <AlertTriangle className="w-3 h-3" />
-                      Overdue
-                    </Badge>
-                  )}
+                  <div className="flex flex-col gap-1">
+                    {isOverdue && (
+                      <Badge
+                        variant="destructive"
+                        className="flex items-center gap-1"
+                      >
+                        <AlertTriangle className="w-3 h-3" />
+                        Overdue
+                      </Badge>
+                    )}
+                    {/* ✅ NEW: Show next appointment badge */}
+                    {hasNextAppointment && !isOverdue && (
+                      <Badge className="flex items-center gap-1 bg-green-100 text-green-700 border-green-300">
+                        <CheckCircle className="w-3 h-3" />
+                        {treatment.next_appointment?.status === "confirmed"
+                          ? "Confirmed"
+                          : "Pending"}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
+                {/* ✅ ENHANCED: Patient info with better display */}
                 <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
                   <div className="flex items-center gap-1.5">
                     <User className="w-4 h-4" />
                     <span className="font-medium">
-                      {treatment.patient_name || "Patient"}
+                      {/* ✅ FIX: Handle both patient_name formats */}
+                      {treatment.patient_name ||
+                        treatment.patient?.name ||
+                        "Unknown Patient"}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -900,15 +927,39 @@ const TreatmentPlans = () => {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Next Visit</p>
+                    {/* ✅ ENHANCED: Better next appointment display */}
                     <p className="text-sm font-semibold">
-                      {treatment.next_appointment?.date
-                        ? new Date(
-                            treatment.next_appointment.date
-                          ).toLocaleDateString()
-                        : "Not scheduled"}
+                      {hasNextAppointment ? (
+                        <span className="text-green-600">
+                          {nextAppointmentDate.toLocaleDateString()}
+                        </span>
+                      ) : (
+                        <span className="text-orange-600">Not scheduled</span>
+                      )}
                     </p>
                   </div>
                 </div>
+
+                {hasNextAppointment && (
+                  <div className="mb-3 p-2 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-xs">
+                      <Calendar className="w-3 h-3 text-green-600" />
+                      <span className="font-medium text-green-900">
+                        Next: {nextAppointmentDate.toLocaleDateString()} at{" "}
+                        {treatment.next_appointment.time}
+                      </span>
+                      {treatment.next_appointment.doctor?.name && (
+                        <>
+                          <Separator orientation="vertical" className="h-3" />
+                          <Stethoscope className="w-3 h-3 text-green-600" />
+                          <span className="text-green-800">
+                            {treatment.next_appointment.doctor.name}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-2 pt-2 border-t">
                   <Button
@@ -920,32 +971,6 @@ const TreatmentPlans = () => {
                     <Eye className="w-4 h-4 mr-2" />
                     View Details
                   </Button>
-                  {treatment.status === "active" && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedTreatment(treatment);
-                        setStatusUpdateData({ status: "paused", notes: "" });
-                        setShowStatusUpdateModal(true);
-                      }}
-                    >
-                      <Pause className="w-4 h-4" />
-                    </Button>
-                  )}
-                  {treatment.status === "paused" && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedTreatment(treatment);
-                        setStatusUpdateData({ status: "active", notes: "" });
-                        setShowStatusUpdateModal(true);
-                      }}
-                    >
-                      <PlayCircle className="w-4 h-4" />
-                    </Button>
-                  )}
                 </div>
               </div>
             </div>
@@ -1132,7 +1157,7 @@ const TreatmentPlans = () => {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="pending">
               <div className="flex items-center gap-2">
                 <AlertOctagon className="w-4 h-4" />
@@ -1151,13 +1176,6 @@ const TreatmentPlans = () => {
               <span className="hidden sm:inline">Overdue</span>
               <span className="sm:hidden">Over.</span> (
               {summary?.overdue_count || 0})
-            </TabsTrigger>
-            <TabsTrigger value="paused">
-              <span className="hidden sm:inline">Paused</span>
-              <span className="sm:hidden">Paus.</span> (
-              {ongoingTreatments?.filter((t) => t.status === "paused").length ||
-                0}
-              )
             </TabsTrigger>
             <TabsTrigger value="completed">
               <span className="hidden sm:inline">Completed</span>
@@ -1534,115 +1552,194 @@ const TreatmentPlans = () => {
       </Dialog>
 
       {/* Status Update Modal */}
-      <Dialog
-        open={showStatusUpdateModal}
-        onOpenChange={setShowStatusUpdateModal}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Update Treatment Status</DialogTitle>
-            <DialogDescription>
-              Change the status of "{selectedTreatment?.treatment_name}"
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="status">New Status</Label>
-              <Select
-                value={statusUpdateData.status}
-                onValueChange={(value) =>
-                  setStatusUpdateData((prev) => ({ ...prev, status: value }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">
-                    <div className="flex items-center gap-2">
-                      <PlayCircle className="w-4 h-4 text-green-500" />
-                      Active
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="paused">
-                    <div className="flex items-center gap-2">
-                      <Pause className="w-4 h-4 text-yellow-500" />
-                      Paused
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="completed">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-blue-500" />
-                      Completed
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="cancelled">
-                    <div className="flex items-center gap-2">
-                      <Ban className="w-4 h-4 text-red-500" />
-                      Cancelled
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="notes">Notes (Optional)</Label>
-              <Textarea
-                id="notes"
-                placeholder="Add notes about this status change..."
-                value={statusUpdateData.notes}
-                onChange={(e) =>
-                  setStatusUpdateData((prev) => ({
-                    ...prev,
-                    notes: e.target.value,
-                  }))
-                }
-                rows={3}
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowStatusUpdateModal(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleStatusUpdate}
-              disabled={!statusUpdateData.status || loading}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Updating...
-                </>
-              ) : (
-                "Update Status"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Details Modal */}
       <Dialog open={showDetailsModal} onOpenChange={setShowDetailsModal}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Treatment Plan Details</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Heart className="w-5 h-5 text-primary" />
+              Treatment Plan Details
+            </DialogTitle>
+            <DialogDescription>
+              {selectedTreatment ? (
+                <>
+                  {selectedTreatment.treatment_name} -{" "}
+                  {selectedTreatment.patient?.name || "Unknown Patient"}
+                </>
+              ) : (
+                "Loading treatment plan details..."
+              )}
+            </DialogDescription>
           </DialogHeader>
+
           {selectedTreatment && (
             <div className="space-y-6 py-4">
-              <Alert>
-                <Info className="w-4 h-4" />
-                <AlertDescription>
-                  Detailed view with visit history, progress timeline, and
-                  linked appointments will be shown here.
-                </AlertDescription>
-              </Alert>
+              {/* Progress Overview */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Progress Overview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-6 mb-4">
+                    <ProgressRing
+                      progress={selectedTreatment.progress_percentage || 0}
+                      size={120}
+                      strokeWidth={10}
+                    />
+                    <div className="flex-1 space-y-3">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-sm text-muted-foreground">
+                            Visits Completed
+                          </p>
+                          <p className="text-2xl font-bold">
+                            {selectedTreatment.visits_completed || 0} /
+                            {selectedTreatment.total_visits_planned || "∞"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">
+                            Status
+                          </p>
+                          <Badge className="capitalize text-lg px-3 py-1">
+                            {selectedTreatment.status}
+                          </Badge>
+                        </div>
+                      </div>
+                      <Separator />
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">
+                            Started:
+                          </span>
+                          <span className="ml-2 font-medium">
+                            {new Date(
+                              selectedTreatment.start_date
+                            ).toLocaleDateString()}
+                          </span>
+                        </div>
+                        {selectedTreatment.expected_end_date && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Expected End:
+                            </span>
+                            <span className="ml-2 font-medium">
+                              {new Date(
+                                selectedTreatment.expected_end_date
+                              ).toLocaleDateString()}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Next Appointment Info */}
+              {selectedTreatment.next_visit_appointment_id && (
+                <Card className="bg-green-50 border-green-200">
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-green-600" />
+                      Next Scheduled Visit
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <p className="text-muted-foreground">
+                      Next visit date:{" "}
+                      {selectedTreatment.next_visit_date
+                        ? new Date(
+                            selectedTreatment.next_visit_date
+                          ).toLocaleDateString()
+                        : "Not scheduled"}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Patient Info */}
+              {selectedTreatment.patient && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      Patient Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Name:</p>
+                        <p className="font-medium">
+                          {selectedTreatment.patient.name}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Email:</p>
+                        <p className="font-medium">
+                          {selectedTreatment.patient.email}
+                        </p>
+                      </div>
+                      {selectedTreatment.patient.phone && (
+                        <div>
+                          <p className="text-muted-foreground">Phone:</p>
+                          <p className="font-medium">
+                            {selectedTreatment.patient.phone}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Visit History */}
+              {selectedTreatment.visits &&
+                selectedTreatment.visits.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Visit History</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        {selectedTreatment.visits.map((visit, idx) => (
+                          <div
+                            key={visit.id || idx}
+                            className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Badge
+                                variant={
+                                  visit.is_completed ? "default" : "outline"
+                                }
+                              >
+                                Visit #{visit.visit_number}
+                              </Badge>
+                              <span className="text-sm">
+                                {visit.visit_purpose || "Follow-up visit"}
+                              </span>
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {visit.appointment?.appointment_date &&
+                                new Date(
+                                  visit.appointment.appointment_date
+                                ).toLocaleDateString()}
+                              {visit.appointment?.appointment_time &&
+                                ` at ${visit.appointment.appointment_time}`}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+              {/* Actions */}
+              <Button
+                onClick={() => setShowDetailsModal(false)}
+                className="w-full"
+              >
+                Close
+              </Button>
             </div>
           )}
         </DialogContent>

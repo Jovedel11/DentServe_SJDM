@@ -11,7 +11,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/core/components/ui/sidebar";
-import GmailInboxModal from "@/app/shared/components/gmail-inbox";
 
 export function NavMain({ items }) {
   const [showInboxModal, setShowInboxModal] = useState(false);
@@ -49,21 +48,6 @@ export function NavMain({ items }) {
                   </SidebarMenuButton>
                 )}
               </NavLink>
-
-              <Button
-                size="icon"
-                onClick={handleInboxClick}
-                className="size-8 group-data-[collapsible=icon]:opacity-0 cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors relative"
-                variant="outline"
-                title="Patient Inbox"
-              >
-                <IconMail className="w-4 h-4" />
-                {/* Notification Badge */}
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-medium">
-                  3
-                </span>
-                <span className="sr-only">Inbox</span>
-              </Button>
             </SidebarMenuItem>
           </SidebarMenu>
 

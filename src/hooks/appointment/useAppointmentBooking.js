@@ -63,6 +63,9 @@ const useAppointmentBooking = () => {
   const [showTreatmentLinkPrompt, setShowTreatmentLinkPrompt] = useState(false);
   const [checkingTreatments, setCheckingTreatments] = useState(false);
 
+  const [treatmentPlanBookingMode, setTreatmentPlanBookingMode] = useState(false);
+  const [preFilledData, setPreFilledData] = useState(null);
+
   // Existing state
   const [appointmentLimitCheck, setAppointmentLimitCheck] = useState(null);
   const [sameDayConflict, setSameDayConflict] = useState(null);
@@ -107,9 +110,6 @@ const useAppointmentBooking = () => {
     }
   }, [user, isPatient, profile?.user_id]);
 
-  // ====================================================================
-  // ✅ NEW: Link/unlink treatment plan
-  // ====================================================================
   const selectTreatmentPlan = useCallback((treatmentPlanId) => {
     setBookingData(prev => ({
       ...prev,
@@ -411,6 +411,25 @@ const useAppointmentBooking = () => {
       setLoading(false);
     }
   }, []);
+
+    const initializeFromTreatmentPlan = useCallback((treatmentPlanInfo) => {
+    if (!treatmentPlanInfo) return;
+    
+    setTreatmentPlanBookingMode(true);
+    setPreFilledData(treatmentPlanInfo);
+    
+    // Pre-fill booking data
+    updateBookingData({
+      clinic: treatmentPlanInfo.clinic,
+      doctor: treatmentPlanInfo.doctor,
+      services: treatmentPlanInfo.services?.map(s => s.id) || [],
+      date: treatmentPlanInfo.recommended_date,
+      treatmentPlanId: treatmentPlanInfo.treatment_plan.id
+    });
+    
+    // Skip directly to date/time selection or confirmation
+    setBookingStep('datetime');
+  }, [updateBookingData]);
 
   const getServices = useCallback(async (clinicId) => {
     if (!clinicId) return { success: false, services: [], error: 'Clinic ID required' };
@@ -726,6 +745,11 @@ const useAppointmentBooking = () => {
     
     ...computedValues,
     validateStep,
+
+    treatmentPlanBookingMode,
+    preFilledData,
+    initializeFromTreatmentPlan,
+    isPreFilled: treatmentPlanBookingMode && preFilledData !== null
   };
 };
 

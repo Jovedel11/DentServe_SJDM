@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ChevronLeft,
   ChevronRight,
@@ -39,7 +40,8 @@ import ServicesSelectionStep from "../components/booking/service-selection-step"
 import DoctorSelectionStep from "../components/booking/doctor-selection-step";
 import DateTimeSelectionStep from "../components/booking/date-time-selection-step";
 import ConfirmationStep from "../components/booking/confirmation-step";
-import TreatmentLinkPrompt from "@/app/shared/components/treatment-link-prompt";
+import TreatmentLinkModal from "@/app/patient/components/booking/treatment-link-modal";
+import { useTreatmentPlans } from "@/hooks/appointment/useTreatmentPlans";
 
 import { useBookingFlow } from "../hook/useBookingFlow";
 import { useIsMobile } from "@/core/hooks/use-mobile";
@@ -71,9 +73,11 @@ const BOOKING_STEPS = [
 
 const BookAppointment = () => {
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const [showBlockerDialog, setShowBlockerDialog] = useState(false);
   const [blockerDetails, setBlockerDetails] = useState(null);
 
+  const { followUpBooking, startFollowUpBooking } = useTreatmentPlans();
   const {
     // Step & Progress
     bookingStep,
@@ -141,7 +145,7 @@ const BookAppointment = () => {
     getCancellationInfo,
     handleClearDate,
     clearBookingError,
-    handleTreatmentPlanSelect, // ✅ NEW
+    handleTreatmentPlanSelect,
   } = useBookingFlow();
 
   // Auto-scroll to top on step change
@@ -668,10 +672,23 @@ const BookAppointment = () => {
                   onServiceToggle={handleServiceToggle}
                   isConsultationOnly={isConsultationOnly}
                   ongoingTreatments={ongoingTreatments}
-                  onTreatmentSelect={handleTreatmentPlanSelect} // ✅ Pass handler
-                  selectedTreatment={selectedTreatment} // ✅ Pass selected
+                  onTreatmentSelect={handleTreatmentPlanSelect}
+                  selectedTreatment={selectedTreatment}
                 />
               )}
+
+              <TreatmentLinkModal
+                show={showTreatmentLinkPrompt}
+                treatments={ongoingTreatments}
+                onSelectTreatment={async (treatmentId) => {
+                  // Option A: Full Pre-fill Mode - Navigate to follow-up booking page
+                  navigate(
+                    `/patient/appointments/book-follow-up/${treatmentId}`
+                  );
+                }}
+                onDismiss={dismissTreatmentPrompt}
+                loading={followUpBooking?.loading || false}
+              />
 
               {bookingStep === "doctor" && (
                 <DoctorSelectionStep

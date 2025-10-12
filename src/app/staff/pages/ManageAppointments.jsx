@@ -30,6 +30,8 @@ import {
   Sparkles,
   Target,
   FileWarning,
+  ShieldCheck,
+  Mars,
 } from "lucide-react";
 
 // UI Components
@@ -259,12 +261,28 @@ const ManageAppointments = () => {
 
       if (result.data?.requires_treatment_plan) {
         setTimeout(() => {
-          const confirmed = window.confirm(
-            "Treatment plan flagged! Would you like to create it now?"
+          showToast(
+            "Treatment plan flagged! Redirecting to create it...",
+            "info"
           );
-          if (confirmed) {
-            navigate("/staff/treatment-plans");
-          }
+          setTimeout(() => {
+            navigate("/staff/treatment-plans", {
+              state: {
+                fromAppointment: true,
+                appointment: {
+                  ...actionModal.appointment,
+                  appointment_id: actionModal.appointment.id,
+                  medical_history: {
+                    diagnosis_summary: actionForm.diagnosisSummary,
+                    recommended_treatment_name:
+                      actionForm.recommendedTreatmentName,
+                    recommended_visits: actionForm.recommendedVisits,
+                    treatment_notes: actionForm.treatmentPlanNotes,
+                  },
+                },
+              },
+            });
+          }, 1500);
         }, 500);
       }
     } else {
@@ -446,12 +464,66 @@ const ManageAppointments = () => {
   const AppointmentDetails = ({ appointment }) => {
     const reliability = appointment.patient_reliability;
     const patientInfo = appointment.patient;
+    const hasTreatmentPlan = !!appointment.treatment_plan;
 
     return (
       <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
         {/* Patient Reliability Warning */}
         {reliability && reliability.risk_level !== "reliable" && (
           <ReliabilityAlert reliability={reliability} />
+        )}
+
+        {hasTreatmentPlan && (
+          <Card className="bg-orange-50 dark:bg-orange-950 border-orange-200 dark:border-orange-800">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Heart className="w-4 h-4 text-orange-600" />
+                Linked Treatment Plan
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Treatment
+                  </p>
+                  <p className="font-medium">
+                    {appointment.treatment_plan.treatment_name}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Progress</p>
+                  <p className="font-medium">
+                    {appointment.treatment_plan.progress_percentage || 0}%
+                    Complete
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Visits</p>
+                  <p className="font-medium">
+                    {appointment.treatment_plan.visits_completed || 0} /
+                    {appointment.treatment_plan.total_visits_planned || "∞"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Status</p>
+                  <Badge variant="outline" className="capitalize">
+                    {appointment.treatment_plan.status}
+                  </Badge>
+                </div>
+              </div>
+              <Separator />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate(`/staff/treatment-plans`)}
+                className="w-full"
+              >
+                <Eye className="w-4 h-4 mr-2" />
+                View Full Treatment Plan
+              </Button>
+            </CardContent>
+          </Card>
         )}
 
         {/* Patient Info */}
@@ -480,6 +552,20 @@ const ManageAppointments = () => {
                 <p className="font-medium flex items-center gap-1">
                   <Phone className="w-3 h-3" />
                   {patientInfo?.phone || "N/A"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Age</p>
+                <p className="font-medium flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3" />
+                  {patientInfo?.age || "N/A"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Gender</p>
+                <p className="font-medium flex items-center gap-1">
+                  <Mars className="w-3 h-3" />
+                  {patientInfo?.gender || "N/A"}
                 </p>
               </div>
             </div>
@@ -691,6 +777,10 @@ const ManageAppointments = () => {
     const reliability = appointment.patient_reliability;
     const isRisky = reliability && reliability.risk_level !== "reliable";
 
+    const isTreatmentFollowUp =
+      appointment.booking_type === "treatment_plan_follow_up";
+    const hasTreatmentPlan = appointment.treatment_plan != null;
+
     const showCompletionButtons = isConfirmed && isPast;
 
     // ✅ Check if services require multiple visits (suggest treatment plan)
@@ -698,11 +788,42 @@ const ManageAppointments = () => {
       (s) => s.requires_multiple_visits
     );
 
+    const getBookingTypeBadge = (bookingType) => {
+      const configs = {
+        consultation_only: {
+          label: "Consultation",
+          color: "bg-blue-100 text-blue-700",
+          icon: Stethoscope,
+        },
+        service_only: {
+          label: "Service",
+          color: "bg-green-100 text-green-700",
+          icon: Activity,
+        },
+        consultation_with_service: {
+          label: "Consultation + Service",
+          color: "bg-purple-100 text-purple-700",
+          icon: Activity,
+        },
+        treatment_plan_follow_up: {
+          label: "Treatment Follow-up",
+          color: "bg-orange-100 text-orange-700",
+          icon: Heart,
+        },
+      };
+      return configs[bookingType] || configs.consultation_only;
+    };
+
+    const bookingTypeBadge = getBookingTypeBadge(appointment.booking_type);
+    const BookingTypeIcon = bookingTypeBadge.icon;
+
     return (
       <Card
         className={`hover:shadow-lg transition-all border-l-4 ${
           isRisky && isPending
             ? "border-l-red-500 bg-red-50/30"
+            : isTreatmentFollowUp // ✅ NEW: Special styling for treatment follow-ups
+            ? "border-l-orange-500"
             : isPending
             ? "border-l-yellow-500"
             : "border-l-blue-500"
@@ -724,6 +845,13 @@ const ManageAppointments = () => {
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <StatusBadge status={appointment.status} />
+
+                {/* ✅ NEW: Show booking type badge */}
+                <Badge className={`${bookingTypeBadge.color} border text-xs`}>
+                  <BookingTypeIcon className="w-3 h-3 mr-1" />
+                  {bookingTypeBadge.label}
+                </Badge>
+
                 {isToday && (
                   <Badge className="bg-orange-100 text-orange-800 border-orange-300 border">
                     <Bell className="w-3 h-3 mr-1" />
@@ -736,7 +864,6 @@ const ManageAppointments = () => {
                     {timeUntil}
                   </Badge>
                 )}
-                {/* ✅ NEW: Multi-visit indicator */}
                 {hasMultiVisitServices && (
                   <Badge className="bg-purple-100 text-purple-800 border-purple-300 border text-xs">
                     <Sparkles className="w-3 h-3 mr-1" />
@@ -754,6 +881,21 @@ const ManageAppointments = () => {
               <Eye className="w-4 h-4" />
             </Button>
           </div>
+
+          {/* ✅ NEW: Treatment Plan Alert */}
+          {hasTreatmentPlan && (
+            <Alert className="py-2 px-3 bg-orange-50 border-orange-200">
+              <Heart className="h-3 w-3 text-orange-600" />
+              <AlertDescription className="text-xs">
+                <strong>Treatment:</strong>{" "}
+                {appointment.treatment_plan.treatment_name}
+                {" • "}
+                Visit #{(appointment.treatment_plan.visits_completed || 0) + 1}
+                {" • "}
+                {appointment.treatment_plan.progress_percentage || 0}% complete
+              </AlertDescription>
+            </Alert>
+          )}
 
           {isRisky && isPending && (
             <Alert variant="destructive" className="py-2 px-3">
