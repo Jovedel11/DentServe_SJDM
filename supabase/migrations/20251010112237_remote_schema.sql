@@ -14474,22 +14474,27 @@ BEGIN
     
     -- 4️⃣ CLINIC MANAGEMENT
     IF p_clinic_data != '{}' AND staff_clinic_id IS NOT NULL THEN
-        UPDATE clinics 
-        SET 
-            name = COALESCE(p_clinic_data->>'name', name),
-            description = COALESCE(p_clinic_data->>'description', description),
-            address = COALESCE(p_clinic_data->>'address', address),
-            city = COALESCE(p_clinic_data->>'city', city),
-            province = COALESCE(p_clinic_data->>'province', province),
-            zip_code = COALESCE(p_clinic_data->>'zip_code', zip_code),
-            phone = COALESCE(p_clinic_data->>'phone', phone),
-            email = COALESCE(p_clinic_data->>'email', email),
-            website_url = COALESCE(p_clinic_data->>'website_url', website_url),
-            image_url = COALESCE(p_clinic_data->>'image_url', image_url),
-            appointment_limit_per_patient = COALESCE((p_clinic_data->>'appointment_limit_per_patient')::integer, appointment_limit_per_patient),
-            cancellation_policy_hours = COALESCE((p_clinic_data->>'cancellation_policy_hours')::integer, cancellation_policy_hours),
-            updated_at = NOW()
-        WHERE id = staff_clinic_id;
+UPDATE clinics 
+SET 
+    name = COALESCE(p_clinic_data->>'name', name),
+    description = COALESCE(p_clinic_data->>'description', description),
+    address = COALESCE(p_clinic_data->>'address', address),
+    city = COALESCE(p_clinic_data->>'city', city),
+    province = COALESCE(p_clinic_data->>'province', province),
+    zip_code = COALESCE(p_clinic_data->>'zip_code', zip_code),
+    phone = COALESCE(p_clinic_data->>'phone', phone),
+    email = COALESCE(p_clinic_data->>'email', email),
+    website_url = COALESCE(p_clinic_data->>'website_url', website_url),
+    image_url = COALESCE(p_clinic_data->>'image_url', image_url),
+    operating_hours = CASE 
+        WHEN p_clinic_data ? 'operating_hours' 
+        THEN p_clinic_data->'operating_hours'
+        ELSE operating_hours
+    END,
+    appointment_limit_per_patient = COALESCE((p_clinic_data->>'appointment_limit_per_patient')::integer, appointment_limit_per_patient),
+    cancellation_policy_hours = COALESCE((p_clinic_data->>'cancellation_policy_hours')::integer, cancellation_policy_hours),
+    updated_at = NOW()
+WHERE id = staff_clinic_id;
         
         result := result || jsonb_build_object('clinic_updated', true);
     END IF;
@@ -14521,18 +14526,22 @@ BEGIN
             ELSIF service_record ? 'id' AND service_record->>'id' IS NOT NULL THEN
                 temp_service_id := (service_record->>'id')::UUID;
                 
-                UPDATE services 
-                SET 
-                    name = COALESCE(service_record->>'name', name),
-                    description = COALESCE(service_record->>'description', description),
-                    category = COALESCE(service_record->>'category', category),
-                    duration_minutes = COALESCE((service_record->>'duration_minutes')::integer, duration_minutes),
-                    min_price = COALESCE((service_record->>'min_price')::numeric, min_price),
-                    max_price = COALESCE((service_record->>'max_price')::numeric, max_price),
-                    priority = COALESCE((service_record->>'priority')::integer, priority),
-                    is_active = COALESCE((service_record->>'is_active')::boolean, is_active),
-                    updated_at = NOW()
-                WHERE id = temp_service_id AND clinic_id = staff_clinic_id;
+UPDATE services 
+SET 
+    name = COALESCE(service_record->>'name', name),
+    description = COALESCE(service_record->>'description', description),
+    category = COALESCE(service_record->>'category', category),
+    duration_minutes = COALESCE((service_record->>'duration_minutes')::integer, duration_minutes),
+    min_price = COALESCE((service_record->>'min_price')::numeric, min_price),
+    max_price = COALESCE((service_record->>'max_price')::numeric, max_price),
+    priority = COALESCE((service_record->>'priority')::integer, priority),
+    is_active = COALESCE((service_record->>'is_active')::boolean, is_active),
+    -- ✅ ADD MISSING FIELDS:
+    requires_multiple_visits = COALESCE((service_record->>'requires_multiple_visits')::boolean, requires_multiple_visits),
+    typical_visit_count = COALESCE((service_record->>'typical_visit_count')::integer, typical_visit_count),
+    requires_consultation = COALESCE((service_record->>'requires_consultation')::boolean, requires_consultation),
+    updated_at = NOW()
+WHERE id = temp_service_id AND clinic_id = staff_clinic_id;
                 
                 IF FOUND THEN
                     services_updated := services_updated + 1;
@@ -14545,27 +14554,35 @@ BEGIN
                     RETURN jsonb_build_object('success', false, 'error', 'Service name is required for new services');
                 END IF;
                 
-                INSERT INTO services (
-                    clinic_id, 
-                    name, 
-                    description, 
-                    category, 
-                    duration_minutes, 
-                    min_price, 
-                    max_price, 
-                    priority, 
-                    is_active
-                ) VALUES (
-                    staff_clinic_id,
-                    trim(service_record->>'name'),
-                    service_record->>'description',
-                    service_record->>'category',
-                    COALESCE((service_record->>'duration_minutes')::integer, 30),
-                    (service_record->>'min_price')::numeric,
-                    (service_record->>'max_price')::numeric,
-                    COALESCE((service_record->>'priority')::integer, 10),
-                    COALESCE((service_record->>'is_active')::boolean, true)
-                );
+INSERT INTO services (
+    clinic_id, 
+    name, 
+    description, 
+    category, 
+    duration_minutes, 
+    min_price, 
+    max_price, 
+    priority, 
+    is_active,
+    -- ✅ ADD MISSING FIELDS:
+    requires_multiple_visits,
+    typical_visit_count,
+    requires_consultation
+) VALUES (
+    staff_clinic_id,
+    trim(service_record->>'name'),
+    service_record->>'description',
+    service_record->>'category',
+    COALESCE((service_record->>'duration_minutes')::integer, 30),
+    (service_record->>'min_price')::numeric,
+    (service_record->>'max_price')::numeric,
+    COALESCE((service_record->>'priority')::integer, 10),
+    COALESCE((service_record->>'is_active')::boolean, true),
+    -- ✅ ADD MISSING VALUES:
+    COALESCE((service_record->>'requires_multiple_visits')::boolean, false),
+    COALESCE((service_record->>'typical_visit_count')::integer, 1),
+    COALESCE((service_record->>'requires_consultation')::boolean, true)
+);
                 
                 services_created := services_created + 1;
             END IF;

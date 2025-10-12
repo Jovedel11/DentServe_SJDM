@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react"; // 🔥 Added useCallback
+import React, { useState, useCallback } from "react";
 import { AnimatePresence } from "framer-motion";
 import {
   FiUser,
@@ -8,6 +8,7 @@ import {
   FiPlus,
   FiTrash2,
   FiSave,
+  FiClock,
 } from "react-icons/fi";
 
 import { useProfileManager } from "@/app/shared/hook/useProfileManager";
@@ -85,6 +86,41 @@ const StaffProfile = () => {
     { value: "Management", label: "Management" },
   ];
 
+  // Service category options
+  const serviceCategoryOptions = [
+    { value: "General Dentistry", label: "General Dentistry" },
+    { value: "Cosmetic Dentistry", label: "Cosmetic Dentistry" },
+    { value: "Orthodontics", label: "Orthodontics" },
+    { value: "Oral Surgery", label: "Oral Surgery" },
+    { value: "Pediatric Dentistry", label: "Pediatric Dentistry" },
+    { value: "Periodontics", label: "Periodontics" },
+    { value: "Endodontics", label: "Endodontics" },
+    { value: "Prosthodontics", label: "Prosthodontics" },
+  ];
+
+  // Doctor specialization options
+  const specializationOptions = [
+    { value: "General Dentistry", label: "General Dentistry" },
+    { value: "Orthodontist", label: "Orthodontist" },
+    { value: "Oral Surgeon", label: "Oral Surgeon" },
+    { value: "Pediatric Dentist", label: "Pediatric Dentist" },
+    { value: "Periodontist", label: "Periodontist" },
+    { value: "Endodontist", label: "Endodontist" },
+    { value: "Prosthodontist", label: "Prosthodontist" },
+    { value: "Cosmetic Dentist", label: "Cosmetic Dentist" },
+  ];
+
+  // Days of the week
+  const daysOfWeek = [
+    { key: "monday", label: "Monday" },
+    { key: "tuesday", label: "Tuesday" },
+    { key: "wednesday", label: "Wednesday" },
+    { key: "thursday", label: "Thursday" },
+    { key: "friday", label: "Friday" },
+    { key: "saturday", label: "Saturday" },
+    { key: "sunday", label: "Sunday" },
+  ];
+
   // 🔥 **FIXED: Service operations with useCallback to prevent re-renders**
   const handleAddService = useCallback(
     (e) => {
@@ -99,11 +135,15 @@ const StaffProfile = () => {
         id: `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         name: "",
         description: "",
-        category: "General",
+        category: "General Dentistry",
         duration_minutes: 60,
         min_price: 1000,
         max_price: 2000,
         is_active: true,
+        requires_multiple_visits: false,
+        typical_visit_count: 1,
+        requires_consultation: true,
+        priority: 10,
         _action: "create",
       };
 
@@ -158,10 +198,16 @@ const StaffProfile = () => {
 
       console.log("👨‍⚕️ Adding new doctor");
 
+      // ✅ Generate a temporary license number
+      const tempLicenseNumber = `TEMP-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 6)
+        .toUpperCase()}`;
+
       const newDoctor = {
         id: `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        license_number: "",
-        specialization: "",
+        license_number: tempLicenseNumber, // ✅ FIX: Use temp license instead of empty string
+        specialization: "General Dentistry",
         first_name: "",
         last_name: "",
         education: "",
@@ -170,6 +216,9 @@ const StaffProfile = () => {
         consultation_fee: 1500,
         is_available: true,
         image_url: "",
+        languages_spoken: ["English", "Tagalog"],
+        certifications: null,
+        awards: [],
         _action: "create",
       };
 
@@ -210,6 +259,33 @@ const StaffProfile = () => {
     },
     [editedData?.doctors_data, handleInputChange]
   );
+
+  // 🔥 **NEW: Operating Hours Handlers**
+  const handleOperatingHoursChange = useCallback(
+    (day, field, value) => {
+      const currentHours = currentData?.clinic_data?.operating_hours || {};
+
+      const updatedHours = {
+        ...currentHours,
+        [day]: {
+          ...(currentHours[day] || {}),
+          [field]: value,
+        },
+      };
+
+      handleInputChange("clinic_data", "operating_hours", updatedHours);
+    },
+    [currentData?.clinic_data?.operating_hours, handleInputChange]
+  );
+
+  const getOperatingHours = (day) => {
+    const hours = currentData?.clinic_data?.operating_hours?.[day];
+    return {
+      isOpen: hours?.isOpen ?? true,
+      open: hours?.open || "09:00",
+      close: hours?.close || "17:00",
+    };
+  };
 
   if (loading) {
     return <Loader message="Loading staff profile... Please wait a moment" />;
@@ -426,6 +502,38 @@ const StaffProfile = () => {
                   options={genderOptions}
                   placeholder="Select Gender"
                 />
+
+                <ProfileField
+                  label="Position"
+                  type="select"
+                  value={currentData?.role_specific_data?.position}
+                  isEditing={isEditing}
+                  onChange={(e) =>
+                    handleInputChange(
+                      "role_specific_data",
+                      "position",
+                      e.target.value
+                    )
+                  }
+                  options={positionOptions}
+                  placeholder="Select Position"
+                />
+
+                <ProfileField
+                  label="Department"
+                  type="select"
+                  value={currentData?.role_specific_data?.department}
+                  isEditing={isEditing}
+                  onChange={(e) =>
+                    handleInputChange(
+                      "role_specific_data",
+                      "department",
+                      e.target.value
+                    )
+                  }
+                  options={departmentOptions}
+                  placeholder="Select Department"
+                />
               </div>
             </ProfileCard>
           </>
@@ -433,126 +541,285 @@ const StaffProfile = () => {
 
         {/* Clinic Section */}
         {activeSection === "clinic" && (
-          <ProfileCard
-            title="Clinic Information"
-            icon={FaBuilding}
-            className="mb-6"
-            editMode={isEditing}
-            onEdit={handleEditToggle}
-            delay={0.2}
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <ProfileField
-                label="Clinic Name"
-                value={currentData?.clinic_data?.name}
-                isEditing={isEditing}
-                onChange={(e) =>
-                  handleInputChange("clinic_data", "name", e.target.value)
-                }
-                placeholder="Enter clinic name"
-              />
-
-              {/* Clinic Image Upload */}
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-semibold text-muted-foreground">
-                  Clinic Image
-                </label>
-                <ClinicAvatar
-                  clinicId={clinicId}
-                  imageUrl={currentData?.clinic_data?.image_url}
-                  clinicName={currentData?.clinic_data?.name}
-                  onImageUpdate={handleClinicImageUpdate}
-                  size="xxl"
-                  editable={true}
-                />
-                <FileSizeWarning />
-              </div>
-
-              <ProfileField
-                label="Phone"
-                value={currentData?.clinic_data?.phone}
-                isEditing={isEditing}
-                onChange={(e) =>
-                  handleInputChange("clinic_data", "phone", e.target.value)
-                }
-                placeholder="Enter clinic phone"
-              />
-
-              <ProfileField
-                label="Email"
-                value={currentData?.clinic_data?.email}
-                isEditing={isEditing}
-                onChange={(e) =>
-                  handleInputChange("clinic_data", "email", e.target.value)
-                }
-                placeholder="Enter clinic email"
-              />
-
-              <ProfileField
-                label="Website"
-                value={currentData?.clinic_data?.website_url}
-                isEditing={isEditing}
-                onChange={(e) =>
-                  handleInputChange(
-                    "clinic_data",
-                    "website_url",
-                    e.target.value
-                  )
-                }
-                placeholder="Enter website URL"
-              />
-
-              <div className="md:col-span-2">
+          <>
+            <ProfileCard
+              title="Clinic Information"
+              icon={FaBuilding}
+              className="mb-6"
+              delay={0.2}
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <ProfileField
-                  label="Address"
-                  value={currentData?.clinic_data?.address}
+                  label="Clinic Name"
+                  value={currentData?.clinic_data?.name}
                   isEditing={isEditing}
                   onChange={(e) =>
-                    handleInputChange("clinic_data", "address", e.target.value)
+                    handleInputChange("clinic_data", "name", e.target.value)
                   }
-                  placeholder="Enter clinic address"
+                  placeholder="Enter clinic name"
+                  required
                 />
-              </div>
 
-              <ProfileField
-                label="City"
-                value={currentData?.clinic_data?.city}
-                isEditing={isEditing}
-                onChange={(e) =>
-                  handleInputChange("clinic_data", "city", e.target.value)
-                }
-                placeholder="Enter city"
-              />
+                {/* Clinic Image Upload */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm font-semibold text-muted-foreground">
+                    Clinic Image
+                  </label>
+                  <ClinicAvatar
+                    clinicId={clinicId}
+                    imageUrl={currentData?.clinic_data?.image_url}
+                    clinicName={currentData?.clinic_data?.name}
+                    onImageUpdate={handleClinicImageUpdate}
+                    size="xxl"
+                    editable={true}
+                  />
+                  <FileSizeWarning />
+                </div>
 
-              <ProfileField
-                label="Province"
-                value={currentData?.clinic_data?.province}
-                isEditing={isEditing}
-                onChange={(e) =>
-                  handleInputChange("clinic_data", "province", e.target.value)
-                }
-                placeholder="Enter province"
-              />
-
-              <div className="md:col-span-2">
                 <ProfileField
-                  label="Description"
-                  type="textarea"
-                  value={currentData?.clinic_data?.description}
+                  label="Phone"
+                  value={currentData?.clinic_data?.phone}
+                  isEditing={isEditing}
+                  onChange={(e) =>
+                    handleInputChange("clinic_data", "phone", e.target.value)
+                  }
+                  placeholder="Enter clinic phone"
+                />
+
+                <ProfileField
+                  label="Email"
+                  type="email"
+                  value={currentData?.clinic_data?.email}
+                  isEditing={isEditing}
+                  onChange={(e) =>
+                    handleInputChange("clinic_data", "email", e.target.value)
+                  }
+                  placeholder="Enter clinic email"
+                />
+
+                <ProfileField
+                  label="Website"
+                  value={currentData?.clinic_data?.website_url}
                   isEditing={isEditing}
                   onChange={(e) =>
                     handleInputChange(
                       "clinic_data",
-                      "description",
+                      "website_url",
                       e.target.value
                     )
                   }
-                  placeholder="Enter clinic description"
-                  rows={4}
+                  placeholder="Enter website URL"
+                />
+
+                <ProfileField
+                  label="Zip Code"
+                  value={currentData?.clinic_data?.zip_code}
+                  isEditing={isEditing}
+                  onChange={(e) =>
+                    handleInputChange("clinic_data", "zip_code", e.target.value)
+                  }
+                  placeholder="Enter zip code"
+                />
+
+                <div className="md:col-span-2">
+                  <ProfileField
+                    label="Address"
+                    value={currentData?.clinic_data?.address}
+                    isEditing={isEditing}
+                    onChange={(e) =>
+                      handleInputChange(
+                        "clinic_data",
+                        "address",
+                        e.target.value
+                      )
+                    }
+                    placeholder="Enter clinic address"
+                    required
+                  />
+                </div>
+
+                <ProfileField
+                  label="City"
+                  value={currentData?.clinic_data?.city}
+                  isEditing={isEditing}
+                  onChange={(e) =>
+                    handleInputChange("clinic_data", "city", e.target.value)
+                  }
+                  placeholder="Enter city"
+                />
+
+                <ProfileField
+                  label="Province"
+                  value={currentData?.clinic_data?.province}
+                  isEditing={isEditing}
+                  onChange={(e) =>
+                    handleInputChange("clinic_data", "province", e.target.value)
+                  }
+                  placeholder="Enter province"
+                />
+
+                <div className="md:col-span-2">
+                  <ProfileField
+                    label="Description"
+                    type="textarea"
+                    value={currentData?.clinic_data?.description}
+                    isEditing={isEditing}
+                    onChange={(e) =>
+                      handleInputChange(
+                        "clinic_data",
+                        "description",
+                        e.target.value
+                      )
+                    }
+                    placeholder="Enter clinic description"
+                    rows={4}
+                  />
+                </div>
+
+                <ProfileField
+                  label="Appointment Limit Per Patient"
+                  type="number"
+                  value={
+                    currentData?.clinic_data?.appointment_limit_per_patient
+                  }
+                  isEditing={isEditing}
+                  onChange={(e) =>
+                    handleInputChange(
+                      "clinic_data",
+                      "appointment_limit_per_patient",
+                      parseInt(e.target.value) || 1
+                    )
+                  }
+                  placeholder="Enter limit"
+                  min="1"
+                />
+
+                <ProfileField
+                  label="Cancellation Policy (Hours)"
+                  type="number"
+                  value={currentData?.clinic_data?.cancellation_policy_hours}
+                  isEditing={isEditing}
+                  onChange={(e) =>
+                    handleInputChange(
+                      "clinic_data",
+                      "cancellation_policy_hours",
+                      parseInt(e.target.value) || 24
+                    )
+                  }
+                  placeholder="Hours before appointment"
+                  min="1"
                 />
               </div>
-            </div>
-          </ProfileCard>
+            </ProfileCard>
+
+            {/* 🔥 **NEW: Operating Hours Section** */}
+            <ProfileCard
+              title="Operating Hours"
+              icon={FiClock}
+              className="mb-6"
+              delay={0.3}
+            >
+              <div className="space-y-4">
+                {daysOfWeek.map((day) => {
+                  const hours = getOperatingHours(day.key);
+                  return (
+                    <div
+                      key={day.key}
+                      className="flex flex-col md:flex-row md:items-center gap-4 p-4 border border-border rounded-lg bg-muted/30"
+                    >
+                      <div className="md:w-32 font-medium text-foreground">
+                        {day.label}
+                      </div>
+
+                      {isEditing ? (
+                        <>
+                          <label className="flex items-center gap-2 min-w-[100px]">
+                            <input
+                              type="checkbox"
+                              checked={hours.isOpen}
+                              onChange={(e) =>
+                                handleOperatingHoursChange(
+                                  day.key,
+                                  "isOpen",
+                                  e.target.checked
+                                )
+                              }
+                              className="rounded border-border"
+                            />
+                            <span className="text-sm">Open</span>
+                          </label>
+
+                          {hours.isOpen && (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <label className="text-sm text-muted-foreground min-w-[50px]">
+                                  From:
+                                </label>
+                                <input
+                                  type="time"
+                                  value={hours.open}
+                                  onChange={(e) =>
+                                    handleOperatingHoursChange(
+                                      day.key,
+                                      "open",
+                                      e.target.value
+                                    )
+                                  }
+                                  className="px-3 py-2 border border-border rounded-lg bg-input text-foreground"
+                                />
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <label className="text-sm text-muted-foreground min-w-[50px]">
+                                  To:
+                                </label>
+                                <input
+                                  type="time"
+                                  value={hours.close}
+                                  onChange={(e) =>
+                                    handleOperatingHoursChange(
+                                      day.key,
+                                      "close",
+                                      e.target.value
+                                    )
+                                  }
+                                  className="px-3 py-2 border border-border rounded-lg bg-input text-foreground"
+                                />
+                              </div>
+                            </>
+                          )}
+
+                          {!hours.isOpen && (
+                            <span className="text-sm text-muted-foreground italic">
+                              Closed
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          {hours.isOpen ? (
+                            <span className="text-sm text-foreground">
+                              {hours.open} - {hours.close}
+                            </span>
+                          ) : (
+                            <span className="text-sm text-muted-foreground italic">
+                              Closed
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {!isEditing && (
+                  <p className="text-xs text-muted-foreground mt-4">
+                    Click "Edit Profile" to modify operating hours
+                  </p>
+                )}
+              </div>
+            </ProfileCard>
+          </>
         )}
 
         {/* Services Section */}
@@ -561,23 +828,27 @@ const StaffProfile = () => {
             title="Services Management"
             icon={FiDollarSign}
             className="mb-6"
-            editMode={isEditing}
-            onEdit={handleEditToggle}
             delay={0.2}
           >
             <div className="space-y-6">
               {isEditing && (
-                <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold">Manage Services</h3>
-                  {/* 🔥 **FIXED: Add Service Button with proper event handling** */}
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-lg font-semibold text-foreground">
+                    Manage Services
+                  </h3>
                   <button
                     type="button"
-                    onClick={handleAddService}
-                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors duration-200 flex items-center gap-2 disabled:opacity-50"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleAddService();
+                    }}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors duration-200 flex items-center gap-2 disabled:opacity-50 shadow-md hover:shadow-lg"
                     disabled={saving}
+                    style={{ pointerEvents: saving ? "none" : "auto" }}
                   >
                     <FiPlus className="w-4 h-4" />
-                    Add Service
+                    <span className="font-medium">Add Service</span>
                   </button>
                 </div>
               )}
@@ -591,7 +862,7 @@ const StaffProfile = () => {
                 ).map((service, index) => (
                   <div
                     key={service.id || `service-${index}`}
-                    className="p-4 border border-border rounded-lg"
+                    className="p-4 border border-border rounded-lg bg-card"
                   >
                     <div className="flex justify-between items-start mb-4">
                       <h4 className="font-semibold text-foreground flex-1">
@@ -607,20 +878,25 @@ const StaffProfile = () => {
                                 e.target.value
                               )
                             }
-                            className="w-full px-2 py-1 border border-border rounded"
-                            placeholder="Service name"
+                            className="w-full px-2 py-1 border border-border rounded bg-input text-foreground"
+                            placeholder="Service name *"
                           />
                         ) : (
                           service.name || "Unnamed Service"
                         )}
                       </h4>
-                      {/* 🔥 **FIXED: Remove Service Button with proper event handling** */}
                       {isEditing && (
                         <button
                           type="button"
-                          onClick={(e) => handleRemoveService(index, e)}
-                          className="text-red-500 hover:text-red-700 transition-colors duration-200 ml-2 p-1 disabled:opacity-50"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleRemoveService(index, e);
+                          }}
+                          className="text-red-500 hover:text-red-700 transition-colors duration-200 ml-2 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
                           disabled={saving}
+                          style={{ pointerEvents: saving ? "none" : "auto" }}
+                          title="Remove Service"
                         >
                           <FiTrash2 className="w-4 h-4" />
                         </button>
@@ -639,10 +915,30 @@ const StaffProfile = () => {
                               e.target.value
                             )
                           }
-                          className="w-full px-2 py-1 border border-border rounded"
+                          className="w-full px-2 py-1 border border-border rounded bg-input text-foreground"
                           placeholder="Service description"
                           rows={2}
                         />
+
+                        <select
+                          value={service.category || "General Dentistry"}
+                          onChange={(e) =>
+                            handleArrayUpdate(
+                              "services_data",
+                              index,
+                              "category",
+                              e.target.value
+                            )
+                          }
+                          className="w-full px-2 py-1 border border-border rounded bg-input text-foreground"
+                        >
+                          {serviceCategoryOptions.map((cat) => (
+                            <option key={cat.value} value={cat.value}>
+                              {cat.label}
+                            </option>
+                          ))}
+                        </select>
+
                         <div className="grid grid-cols-2 gap-2">
                           <input
                             type="number"
@@ -655,8 +951,9 @@ const StaffProfile = () => {
                                 parseFloat(e.target.value) || 0
                               )
                             }
-                            className="px-2 py-1 border border-border rounded"
+                            className="px-2 py-1 border border-border rounded bg-input text-foreground"
                             placeholder="Min Price"
+                            min="0"
                           />
                           <input
                             type="number"
@@ -669,45 +966,163 @@ const StaffProfile = () => {
                                 parseFloat(e.target.value) || 0
                               )
                             }
-                            className="px-2 py-1 border border-border rounded"
+                            className="px-2 py-1 border border-border rounded bg-input text-foreground"
                             placeholder="Max Price"
+                            min="0"
                           />
                         </div>
-                        <input
-                          type="text"
-                          value={service.category || ""}
-                          onChange={(e) =>
-                            handleArrayUpdate(
-                              "services_data",
-                              index,
-                              "category",
-                              e.target.value
-                            )
-                          }
-                          className="w-full px-2 py-1 border border-border rounded"
-                          placeholder="Category"
-                        />
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="number"
+                            value={service.duration_minutes || ""}
+                            onChange={(e) =>
+                              handleArrayUpdate(
+                                "services_data",
+                                index,
+                                "duration_minutes",
+                                parseInt(e.target.value) || 0
+                              )
+                            }
+                            className="px-2 py-1 border border-border rounded bg-input text-foreground"
+                            placeholder="Duration (mins)"
+                            min="1"
+                          />
+                          <input
+                            type="number"
+                            value={service.typical_visit_count || 1}
+                            onChange={(e) =>
+                              handleArrayUpdate(
+                                "services_data",
+                                index,
+                                "typical_visit_count",
+                                parseInt(e.target.value) || 1
+                              )
+                            }
+                            className="px-2 py-1 border border-border rounded bg-input text-foreground"
+                            placeholder="Visit Count"
+                            min="1"
+                          />
+                        </div>
+
                         <input
                           type="number"
-                          value={service.duration_minutes || ""}
+                          value={service.priority || 10}
                           onChange={(e) =>
                             handleArrayUpdate(
                               "services_data",
                               index,
-                              "duration_minutes",
-                              parseInt(e.target.value) || 0
+                              "priority",
+                              parseInt(e.target.value) || 10
                             )
                           }
-                          className="w-full px-2 py-1 border border-border rounded"
-                          placeholder="Duration (minutes)"
+                          className="w-full px-2 py-1 border border-border rounded bg-input text-foreground"
+                          placeholder="Priority (1-100)"
+                          min="1"
+                          max="100"
                         />
+
+                        <div className="flex flex-col gap-2 pt-2 border-t border-border">
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={service.is_active !== false}
+                              onChange={(e) =>
+                                handleArrayUpdate(
+                                  "services_data",
+                                  index,
+                                  "is_active",
+                                  e.target.checked
+                                )
+                              }
+                              className="rounded border-border"
+                            />
+                            <span className="text-foreground">Active</span>
+                          </label>
+
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={service.requires_consultation !== false}
+                              onChange={(e) =>
+                                handleArrayUpdate(
+                                  "services_data",
+                                  index,
+                                  "requires_consultation",
+                                  e.target.checked
+                                )
+                              }
+                              className="rounded border-border"
+                            />
+                            <span className="text-foreground">
+                              Requires Consultation
+                            </span>
+                          </label>
+
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={
+                                service.requires_multiple_visits || false
+                              }
+                              onChange={(e) =>
+                                handleArrayUpdate(
+                                  "services_data",
+                                  index,
+                                  "requires_multiple_visits",
+                                  e.target.checked
+                                )
+                              }
+                              className="rounded border-border"
+                            />
+                            <span className="text-foreground">
+                              Requires Multiple Visits
+                            </span>
+                          </label>
+                        </div>
                       </div>
                     ) : (
                       <>
                         <p className="text-sm text-muted-foreground mb-2">
                           {service.description || "No description"}
                         </p>
-                        <div className="flex justify-between items-center">
+                        <div className="space-y-1 mb-2">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">
+                              Category:
+                            </span>
+                            <span className="font-medium">
+                              {service.category || "N/A"}
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">
+                              Duration:
+                            </span>
+                            <span className="font-medium">
+                              {service.duration_minutes} mins
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-muted-foreground">
+                              Typical Visits:
+                            </span>
+                            <span className="font-medium">
+                              {service.typical_visit_count || 1}
+                            </span>
+                          </div>
+                          {service.requires_consultation && (
+                            <div className="text-xs text-blue-600 dark:text-blue-400">
+                              ✓ Consultation Required
+                            </div>
+                          )}
+                          {service.requires_multiple_visits && (
+                            <div className="text-xs text-orange-600 dark:text-orange-400">
+                              ✓ Multiple Visits
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex justify-between items-center pt-2 border-t border-border">
                           <span className="text-sm font-medium">
                             ₱{service.min_price?.toLocaleString()} - ₱
                             {service.max_price?.toLocaleString()}
@@ -715,8 +1130,8 @@ const StaffProfile = () => {
                           <span
                             className={`px-2 py-1 rounded text-xs ${
                               service.is_active
-                                ? "bg-green-100 text-green-800"
-                                : "bg-red-100 text-red-800"
+                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                                : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
                             }`}
                           >
                             {service.is_active ? "Active" : "Inactive"}
@@ -730,7 +1145,10 @@ const StaffProfile = () => {
 
               {!isEditing && (!services || services.length === 0) && (
                 <div className="col-span-2 text-center py-8 text-muted-foreground">
-                  <p>No services found. Click "Edit" to add services.</p>
+                  <FiDollarSign className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                  <p>
+                    No services found. Click "Edit Profile" to add services.
+                  </p>
                 </div>
               )}
             </div>
@@ -743,15 +1161,12 @@ const StaffProfile = () => {
             title="Doctors Management"
             icon={FiUsers}
             className="mb-6"
-            editMode={isEditing}
-            onEdit={handleEditToggle}
             delay={0.2}
           >
             <div className="space-y-6">
               {isEditing && (
                 <div className="flex justify-between items-center">
                   <h3 className="text-lg font-semibold">Manage Doctors</h3>
-                  {/* 🔥 **FIXED: Add Doctor Button with proper event handling** */}
                   <button
                     type="button"
                     onClick={handleAddDoctor}
@@ -773,24 +1188,25 @@ const StaffProfile = () => {
                 ).map((doctor, index) => (
                   <div
                     key={doctor.id || `doctor-${index}`}
-                    className="p-4 border border-border rounded-lg"
+                    className="p-4 border border-border rounded-lg bg-card"
                   >
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex items-center gap-3 flex-1">
                         {/* Doctor Image Upload */}
-                        <DoctorAvatar
-                          doctorId={doctor.id}
-                          imageUrl={doctor.image_url}
-                          doctorName={`${doctor.first_name} ${doctor.last_name}`}
-                          onImageUpdate={(newImageUrl) =>
-                            handleDoctorImageUpdate(doctor.id, newImageUrl)
-                          }
-                          size="lg"
-                          editable={true}
-                        />
-                        <FileSizeWarning />
+                        <div className="flex-shrink-0">
+                          <DoctorAvatar
+                            doctorId={doctor.id}
+                            imageUrl={doctor.image_url}
+                            doctorName={`${doctor.first_name} ${doctor.last_name}`}
+                            onImageUpdate={(newImageUrl) =>
+                              handleDoctorImageUpdate(doctor.id, newImageUrl)
+                            }
+                            size="lg"
+                            editable={true}
+                          />
+                        </div>
 
-                        <div className="flex-1">
+                        <div className="flex-1 min-w-0">
                           <h4 className="font-semibold text-foreground">
                             {isEditing ? (
                               <div className="grid grid-cols-1 gap-2">
@@ -805,8 +1221,8 @@ const StaffProfile = () => {
                                       e.target.value
                                     )
                                   }
-                                  className="px-2 py-1 border border-border rounded"
-                                  placeholder="First name"
+                                  className="px-2 py-1 border border-border rounded bg-input text-foreground"
+                                  placeholder="First name *"
                                 />
                                 <input
                                   type="text"
@@ -819,8 +1235,8 @@ const StaffProfile = () => {
                                       e.target.value
                                     )
                                   }
-                                  className="px-2 py-1 border border-border rounded"
-                                  placeholder="Last name"
+                                  className="px-2 py-1 border border-border rounded bg-input text-foreground"
+                                  placeholder="Last name *"
                                 />
                               </div>
                             ) : (
@@ -833,9 +1249,15 @@ const StaffProfile = () => {
                       {isEditing && (
                         <button
                           type="button"
-                          onClick={(e) => handleRemoveDoctor(index, e)}
-                          className="text-red-500 hover:text-red-700 transition-colors duration-200 ml-2 p-1 disabled:opacity-50"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleRemoveDoctor(index, e);
+                          }}
+                          className="text-red-500 hover:text-red-700 transition-colors duration-200 ml-2 p-2 rounded hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 flex-shrink-0"
                           disabled={saving}
+                          style={{ pointerEvents: saving ? "none" : "auto" }}
+                          title="Remove Doctor"
                         >
                           <FiTrash2 className="w-4 h-4" />
                         </button>
@@ -844,9 +1266,8 @@ const StaffProfile = () => {
 
                     {isEditing ? (
                       <div className="space-y-3">
-                        <input
-                          type="text"
-                          value={doctor.specialization || ""}
+                        <select
+                          value={doctor.specialization || "General Dentistry"}
                           onChange={(e) =>
                             handleArrayUpdate(
                               "doctors_data",
@@ -855,9 +1276,15 @@ const StaffProfile = () => {
                               e.target.value
                             )
                           }
-                          className="w-full px-2 py-1 border border-border rounded"
-                          placeholder="Specialization"
-                        />
+                          className="w-full px-2 py-1 border border-border rounded bg-input text-foreground"
+                        >
+                          {specializationOptions.map((spec) => (
+                            <option key={spec.value} value={spec.value}>
+                              {spec.label}
+                            </option>
+                          ))}
+                        </select>
+
                         <input
                           type="text"
                           value={doctor.license_number || ""}
@@ -869,9 +1296,10 @@ const StaffProfile = () => {
                               e.target.value
                             )
                           }
-                          className="w-full px-2 py-1 border border-border rounded"
-                          placeholder="License Number"
+                          className="w-full px-2 py-1 border border-border rounded bg-input text-foreground"
+                          placeholder="License Number *"
                         />
+
                         <div className="grid grid-cols-2 gap-2">
                           <input
                             type="number"
@@ -884,8 +1312,9 @@ const StaffProfile = () => {
                                 parseInt(e.target.value) || 0
                               )
                             }
-                            className="px-2 py-1 border border-border rounded"
+                            className="px-2 py-1 border border-border rounded bg-input text-foreground"
                             placeholder="Years of Experience"
+                            min="0"
                           />
                           <input
                             type="number"
@@ -898,24 +1327,12 @@ const StaffProfile = () => {
                                 parseFloat(e.target.value) || 0
                               )
                             }
-                            className="px-2 py-1 border border-border rounded"
+                            className="px-2 py-1 border border-border rounded bg-input text-foreground"
                             placeholder="Consultation Fee"
+                            min="0"
                           />
                         </div>
-                        <textarea
-                          value={doctor.bio || ""}
-                          onChange={(e) =>
-                            handleArrayUpdate(
-                              "doctors_data",
-                              index,
-                              "bio",
-                              e.target.value
-                            )
-                          }
-                          className="w-full px-2 py-1 border border-border rounded"
-                          placeholder="Doctor bio"
-                          rows={3}
-                        />
+
                         <input
                           type="text"
                           value={doctor.education || ""}
@@ -927,22 +1344,96 @@ const StaffProfile = () => {
                               e.target.value
                             )
                           }
-                          className="w-full px-2 py-1 border border-border rounded"
-                          placeholder="Education"
+                          className="w-full px-2 py-1 border border-border rounded bg-input text-foreground"
+                          placeholder="Education (e.g., DMD, University)"
                         />
+
+                        <input
+                          type="text"
+                          value={
+                            Array.isArray(doctor.languages_spoken)
+                              ? doctor.languages_spoken.join(", ")
+                              : doctor.languages_spoken || "English, Tagalog"
+                          }
+                          onChange={(e) => {
+                            const languages = e.target.value
+                              .split(",")
+                              .map((lang) => lang.trim())
+                              .filter(Boolean);
+                            handleArrayUpdate(
+                              "doctors_data",
+                              index,
+                              "languages_spoken",
+                              languages
+                            );
+                          }}
+                          className="w-full px-2 py-1 border border-border rounded bg-input text-foreground"
+                          placeholder="Languages (comma-separated)"
+                        />
+
+                        <textarea
+                          value={doctor.bio || ""}
+                          onChange={(e) =>
+                            handleArrayUpdate(
+                              "doctors_data",
+                              index,
+                              "bio",
+                              e.target.value
+                            )
+                          }
+                          className="w-full px-2 py-1 border border-border rounded bg-input text-foreground"
+                          placeholder="Doctor biography"
+                          rows={3}
+                        />
+
+                        <label className="flex items-center gap-2 text-sm pt-2 border-t border-border">
+                          <input
+                            type="checkbox"
+                            checked={doctor.is_available !== false}
+                            onChange={(e) =>
+                              handleArrayUpdate(
+                                "doctors_data",
+                                index,
+                                "is_available",
+                                e.target.checked
+                              )
+                            }
+                            className="rounded border-border"
+                          />
+                          <span className="text-foreground">
+                            Available for Appointments
+                          </span>
+                        </label>
                       </div>
                     ) : (
                       <>
                         <p className="text-sm text-primary font-medium mb-1">
                           {doctor.specialization || "No specialization"}
                         </p>
-                        <p className="text-xs text-muted-foreground mb-2">
+                        <p className="text-xs text-muted-foreground mb-1">
                           License: {doctor.license_number || "Not provided"}
                         </p>
-                        <p className="text-xs text-muted-foreground mb-2">
+                        <p className="text-xs text-muted-foreground mb-1">
                           {doctor.experience_years || 0} years experience
                         </p>
-                        <div className="flex justify-between items-center">
+                        {doctor.education && (
+                          <p className="text-xs text-muted-foreground mb-1">
+                            🎓 {doctor.education}
+                          </p>
+                        )}
+                        {doctor.languages_spoken &&
+                          Array.isArray(doctor.languages_spoken) &&
+                          doctor.languages_spoken.length > 0 && (
+                            <p className="text-xs text-muted-foreground mb-2">
+                              🗣️ {doctor.languages_spoken.join(", ")}
+                            </p>
+                          )}
+                        {doctor.bio && (
+                          <p className="text-xs text-muted-foreground mb-2 line-clamp-2">
+                            {doctor.bio}
+                          </p>
+                        )}
+                        <div className="flex justify-between items-center pt-2 border-t border-border">
                           <span className="text-sm font-medium">
                             ₱
                             {doctor.consultation_fee?.toLocaleString() || "N/A"}
@@ -950,8 +1441,8 @@ const StaffProfile = () => {
                           <span
                             className={`px-2 py-1 rounded text-xs ${
                               doctor.is_available
-                                ? "bg-green-100 text-green-800"
-                                : "bg-red-100 text-red-800"
+                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                                : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
                             }`}
                           >
                             {doctor.is_available ? "Available" : "Unavailable"}
@@ -965,7 +1456,8 @@ const StaffProfile = () => {
 
               {!isEditing && (!doctors || doctors.length === 0) && (
                 <div className="col-span-2 text-center py-8 text-muted-foreground">
-                  <p>No doctors found. Click "Edit" to add doctors.</p>
+                  <FiUsers className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                  <p>No doctors found. Click "Edit Profile" to add doctors.</p>
                 </div>
               )}
             </div>

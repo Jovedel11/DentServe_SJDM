@@ -185,9 +185,12 @@ export const useProfileManager = (options = {}) => {
       if (!prev) return prev;
       
       const updated = { ...prev };
-
+  
       if (section === 'root') {
         updated[field] = value;
+      } else if (field === '' || field === null || field === undefined) {
+        // 🔥 FIX: When field is empty, replace the entire section
+        updated[section] = value;
       } else if (field.includes('.')) {
         const [parentField, childField] = field.split('.');
         if (!updated[section]) updated[section] = {};
@@ -197,31 +200,51 @@ export const useProfileManager = (options = {}) => {
         if (!updated[section]) updated[section] = {};
         updated[section][field] = value;
       }
-
+  
+      console.log(`📝 Input changed: ${section}.${field}`, typeof value === 'object' ? JSON.stringify(value).substring(0, 100) : value);
+  
       return updated;
     });
   }, []);
 
   // Array update handler
-  const handleArrayUpdate = useCallback((arrayName, index, field, value) => {
-    setEditedData(prev => {
-      if (!prev) return prev;
-      
-      const updated = { ...prev };
-      
-      if (!updated[arrayName]) {
-        updated[arrayName] = [];
+const handleArrayUpdate = useCallback((arrayName, index, field, value) => {
+  setEditedData(prev => {
+    if (!prev) return prev;
+    
+    const updated = { ...prev };
+    
+    if (!updated[arrayName]) {
+      updated[arrayName] = [];
+    }
+    
+    // Create a copy of the array
+    updated[arrayName] = [...updated[arrayName]];
+    
+    if (!updated[arrayName][index]) {
+      updated[arrayName][index] = {};
+    }
+    
+    // Create a copy of the item
+    updated[arrayName][index] = {
+      ...updated[arrayName][index],
+      [field]: value
+    };
+    
+    // ✅ **CRITICAL FIX: Auto-set _action flag for existing items**
+    const currentItem = updated[arrayName][index];
+    if (currentItem.id && !currentItem.id.toString().startsWith('new_')) {
+      // This is an existing item being edited
+      if (!currentItem._action || currentItem._action !== 'delete') {
+        updated[arrayName][index]._action = 'update';
       }
-      
-      if (!updated[arrayName][index]) {
-        updated[arrayName][index] = {};
-      }
-      
-      updated[arrayName][index][field] = value;
-      
-      return updated;
-    });
-  }, []);
+    }
+    
+    console.log(`📝 Updated ${arrayName}[${index}].${field}:`, value, '| Action:', updated[arrayName][index]._action);
+    
+    return updated;
+  });
+}, []);
 
   // Data processing for backend
   const processDataForBackend = useCallback((data) => {
@@ -255,7 +278,6 @@ export const useProfileManager = (options = {}) => {
     return processed;
   }, []);
 
-  // 🔥 **IMPROVED: Main save function with better error handling**
   const handleSave = useCallback(async (customData = null) => {
     const rawData = customData || editedData;
     
@@ -263,7 +285,28 @@ export const useProfileManager = (options = {}) => {
       setError('Invalid data or user not found');
       return { success: false };
     }
-
+  
+    // ✅ ADD: Validate doctors before saving
+    if (isStaff && enableDoctorManagement && rawData.doctors_data) {
+      const invalidDoctors = rawData.doctors_data.filter(
+        doctor => doctor._action !== 'delete' && (!doctor.license_number || !doctor.license_number.trim())
+      );
+      
+      if (invalidDoctors.length > 0) {
+        setError('All doctors must have a license number. Please fill in the license number field before saving.');
+        return { success: false };
+      }
+  
+      const invalidNames = rawData.doctors_data.filter(
+        doctor => doctor._action !== 'delete' && (!doctor.first_name?.trim() || !doctor.last_name?.trim())
+      );
+      
+      if (invalidNames.length > 0) {
+        setError('All doctors must have first and last names. Please complete all required fields.');
+        return { success: false };
+      }
+    }
+  
     const dataToSave = processDataForBackend(rawData);
 
     try {
@@ -311,6 +354,7 @@ export const useProfileManager = (options = {}) => {
           email: dataToSave.clinic_data?.email || null,
           websiteUrl: dataToSave.clinic_data?.website_url || null,
           imageUrl: dataToSave.clinic_data?.image_url || null,
+          operatingHours: dataToSave.clinic_data?.operating_hours || null, 
           appointmentLimitPerPatient: dataToSave.clinic_data?.appointment_limit_per_patient || null,
           cancellationPolicyHours: dataToSave.clinic_data?.cancellation_policy_hours || null
         } : {};

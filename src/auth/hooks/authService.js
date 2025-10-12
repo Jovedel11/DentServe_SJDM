@@ -107,6 +107,45 @@ export const authService = {
     }
   },
 
+  async staffInvitation(invitationData) {
+    try {
+      const { data, error } = await supabase.rpc('create_staff_invitation', {
+        p_email: invitationData.email,
+        p_clinic_id: invitationData.clinicId,
+        p_position: invitationData.position,
+        p_department: invitationData.department,
+        p_invited_by: invitationData.invitedBy
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed to send invitation');
+
+      return { success: true, data, message: 'Invitation sent successfully' };
+    } catch (error) {
+      console.error('Staff invitation error:', error);
+      return { success: false, error: error.message || 'Failed to send invitation' };
+    }
+  },
+
+  // Admin invitation
+  async adminInvitation(invitationData) {
+    try {
+      const { data, error } = await supabase.rpc('create_admin_invitation', {
+        p_email: invitationData.email,
+        p_access_level: invitationData.accessLevel,
+        p_invited_by: invitationData.invitedBy
+      });
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed to send invitation');
+
+      return { success: true, data, message: 'Admin invitation sent successfully' };
+    } catch (error) {
+      console.error('Admin invitation error:', error);
+      return { success: false, error: error.message || 'Failed to send invitation' };
+    }
+  },
+
   // Complete staff profile (v2 - creates services in services table)
   async updateStaffCompleteProfileV2(profileData, clinicData, servicesData = [], doctorsData = []) {
     try {
@@ -400,39 +439,54 @@ export const authService = {
   async updateStaffProfile(profileData, staffData, clinicData, servicesData, doctorsData) {
     try {
       // Format services data for CRUD operations
-      const formattedServicesData = Array.isArray(servicesData) ? servicesData.map(service => ({
-        id: service.id || null,
-        name: service.name,
-        description: service.description,
-        category: service.category,
-        duration_minutes: service.duration_minutes,
-        min_price: service.min_price,
-        max_price: service.max_price,
-        priority: service.priority,
-        is_active: service.is_active,
-        _action: service._action || (service.id ? 'update' : 'create')
-      })) : [];
+      const formattedServicesData = Array.isArray(servicesData) 
+      ? servicesData
+          .filter(s => s.name && s.name.trim())
+          .map(service => {
+            const isNewService = !service.id || service.id.toString().startsWith('new_');
+            return {
+              id: isNewService ? null : service.id, 
+              name: service.name.trim(),
+              description: service.description?.trim() || null,
+              category: service.category || 'General',
+              duration_minutes: parseInt(service.duration_minutes) || 30,
+              min_price: parseFloat(service.min_price) || null,
+              max_price: parseFloat(service.max_price) || null,
+              priority: parseInt(service.priority) || 10,
+              is_active: Boolean(service.is_active),
+              requires_multiple_visits: Boolean(service.requires_multiple_visits),
+              typical_visit_count: parseInt(service.typical_visit_count) || 1,
+              requires_consultation: service.requires_consultation !== false, // default true
+              _action: service._action || (isNewService ? 'create' : 'update')
+            };
+          }) 
+      : [];
 
       // Format doctors data for CRUD operations
-      const formattedDoctorsData = Array.isArray(doctorsData) ? doctorsData.map(doctor => ({
-        id: doctor.id || null,
-        user_id: doctor.user_id || null,
-        license_number: doctor.license_number,
-        specialization: doctor.specialization,
-        first_name: doctor.first_name,
-        last_name: doctor.last_name,
-        education: doctor.education,
-        experience_years: doctor.experience_years,
-        bio: doctor.bio,
-        consultation_fee: doctor.consultation_fee,
-        image_url: doctor.image_url,
-        languages_spoken: doctor.languages_spoken,
-        certifications: doctor.certifications,
-        awards: doctor.awards,
-        is_available: doctor.is_available,
-        schedule: doctor.schedule,
-        _action: doctor._action || (doctor.id ? 'update' : 'create')
-      })) : [];
+      const formattedDoctorsData = Array.isArray(doctorsData) 
+      ? doctorsData.map(doctor => {
+          const isNewDoctor = !doctor.id || doctor.id.toString().startsWith('new_');
+          return {
+            id: isNewDoctor ? null : doctor.id,
+            user_id: doctor.user_id || null,
+            license_number: doctor.license_number?.trim() || '', 
+            specialization: doctor.specialization?.trim() || '',
+            first_name: doctor.first_name?.trim() || '',
+            last_name: doctor.last_name?.trim() || '',
+            education: doctor.education || null,
+            experience_years: doctor.experience_years ? parseInt(doctor.experience_years) : null,
+            bio: doctor.bio || null,
+            consultation_fee: doctor.consultation_fee ? parseFloat(doctor.consultation_fee) : null,
+            image_url: doctor.image_url || null,
+            languages_spoken: doctor.languages_spoken || null,
+            certifications: doctor.certifications || null,
+            awards: doctor.awards || null,
+            is_available: doctor.is_available !== undefined ? doctor.is_available : true,
+            schedule: doctor.schedule || null,
+            _action: doctor._action || (isNewDoctor ? 'create' : 'update')
+          };
+        }) 
+      : [];
 
       const { data, error } = await supabase.rpc('update_staff_profile', {
         p_profile_data: {
@@ -458,6 +512,7 @@ export const authService = {
           email: clinicData.email,
           website_url: clinicData.websiteUrl,
           image_url: clinicData.imageUrl,
+          operating_hours: clinicData.operatingHours,
           appointment_limit_per_patient: clinicData.appointmentLimitPerPatient,
           cancellation_policy_hours: clinicData.cancellationPolicyHours
         },
