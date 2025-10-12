@@ -2,6 +2,12 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from '../../auth/context/AuthProvider';
 import { supabase } from '../../lib/supabaseClient';
 import { useAppointmentCancellation } from './useAppointmentCancellation';
+import {
+  notifyPatientAppointmentConfirmed,
+  notifyPatientAppointmentRejected,
+  notifyPatientAppointmentCompleted,
+  notifyPatientNoShow,
+} from '@/services/emailService';
 
 export const useAppointmentManagement = (options = {}) => {
   const { user, profile, isPatient, isStaff, isAdmin } = useAuth();
@@ -104,18 +110,53 @@ export const useAppointmentManagement = (options = {}) => {
   // ✅ STAFF - Approve appointment
   const approveAppointment = useCallback(async (appointmentId, staffNotes = '') => {
     if (!isStaff && !isAdmin) return { success: false, error: 'Access denied' };
-
+  
     try {
       setState(prev => ({ ...prev, loading: true }));
-
+  
       const { data, error } = await supabase.rpc('approve_appointment', {
         p_appointment_id: appointmentId,
         p_staff_notes: staffNotes
       });
-
+  
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Approval failed');
-
+  
+      // Get appointment details for email
+      const appointment = state.appointments.find(apt => apt.id === appointmentId);
+      
+      // Send confirmation email to patient
+      if (appointment) {
+        const emailResult = await notifyPatientAppointmentConfirmed({
+          patient: {
+            email: appointment.patient?.email,
+            first_name: appointment.patient?.first_name || appointment.patient?.name?.split(' ')[0]
+          },
+          appointment: {
+            date: appointment.appointment_date,
+            time: appointment.appointment_time,
+            duration_minutes: appointment.duration_minutes,
+            notes: staffNotes || appointment.notes
+          },
+          clinic: {
+            name: appointment.clinic?.name,
+            address: appointment.clinic?.address,
+            phone: appointment.clinic?.phone,
+            email: appointment.clinic?.email,
+            cancellation_policy_hours: appointment.clinic?.cancellation_policy_hours
+          },
+          doctor: {
+            name: appointment.doctor?.name
+          },
+          services: appointment.services || []
+        });
+  
+        if (!emailResult.success) {
+          console.warn('⚠️ Failed to send confirmation email:', emailResult.error);
+        }
+      }
+      console.log('Appointment approved:', appointment);
+  
       setState(prev => ({
         ...prev,
         loading: false,
@@ -125,22 +166,22 @@ export const useAppointmentManagement = (options = {}) => {
             : apt
         )
       }));
-
+  
       return { success: true, data: data.data, message: data.message };
-
+  
     } catch (err) {
       setState(prev => ({ ...prev, loading: false, error: err.message }));
       return { success: false, error: err.message };
     }
-  }, [isStaff, isAdmin]);
+  }, [isStaff, isAdmin, state.appointments]);
 
   // ✅ STAFF - Reject appointment  
   const rejectAppointment = useCallback(async (appointmentId, rejectionData) => {
     if (!isStaff && !isAdmin) return { success: false, error: 'Access denied' };
-
+  
     try {
       setState(prev => ({ ...prev, loading: true }));
-
+  
       const params = {
         p_appointment_id: appointmentId,
         p_rejection_reason: typeof rejectionData === 'string' ? rejectionData : rejectionData.reason,
@@ -148,99 +189,179 @@ export const useAppointmentManagement = (options = {}) => {
         p_suggest_reschedule: rejectionData.suggestReschedule || false,
         p_alternative_dates: rejectionData.alternativeDates || null
       };
-
+  
       const { data, error } = await supabase.rpc('reject_appointment', params);
-
+  
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Rejection failed');
-
+  
+      // Get appointment details for email
+      const appointment = state.appointments.find(apt => apt.id === appointmentId);
+  
+      // ✅ NEW: Send rejection email to patient
+      if (appointment) {
+        const emailResult = await notifyPatientAppointmentRejected({
+          patient: {
+            email: appointment.patient?.email,
+            first_name: appointment.patient?.first_name || appointment.patient?.name?.split(' ')[0]
+          },
+          appointment: {
+            date: appointment.appointment_date,
+            time: appointment.appointment_time
+          },
+          clinic: {
+            name: appointment.clinic?.name,
+            phone: appointment.clinic?.phone,
+            email: appointment.clinic?.email
+          },
+          doctor: {
+            name: appointment.doctor?.name
+          },
+          rejection: {
+            reason: params.p_rejection_reason,
+            category: params.p_rejection_category
+          }
+        });
+  
+        if (!emailResult.success) {
+          console.warn('⚠️ Failed to send rejection email:', emailResult.error);
+        }
+      }
+  
       setState(prev => ({
         ...prev,
         loading: false,
-        appointments: prev.appointments.map(apt => 
-          apt.id === appointmentId 
-            ? { ...apt, status: 'cancelled', cancellation_reason: params.p_rejection_reason }
-            : apt
-        )
+        appointments: prev.appointments.filter(apt => apt.id !== appointmentId)
       }));
-
+  
       return { success: true, data: data.data, message: data.message };
-
+  
     } catch (err) {
       setState(prev => ({ ...prev, loading: false, error: err.message }));
       return { success: false, error: err.message };
     }
-  }, [isStaff, isAdmin]);
+  }, [isStaff, isAdmin, state.appointments]);
 
   // Complete appointment
   const completeAppointment = useCallback(async (appointmentId, completionData = {}) => {
     if (!isStaff && !isAdmin) return { success: false, error: 'Access denied' };
-
+  
     try {
       setState(prev => ({ ...prev, loading: true }));
-
+  
       const { data, error } = await supabase.rpc('complete_appointment', {
         p_appointment_id: appointmentId,
         p_completion_notes: completionData.notes || '',
         p_services_completed: completionData.servicesCompleted || [],
         p_follow_up_required: completionData.followUpRequired || false,
         p_follow_up_notes: completionData.followUpNotes || '',
-        // NEW: Treatment plan parameters
         p_requires_treatment_plan: completionData.requiresTreatmentPlan || false,
         p_treatment_plan_notes: completionData.treatmentPlanNotes || null,
         p_diagnosis_summary: completionData.diagnosisSummary || null,
         p_recommended_treatment_name: completionData.recommendedTreatmentName || null,
         p_recommended_visits: completionData.recommendedVisits || null
       });
-
+  
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Completion failed');
-
+  
+      // Get appointment details for email
+      const appointment = state.appointments.find(apt => apt.id === appointmentId);
+  
+      // ✅ NEW: Send completion email to patient
+      if (appointment) {
+        const feedbackUrl = `${window.location.origin}/patient/feedback?appointment=${appointmentId}`;
+        
+        const emailResult = await notifyPatientAppointmentCompleted({
+          patient: {
+            email: appointment.patient?.email,
+            first_name: appointment.patient?.first_name || appointment.patient?.name?.split(' ')[0]
+          },
+          appointment: {
+            date: appointment.appointment_date,
+            time: appointment.appointment_time,
+            notes: completionData.notes,
+            follow_up_required: completionData.followUpRequired
+          },
+          clinic: {
+            name: appointment.clinic?.name,
+            phone: appointment.clinic?.phone,
+            email: appointment.clinic?.email
+          },
+          doctor: {
+            name: appointment.doctor?.name
+          },
+          services: appointment.services || [],
+          feedbackUrl
+        });
+  
+        if (!emailResult.success) {
+          console.warn('⚠️ Failed to send completion email:', emailResult.error);
+        }
+      }
+  
       setState(prev => ({
         ...prev,
         loading: false,
-        appointments: prev.appointments.map(apt => 
-          apt.id === appointmentId 
-            ? { 
-                ...apt, 
-                status: 'completed', 
-                notes: completionData.notes || apt.notes,
-                requires_treatment_plan: completionData.requiresTreatmentPlan || false,
-                treatment_plan_notes: completionData.treatmentPlanNotes || null
-              }
-            : apt
-        )
+        appointments: prev.appointments.filter(apt => apt.id !== appointmentId)
       }));
-
+  
       return { 
         success: true, 
         data: data.data, 
-        message: data.message,
-        // ✅ FIXED: Get the value from database response, not input
-        requiresTreatmentPlan: data.data?.requires_treatment_plan || false
+        message: data.message 
       };
-
+  
     } catch (err) {
       setState(prev => ({ ...prev, loading: false, error: err.message }));
       return { success: false, error: err.message };
     }
-  }, [isStaff, isAdmin]);
+  }, [isStaff, isAdmin, state.appointments]);
 
   // Mark no-show
   const markNoShow = useCallback(async (appointmentId, staffNotes = '') => {
     if (!isStaff && !isAdmin) return { success: false, error: 'Access denied' };
-
+  
     try {
       setState(prev => ({ ...prev, loading: true }));
-
+  
       const { data, error } = await supabase.rpc('mark_appointment_no_show', {
         p_appointment_id: appointmentId,
         p_staff_notes: staffNotes
       });
-
+  
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Failed to mark no-show');
-
+  
+      // Get appointment details for email
+      const appointment = state.appointments.find(apt => apt.id === appointmentId);
+  
+      // ✅ NEW: Send no-show notice to patient
+      if (appointment) {
+        const emailResult = await notifyPatientNoShow({
+          patient: {
+            email: appointment.patient?.email,
+            first_name: appointment.patient?.first_name || appointment.patient?.name?.split(' ')[0]
+          },
+          appointment: {
+            date: appointment.appointment_date,
+            time: appointment.appointment_time
+          },
+          clinic: {
+            name: appointment.clinic?.name,
+            phone: appointment.clinic?.phone,
+            email: appointment.clinic?.email
+          },
+          doctor: {
+            name: appointment.doctor?.name
+          }
+        });
+  
+        if (!emailResult.success) {
+          console.warn('⚠️ Failed to send no-show email:', emailResult.error);
+        }
+      }
+  
       setState(prev => ({
         ...prev,
         loading: false,
@@ -250,14 +371,14 @@ export const useAppointmentManagement = (options = {}) => {
             : apt
         )
       }));
-
+  
       return { success: true, data: data.data, message: data.message };
-
+  
     } catch (err) {
       setState(prev => ({ ...prev, loading: false, error: err.message }));
       return { success: false, error: err.message };
     }
-  }, [isStaff, isAdmin]);
+  }, [isStaff, isAdmin, state.appointments]);
 
   // ✅ NEW: STAFF - Send Reschedule Reminder
   const sendRescheduleReminder = useCallback(async (appointmentId, reason, suggestedDates = []) => {
@@ -331,7 +452,7 @@ export const useAppointmentManagement = (options = {}) => {
       return { success: false, error: err.message };
     }
   }, [isStaff, isAdmin]);
-
+  
   // ✅ FILTER MANAGEMENT
   const updateFilters = useCallback((newFilters) => {
     setState(prev => ({

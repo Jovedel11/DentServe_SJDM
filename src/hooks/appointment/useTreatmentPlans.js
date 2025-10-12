@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { useTreatmentPlanFollowUp } from './useTreatmentFollowUp';
+import { notifyPatientTreatmentPlanCreated, notifyPatientTreatmentCompleted } from '@/services/emailService';
 
 export const useTreatmentPlans = () => {
   const { user, profile, isPatient, isStaff, isAdmin } = useAuth();
@@ -128,11 +129,41 @@ export const useTreatmentPlans = () => {
 
       setState(prev => ({ ...prev, loading: false }));
 
+      const treatmentPlan = data.data;
+      if (treatmentPlan && planData.patientEmail) {
+        const emailResult = await notifyPatientTreatmentPlanCreated({
+          patient: {
+            email: planData.patientEmail,
+            first_name: planData.patientFirstName
+          },
+          treatmentPlan: {
+            treatment_name: treatmentPlan.treatment_name,
+            treatment_category: treatmentPlan.treatment_category,
+            description: treatmentPlan.description,
+            diagnosis: treatmentPlan.diagnosis,
+            total_visits_planned: treatmentPlan.total_visits_planned,
+            expected_end_date: treatmentPlan.expected_end_date
+          },
+          clinic: {
+            name: planData.clinicName,
+            phone: planData.clinicPhone,
+            email: planData.clinicEmail
+          },
+          doctor: {
+            name: planData.doctorName
+          }
+        });
+    
+        if (!emailResult.success) {
+          console.warn('⚠️ Failed to send treatment plan email:', emailResult.error);
+        }
+      }
+    
       // Refresh treatments after creation
       if (isPatient) {
         await getOngoingTreatments();
       }
-
+    
       return {
         success: true,
         treatmentPlan: data.data,
@@ -183,19 +214,20 @@ export const useTreatmentPlans = () => {
     if (!isStaff && !isAdmin) {
       return { success: false, error: 'Only staff can update treatment plans' };
     }
-
+  
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
-
+  
+      // ✅ STEP 1: Build update data FIRST
       const updateData = {
         status,
         updated_at: new Date().toISOString()
       };
-
+  
       if (notes) {
         updateData.treatment_notes = notes;
       }
-
+  
       // Auto-complete handling
       if (status === 'completed') {
         updateData.actual_end_date = new Date().toISOString().split('T')[0];
@@ -203,27 +235,68 @@ export const useTreatmentPlans = () => {
       } else if (status === 'cancelled') {
         updateData.actual_end_date = new Date().toISOString().split('T')[0];
       }
-
+  
+      // ✅ STEP 2: Execute query with joins for email data
       const { data, error } = await supabase
         .from('treatment_plans')
         .update(updateData)
         .eq('id', treatmentPlanId)
-        .select()
+        .select(`
+          *,
+          patient:patients!inner (
+            user_profiles!inner (
+              email,
+              first_name
+            )
+          ),
+          clinic:clinics!inner (name),
+          doctor:doctors (
+            first_name,
+            last_name
+          )
+        `)
         .single();
-
+  
       if (error) throw error;
-
+  
       setState(prev => ({ ...prev, loading: false }));
-
+  
+      // ✅ STEP 3: Send completion email ONCE (not twice!)
+      if (status === 'completed' && data) {
+        const emailResult = await notifyPatientTreatmentCompleted({
+          patient: {
+            email: data.patient?.user_profiles?.email,
+            first_name: data.patient?.user_profiles?.first_name
+          },
+          treatmentPlan: {
+            treatment_name: data.treatment_name,
+            start_date: data.start_date,
+            completed_at: data.completed_at || data.actual_end_date,
+            visits_completed: data.visits_completed,
+            treatment_notes: notes || data.treatment_notes
+          },
+          clinic: {
+            name: data.clinic?.name
+          },
+          doctor: {
+            name: data.doctor ? `Dr. ${data.doctor.first_name} ${data.doctor.last_name}` : 'Doctor'
+          }
+        });
+      
+        if (!emailResult.success) {
+          console.warn('⚠️ Failed to send treatment completion email:', emailResult.error);
+        }
+      }
+  
       // Refresh treatments list
       await getOngoingTreatments();
-
+  
       return {
         success: true,
         plan: data,
         message: `Treatment plan ${status} successfully`
       };
-
+  
     } catch (err) {
       const errorMsg = err.message || 'Failed to update treatment plan';
       setState(prev => ({ ...prev, loading: false, error: errorMsg }));
@@ -364,7 +437,14 @@ export const useTreatmentPlans = () => {
       // Optional overrides
       treatmentCategory,
       followUpIntervalDays,
-      assignedDoctorId
+      assignedDoctorId,
+
+      patientEmail,
+      patientFirstName,
+      clinicName,
+      clinicPhone,
+      clinicEmail,
+      doctorName
     } = appointmentData;
 
     // Validate required fields
@@ -383,10 +463,17 @@ export const useTreatmentPlans = () => {
       treatmentCategory: treatmentCategory || null,
       totalVisitsPlanned: recommendedVisits || null,
       followUpIntervalDays: followUpIntervalDays || 30,
-      initialAppointmentId: null, // Can be set separately
-      sourceAppointmentId: appointmentId, // Link to the appointment that created this plan
+      initialAppointmentId: null,
+      sourceAppointmentId: appointmentId,
       diagnosis: diagnosisSummary || null,
-      assignedDoctorId: assignedDoctorId || doctorId // Default to appointment's doctor
+      assignedDoctorId: assignedDoctorId || doctorId,
+      startDate: new Date().toISOString().split('T')[0],
+      patientEmail,
+      patientFirstName,
+      clinicName,
+      clinicPhone,
+      clinicEmail,
+      doctorName
     });
   }, [isStaff, isAdmin, createTreatmentPlan]);
 

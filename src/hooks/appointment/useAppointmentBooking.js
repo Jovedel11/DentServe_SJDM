@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
+import { notifyStaffNewAppointment } from '@/services/emailService';
 
 const ERROR_MESSAGES = {
   doctor_unavailable: {
@@ -65,6 +66,7 @@ const useAppointmentBooking = () => {
 
   const [treatmentPlanBookingMode, setTreatmentPlanBookingMode] = useState(false);
   const [preFilledData, setPreFilledData] = useState(null);
+  const [availableServices, setAvailableServices] = useState([]);
 
   // Existing state
   const [appointmentLimitCheck, setAppointmentLimitCheck] = useState(null);
@@ -123,6 +125,27 @@ const useAppointmentBooking = () => {
       ...prev,
       treatmentPlanId: null
     }));
+  }, []);
+
+    const resetBooking = useCallback(() => {
+    setBookingData({
+      clinic: null,
+      doctor: null,
+      date: null,
+      time: null,
+      services: [],
+      symptoms: '',
+      treatmentPlanId: null,
+    });
+    setBookingStep('clinic');
+    setAvailableTimes([]);
+    setError(null);
+    setSameDayConflict(null);
+    setAppointmentLimitCheck(null);
+    setOngoingTreatments([]);
+    setShowTreatmentLinkPrompt(false);
+    
+    window.history.replaceState({ step: 'clinic' }, '', window.location.pathname);
   }, []);
 
   const bookAppointment = useCallback(async (skipConsultationOverride = null) => {
@@ -213,6 +236,46 @@ const useAppointmentBooking = () => {
       }
 
       const appointmentData = data.data;
+      const emailResult = await notifyStaffNewAppointment({
+        staff_email: clinic.email || clinic.contact_email,
+        patient: {
+          name: `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim(),
+          email: user?.email,
+          phone: profile?.phone || profile?.contact_phone,
+          reliability: appointmentData.patient_reliability
+        },
+        appointment: {
+          date,
+          time,
+          booking_type: appointmentData.booking_type,
+          treatment_plan: treatmentPlanId ? appointmentData.treatment_plan_link : null
+        },
+        clinic: {
+          name: clinic.name,
+          id: clinic.id,
+          email: clinic.email || clinic.contact_email
+        },
+        doctor: {
+          name: `Dr. ${doctor.first_name || ''} ${doctor.last_name || ''}`.trim(),
+          id: doctor.id
+        },
+        services: services && services.length > 0 
+          ? services.map(sid => {
+              const service = availableServices?.find(s => s.id === sid);
+              return {
+                name: service?.name || 'Unknown Service',
+                requires_multiple_visits: service?.requires_multiple_visits || false
+              };
+            })
+          : [],
+        symptoms
+      });
+  
+      // Log email result (don't fail booking if email fails)
+      if (!emailResult.success) {
+        console.warn('⚠️ Failed to send email notification:', emailResult.error);
+      }
+  
       resetBooking();
       
       return {
@@ -232,10 +295,11 @@ const useAppointmentBooking = () => {
           cancellation_policy: appointmentData.cancellation_policy,
           reliability: appointmentData.patient_reliability,
           cross_clinic_context: appointmentData.cross_clinic_context,
+          emailSent: emailResult.success // Track if email was sent
         },
         message: data.message
       };
-
+  
     } catch (err) {
       const errorMsg = err?.message || 'Failed to book appointment';
       setError(errorMsg);
@@ -246,7 +310,7 @@ const useAppointmentBooking = () => {
     } finally {
       setLoading(false);
     }
-  }, [bookingData, isPatient, sameDayConflict]);
+  }, [bookingData, isPatient, sameDayConflict, profile, user, resetBooking]);
 
   // Browser back button handler
   useEffect(() => {
@@ -288,27 +352,6 @@ const useAppointmentBooking = () => {
       window.history.replaceState({ step: bookingStep }, '', window.location.pathname);
     }
   }, [bookingStep]);
-
-  const resetBooking = useCallback(() => {
-    setBookingData({
-      clinic: null,
-      doctor: null,
-      date: null,
-      time: null,
-      services: [],
-      symptoms: '',
-      treatmentPlanId: null,
-    });
-    setBookingStep('clinic');
-    setAvailableTimes([]);
-    setError(null);
-    setSameDayConflict(null);
-    setAppointmentLimitCheck(null);
-    setOngoingTreatments([]);
-    setShowTreatmentLinkPrompt(false);
-    
-    window.history.replaceState({ step: 'clinic' }, '', window.location.pathname);
-  }, []);
 
   const updateBookingData = useCallback((updates) => {
     setBookingData(prev => {
@@ -437,26 +480,29 @@ const useAppointmentBooking = () => {
     try {
       setLoading(true);
       setError(null);
-
+  
       const { data: clinicServices, error } = await supabase
         .from('services')
         .select('*')
         .eq('clinic_id', clinicId)
         .eq('is_active', true)
         .order('priority', { ascending: false });
-
+  
       if (error) throw new Error(error.message);
-
+  
+      setAvailableServices(clinicServices || []);
+  
       return {
         success: true,
         services: clinicServices || [],
         count: clinicServices?.length || 0,
         error: null
       };
-
+  
     } catch (err) {
       const errorMsg = err?.message || 'Failed to load services';
       setError(errorMsg);
+      setAvailableServices([]);
       return {
         success: false,
         services: [],

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import {
   Calendar,
@@ -75,6 +75,10 @@ import {
   AlertTitle,
 } from "@/core/components/ui/alert";
 import { Separator } from "@/core/components/ui/separator";
+import {
+  SingleReminderButton,
+  BulkTomorrowRemindersButton,
+} from "@/core/components/ReminderButtons";
 
 // Hooks
 import { useAppointmentManagement } from "@/hooks/appointment/useAppointmentManagement";
@@ -1034,6 +1038,11 @@ const ManageAppointments = () => {
                 </span>
               </div>
             )}
+            {isConfirmed && !isPast && (
+              <div className="flex gap-2">
+                <SingleReminderButton appointment={appointment} />
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -1064,6 +1073,24 @@ const ManageAppointments = () => {
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
+        <div className="flex items-center gap-2">
+          <BulkTomorrowRemindersButton
+            appointments={appointmentManager.appointments}
+          />
+
+          <Button
+            variant="outline"
+            onClick={() => appointmentManager.refreshData()}
+            disabled={appointmentManager.loading}
+          >
+            <RefreshCw
+              className={`w-4 h-4 mr-2 ${
+                appointmentManager.loading ? "animate-spin" : ""
+              }`}
+            />
+            Refresh
+          </Button>
+        </div>
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
@@ -1086,7 +1113,6 @@ const ManageAppointments = () => {
             Refresh
           </Button>
         </div>
-
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="border-l-4 border-l-yellow-500">
@@ -1151,7 +1177,6 @@ const ManageAppointments = () => {
             </CardContent>
           </Card>
         </div>
-
         {/* Toast Notification */}
         <AnimatePresence>
           {toast.show && (
@@ -1188,7 +1213,6 @@ const ManageAppointments = () => {
             </motion.div>
           )}
         </AnimatePresence>
-
         {/* Tabs */}
         <Tabs
           value={activeTab}
@@ -1291,7 +1315,6 @@ const ManageAppointments = () => {
             )}
           </TabsContent>
         </Tabs>
-
         {/* Details Modal */}
         <Dialog
           open={detailsModal.isOpen}
@@ -1311,7 +1334,6 @@ const ManageAppointments = () => {
             )}
           </DialogContent>
         </Dialog>
-
         {/* Action Modals */}
         <Dialog open={actionModal.isOpen} onOpenChange={closeModal}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">

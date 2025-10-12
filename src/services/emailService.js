@@ -1,14 +1,27 @@
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+const BACKEND_URL = import.meta.env.VITE_API_URL;
 
 const sendEmail = async (endpoint, payload) => {
   try {
-    const response = await fetch(`${BACKEND_URL}/api/email/${endpoint}`, {
+    const url = `${BACKEND_URL}/api/email/${endpoint}`;
+    console.log(`📧 Sending email to: ${url}`);
+    
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
     });
+
+    // Check if response has content before parsing
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('Non-JSON response received:', await response.text());
+      return {
+        success: false,
+        error: 'Invalid response from server',
+      };
+    }
 
     const data = await response.json();
 
@@ -20,10 +33,10 @@ const sendEmail = async (endpoint, payload) => {
       };
     }
 
-    console.log(`Email sent [${endpoint}]:`, data);
+    console.log(`✅ Email sent [${endpoint}]:`, data);
     return { success: true, data };
   } catch (error) {
-    console.error(`Email service error [${endpoint}]:`, error);
+    console.error(`❌ Email service error [${endpoint}]:`, error);
     return {
       success: false,
       error: error.message || 'Network error sending email',

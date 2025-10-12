@@ -9,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { useUnifiedNotificationSystem } from "@/app/shared/hook/useUnifiedNotificationSystem";
 import { useAppointmentRealtime } from "@/core/hooks/useAppointmentRealtime";
+import { useIsMobile } from "@/core/hooks/use-mobile";
 import FeedbackReplyModal from "@/app/staff/components/feedback-reply-modal";
 import NotificationDetailsModal from "@/app/shared/components/notification-details-modal";
 import AllNotificationsModal from "@/app/staff/components/all-notification-modal";
@@ -42,6 +43,7 @@ const UnifiedNotificationBell = ({
 }) => {
   const navigate = useNavigate();
   const { user, isPatient, isStaff, isAdmin, profile } = useAuth();
+  const isMobile = useIsMobile();
 
   // ✅ UNIFIED NOTIFICATION SYSTEM
   const {
@@ -128,9 +130,41 @@ const UnifiedNotificationBell = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ✅ ENHANCED: FILTERED AND SORTED NOTIFICATIONS (Preview only - Sorted by time, newest first)
+  // ✅ USER-SPECIFIC NOTIFICATION FILTERING
+  const userRelevantNotifications = useMemo(() => {
+    if (isAdmin) {
+      // Admin ONLY sees partnership requests
+      return notifications.filter((n) => n.type === "partnership_request");
+    }
+
+    if (isPatient) {
+      // Patient sees: appointment_confirmed, appointment_reminder, appointment_cancelled, feedback_response
+      const allowedTypes = [
+        "appointment_confirmed",
+        "appointment_reminder",
+        "appointment_cancelled",
+        "feedback_response",
+      ];
+      return notifications.filter((n) => allowedTypes.includes(n.type));
+    }
+
+    if (isStaff) {
+      // Staff sees: feedback_request and appointment notifications (confirmed, cancelled, reminder for treatment follow-ups)
+      const allowedTypes = [
+        "feedback_request",
+        "appointment_confirmed", // When patient books (staff gets notified)
+        "appointment_cancelled", // When patient cancels
+        "appointment_reminder", // For treatment follow-ups
+      ];
+      return notifications.filter((n) => allowedTypes.includes(n.type));
+    }
+
+    return notifications;
+  }, [notifications, isAdmin, isPatient, isStaff]);
+
+  // ✅ FILTERED AND SORTED NOTIFICATIONS
   const filteredNotifications = useMemo(() => {
-    let filtered = notifications;
+    let filtered = userRelevantNotifications;
 
     // Apply filter
     switch (activeFilter) {
@@ -141,16 +175,27 @@ const UnifiedNotificationBell = ({
         filtered = filtered.filter((n) => n.is_read);
         break;
       case "urgent":
-        filtered = urgentNotifications;
+        filtered = urgentNotifications.filter((n) =>
+          userRelevantNotifications.some((un) => un.id === n.id)
+        );
         break;
       case "today":
-        filtered = todayNotifications;
+        filtered = todayNotifications.filter((n) =>
+          userRelevantNotifications.some((un) => un.id === n.id)
+        );
         break;
       case "appointments":
-        filtered = appointmentNotifications;
+        filtered = appointmentNotifications.filter((n) =>
+          userRelevantNotifications.some((un) => un.id === n.id)
+        );
         break;
       case "feedback":
-        filtered = feedbackNotifications;
+        filtered = feedbackNotifications.filter((n) =>
+          userRelevantNotifications.some((un) => un.id === n.id)
+        );
+        break;
+      case "partnerships":
+        filtered = filtered.filter((n) => n.type === "partnership_request");
         break;
       default:
         break;
@@ -166,21 +211,17 @@ const UnifiedNotificationBell = ({
       );
     }
 
-    // ✅ ENHANCED: Explicit time-based sorting - Newest first (by created_at timestamp)
-    // Sort by: 1) Unread first, 2) Newest first (created_at DESC)
+    // Sort: Unread first, then newest
     filtered.sort((a, b) => {
-      // Unread notifications first
       if (a.is_read !== b.is_read) {
         return a.is_read ? 1 : -1;
       }
-      // Then by newest first (descending order)
       return new Date(b.created_at) - new Date(a.created_at);
     });
 
-    // Limit to preview items (default 8)
     return filtered.slice(0, maxPreviewItems);
   }, [
-    notifications,
+    userRelevantNotifications,
     activeFilter,
     searchQuery,
     maxPreviewItems,
@@ -190,8 +231,8 @@ const UnifiedNotificationBell = ({
     feedbackNotifications,
   ]);
 
-  // ✅ NOTIFICATION TYPE MAPPING WITH DUAL RATINGS SUPPORT
-  const getNotificationConfig = (type, metadata = {}) => {
+  // ✅ USER-SPECIFIC NOTIFICATION CONFIG
+  const getNotificationConfig = useCallback((type, metadata = {}) => {
     const configs = {
       appointment_reminder: {
         icon: <Clock className="h-4 w-4" />,
@@ -238,6 +279,13 @@ const UnifiedNotificationBell = ({
           "bg-indigo-50 border-indigo-200 dark:bg-indigo-900/10 dark:border-indigo-800",
         urgentBg: "bg-indigo-100 dark:bg-indigo-900/20",
       },
+      admin_message: {
+        icon: <AlertCircle className="h-4 w-4" />,
+        color: "text-purple-600",
+        bgColor:
+          "bg-purple-50 border-purple-200 dark:bg-purple-900/10 dark:border-purple-800",
+        urgentBg: "bg-purple-100 dark:bg-purple-900/20",
+      },
     };
 
     return (
@@ -249,16 +297,14 @@ const UnifiedNotificationBell = ({
         urgentBg: "bg-gray-100 dark:bg-gray-900/20",
       }
     );
-  };
+  }, []);
 
   // ✅ ACTION HANDLERS
   const handleNotificationClick = async (notification) => {
-    // Mark as read if unread
     if (!notification.is_read) {
       await markAsRead([notification.id]);
     }
 
-    // Open details modal
     setNotificationDetailsModal({
       isOpen: true,
       notification,
@@ -268,7 +314,7 @@ const UnifiedNotificationBell = ({
 
   const handleMarkAllAsRead = async () => {
     try {
-      const unreadIds = notifications
+      const unreadIds = userRelevantNotifications
         .filter((n) => !n.is_read)
         .map((n) => n.id);
       if (unreadIds.length > 0) {
@@ -281,7 +327,6 @@ const UnifiedNotificationBell = ({
     }
   };
 
-  // ✅ HANDLE FEEDBACK REPLY
   const handleFeedbackReply = async (feedbackId, response) => {
     try {
       const result = await respondToFeedback(feedbackId, response);
@@ -299,7 +344,6 @@ const UnifiedNotificationBell = ({
     }
   };
 
-  // ✅ OPEN FEEDBACK REPLY MODAL
   const handleOpenFeedbackReply = (feedbackData) => {
     setFeedbackReplyModal({
       isOpen: true,
@@ -307,7 +351,6 @@ const UnifiedNotificationBell = ({
     });
   };
 
-  // ✅ NAVIGATE TO NOTIFICATION PAGE
   const handleNavigateToNotification = (notification) => {
     const path = getNotificationNavigationPath(notification);
     if (path) {
@@ -316,13 +359,11 @@ const UnifiedNotificationBell = ({
     }
   };
 
-  // ✅ TOAST HELPER
   const showToast = (message, type = "success") => {
     setToastMessage({ message, type });
     setTimeout(() => setToastMessage(""), 3000);
   };
 
-  // ✅ FORMAT TIME
   const formatTime = (timestamp) => {
     const date = new Date(timestamp);
     const now = new Date();
@@ -339,111 +380,197 @@ const UnifiedNotificationBell = ({
     }
   };
 
-  // ✅ FILTER OPTIONS
-  const getFilterOptions = () => {
+  // ✅ USER-SPECIFIC FILTER OPTIONS
+  const getFilterOptions = useCallback(() => {
     const baseFilters = [
-      { key: "all", label: "All", count: notifications.length },
-      { key: "unread", label: "Unread", count: unreadCount },
-      { key: "read", label: "Read", count: notifications.length - unreadCount },
+      { key: "all", label: "All", count: userRelevantNotifications.length },
+      {
+        key: "unread",
+        label: "Unread",
+        count: userRelevantNotifications.filter((n) => !n.is_read).length,
+      },
     ];
 
     const roleSpecificFilters = [];
 
-    if (isPatient || isStaff || isAdmin) {
-      roleSpecificFilters.push({
-        key: "appointments",
-        label: "Appointments",
-        count: appointmentNotifications.length,
-      });
+    // Admin only sees partnerships
+    if (isAdmin) {
+      return [
+        ...baseFilters,
+        {
+          key: "partnerships",
+          label: "Partnerships",
+          count: userRelevantNotifications.length,
+        },
+      ];
     }
 
-    if (canRespondToFeedback || isPatient) {
-      roleSpecificFilters.push({
-        key: "feedback",
-        label: "Feedback",
-        count: feedbackNotifications.length,
-      });
+    // Patient filters
+    if (isPatient) {
+      const patientAppointments = userRelevantNotifications.filter((n) =>
+        [
+          "appointment_confirmed",
+          "appointment_reminder",
+          "appointment_cancelled",
+        ].includes(n.type)
+      );
+      const patientFeedback = userRelevantNotifications.filter(
+        (n) => n.type === "feedback_response"
+      );
+
+      if (patientAppointments.length > 0) {
+        roleSpecificFilters.push({
+          key: "appointments",
+          label: "Appointments",
+          count: patientAppointments.length,
+        });
+      }
+
+      if (patientFeedback.length > 0) {
+        roleSpecificFilters.push({
+          key: "feedback",
+          label: "Responses",
+          count: patientFeedback.length,
+        });
+      }
     }
 
-    if (urgentNotifications.length > 0) {
+    // Staff filters
+    if (isStaff) {
+      const staffAppointments = userRelevantNotifications.filter((n) =>
+        [
+          "appointment_confirmed",
+          "appointment_cancelled",
+          "appointment_reminder",
+        ].includes(n.type)
+      );
+      const staffFeedback = userRelevantNotifications.filter(
+        (n) => n.type === "feedback_request"
+      );
+
+      if (staffAppointments.length > 0) {
+        roleSpecificFilters.push({
+          key: "appointments",
+          label: "Appointments",
+          count: staffAppointments.length,
+        });
+      }
+
+      if (staffFeedback.length > 0) {
+        roleSpecificFilters.push({
+          key: "feedback",
+          label: "Feedback",
+          count: staffFeedback.length,
+        });
+      }
+    }
+
+    // Urgent notifications (for both patient and staff)
+    const relevantUrgent = urgentNotifications.filter((n) =>
+      userRelevantNotifications.some((un) => un.id === n.id)
+    );
+    if (relevantUrgent.length > 0) {
       roleSpecificFilters.push({
         key: "urgent",
         label: "Urgent",
-        count: urgentNotifications.length,
+        count: relevantUrgent.length,
       });
     }
 
-    if (todayNotifications.length > 0) {
+    // Today's notifications
+    const relevantToday = todayNotifications.filter((n) =>
+      userRelevantNotifications.some((un) => un.id === n.id)
+    );
+    if (relevantToday.length > 0) {
       roleSpecificFilters.push({
         key: "today",
         label: "Today",
-        count: todayNotifications.length,
+        count: relevantToday.length,
       });
     }
 
     return [...baseFilters, ...roleSpecificFilters];
-  };
+  }, [
+    userRelevantNotifications,
+    isAdmin,
+    isPatient,
+    isStaff,
+    urgentNotifications,
+    todayNotifications,
+  ]);
 
-  // ✅ GET NOTIFICATION PRIORITY INDICATOR WITH DUAL RATINGS
-  const getPriorityIndicator = (notification) => {
-    const isUrgent = urgentNotifications.some((n) => n.id === notification.id);
-    const isFeedback = notification.type === "feedback_request";
-    const isFeedbackResponse = notification.type === "feedback_response";
+  // ✅ PRIORITY INDICATOR
+  const getPriorityIndicator = useCallback(
+    (notification) => {
+      const isUrgent = urgentNotifications.some(
+        (n) => n.id === notification.id
+      );
+      const isFeedback = notification.type === "feedback_request";
 
-    // ✅ Extract dual ratings from metadata or message
-    const clinicRating = notification.metadata?.clinic_rating;
-    const doctorRating = notification.metadata?.doctor_rating;
-    const legacyRating = notification.metadata?.rating;
+      // Extract ratings from message (embedded in notification message by database)
+      const clinicRatingMatch = notification.message?.match(/Clinic: (\d)★/);
+      const doctorRatingMatch = notification.message?.match(/Doctor: (\d)★/);
+      const clinicRating = clinicRatingMatch
+        ? parseInt(clinicRatingMatch[1])
+        : null;
+      const doctorRating = doctorRatingMatch
+        ? parseInt(doctorRatingMatch[1])
+        : null;
 
-    if (isUrgent) {
       if (
-        isFeedback &&
-        (clinicRating <= 2 || doctorRating <= 2 || legacyRating <= 2)
+        isUrgent ||
+        (isFeedback && (clinicRating <= 2 || doctorRating <= 2))
       ) {
         return (
-          <Badge variant="destructive" className="text-xs">
+          <Badge variant="destructive" className="text-xs whitespace-nowrap">
             {clinicRating && `🏥${clinicRating}★`}{" "}
             {doctorRating && `👨‍⚕️${doctorRating}★`} Urgent
           </Badge>
         );
       }
-      return (
-        <Badge variant="destructive" className="text-xs">
-          Urgent
-        </Badge>
-      );
-    }
 
-    if (isFeedback) {
-      return (
-        <div className="flex items-center gap-1">
-          {clinicRating && (
-            <Badge variant="outline" className="text-xs">
-              <Building2 className="w-3 h-3 mr-1" />
-              {clinicRating}★
-            </Badge>
-          )}
-          {doctorRating && (
-            <Badge variant="outline" className="text-xs">
-              <Stethoscope className="w-3 h-3 mr-1" />
-              {doctorRating}★
-            </Badge>
-          )}
-        </div>
-      );
-    }
+      if (isFeedback && (clinicRating || doctorRating)) {
+        return (
+          <div className="flex items-center gap-1">
+            {clinicRating && (
+              <Badge variant="outline" className="text-xs">
+                <Building2 className="w-3 h-3 mr-1" />
+                {clinicRating}★
+              </Badge>
+            )}
+            {doctorRating && (
+              <Badge variant="outline" className="text-xs">
+                <Stethoscope className="w-3 h-3 mr-1" />
+                {doctorRating}★
+              </Badge>
+            )}
+          </div>
+        );
+      }
 
-    if (isFeedbackResponse) {
-      return (
-        <Badge variant="secondary" className="text-xs">
-          <Reply className="w-3 h-3 mr-1" />
-          Staff Replied
-        </Badge>
-      );
-    }
+      if (notification.type === "feedback_response") {
+        return (
+          <Badge variant="secondary" className="text-xs">
+            <Reply className="w-3 h-3 mr-1" />
+            {isMobile ? "Reply" : "Staff Replied"}
+          </Badge>
+        );
+      }
 
-    return null;
-  };
+      return null;
+    },
+    [urgentNotifications, isMobile]
+  );
+
+  // ✅ MOBILE-RESPONSIVE DROPDOWN WIDTH
+  const dropdownWidth = isMobile ? "w-[calc(100vw-2rem)]" : "w-96";
+  const dropdownMaxHeight = isMobile ? "max-h-[70vh]" : "max-h-[500px]";
+
+  // Calculate unread count from user-relevant notifications
+  const userUnreadCount = useMemo(
+    () => userRelevantNotifications.filter((n) => !n.is_read).length,
+    [userRelevantNotifications]
+  );
 
   return (
     <>
@@ -451,7 +578,9 @@ const UnifiedNotificationBell = ({
         {/* Toast Message */}
         {toastMessage && (
           <div
-            className={`fixed top-4 right-4 z-50 px-4 py-2 rounded shadow-lg text-white ${
+            className={`fixed ${
+              isMobile ? "top-2 left-2 right-2" : "top-4 right-4"
+            } z-50 px-4 py-2 rounded shadow-lg text-white ${
               toastMessage.type === "error" ? "bg-red-500" : "bg-green-500"
             }`}
           >
@@ -467,16 +596,16 @@ const UnifiedNotificationBell = ({
           className={`relative ${className}`}
           onClick={() => setIsOpen(!isOpen)}
         >
-          {hasUnread ? (
+          {userUnreadCount > 0 ? (
             <BellRing className="h-4 w-4 text-orange-600 animate-wiggle" />
           ) : (
             <Bell className="h-4 w-4" />
           )}
 
           {/* Unread Badge */}
-          {unreadCount > 0 && (
+          {userUnreadCount > 0 && (
             <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium animate-pulse">
-              {unreadCount > 99 ? "99+" : unreadCount}
+              {userUnreadCount > 99 ? "99+" : userUnreadCount}
             </span>
           )}
 
@@ -491,37 +620,39 @@ const UnifiedNotificationBell = ({
           <>
             {/* Backdrop */}
             <div
-              className="fixed inset-0 z-40"
+              className="fixed inset-0 z-40 bg-black/20 md:bg-transparent"
               onClick={() => setIsOpen(false)}
             />
 
             {/* Dropdown Panel */}
             <div
               ref={dropdownRef}
-              className="absolute right-0 mt-2 w-96 z-50 bg-background border rounded-lg shadow-lg max-h-[500px] overflow-hidden"
+              className={`absolute ${
+                isMobile ? "left-1/2 -translate-x-1/2" : "right-0"
+              } mt-2 ${dropdownWidth} z-50 bg-background border rounded-lg shadow-lg ${dropdownMaxHeight} overflow-hidden`}
             >
               {/* Header */}
-              <div className="p-4 border-b bg-muted/50">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-foreground">
+              <div className="p-3 md:p-4 border-b bg-muted/50">
+                <div className="flex items-center justify-between mb-2 md:mb-3">
+                  <h3 className="font-semibold text-sm md:text-base text-foreground">
                     Notifications
-                    {stats?.urgent > 0 && (
-                      <Badge variant="destructive" className="ml-2 text-xs">
-                        {stats.urgent} Urgent
+                    {isAdmin && (
+                      <Badge variant="outline" className="ml-2 text-xs">
+                        Admin
                       </Badge>
                     )}
                   </h3>
-                  <div className="flex items-center gap-2">
-                    {hasUnread && (
+                  <div className="flex items-center gap-1 md:gap-2">
+                    {userUnreadCount > 0 && (
                       <Button
                         onClick={handleMarkAllAsRead}
                         size="sm"
                         variant="outline"
-                        className="text-xs"
+                        className="text-xs h-7"
                         disabled={loading}
                       >
-                        <CheckCheck className="h-3 w-3 mr-1" />
-                        Mark all read
+                        <CheckCheck className="h-3 w-3 md:mr-1" />
+                        <span className="hidden md:inline">Mark all read</span>
                       </Button>
                     )}
                     <Button
@@ -536,24 +667,24 @@ const UnifiedNotificationBell = ({
                 </div>
 
                 {/* Search */}
-                <div className="relative mb-3">
+                <div className="relative mb-2 md:mb-3">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3 w-3 text-muted-foreground" />
                   <input
                     type="text"
-                    placeholder="Search notifications..."
+                    placeholder="Search..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:border-primary"
+                    className="w-full pl-9 pr-3 py-1.5 md:py-2 text-xs md:text-sm border rounded-lg bg-background focus:outline-none focus:border-primary"
                   />
                 </div>
 
                 {/* Filter Tabs */}
-                <div className="flex gap-1 overflow-x-auto">
+                <div className="flex gap-1 overflow-x-auto scrollbar-hide">
                   {getFilterOptions().map(({ key, label, count }) => (
                     <button
                       key={key}
                       onClick={() => setActiveFilter(key)}
-                      className={`px-3 py-1 text-sm rounded whitespace-nowrap ${
+                      className={`px-2 md:px-3 py-1 text-xs md:text-sm rounded whitespace-nowrap ${
                         activeFilter === key
                           ? "bg-primary text-primary-foreground"
                           : "bg-muted text-muted-foreground hover:bg-muted/80"
@@ -567,7 +698,7 @@ const UnifiedNotificationBell = ({
               </div>
 
               {/* Notifications List */}
-              <div className="overflow-y-auto max-h-80">
+              <div className="overflow-y-auto max-h-60 md:max-h-80">
                 {loading ? (
                   <div className="p-8 text-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
@@ -578,7 +709,7 @@ const UnifiedNotificationBell = ({
                 ) : error ? (
                   <div className="p-8 text-center">
                     <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-                    <p className="text-destructive mb-4">Error: {error}</p>
+                    <p className="text-destructive mb-4 text-sm">{error}</p>
                     <Button
                       onClick={() => refresh()}
                       variant="outline"
@@ -590,14 +721,16 @@ const UnifiedNotificationBell = ({
                 ) : filteredNotifications.length === 0 ? (
                   <div className="p-8 text-center">
                     <Bell className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <h4 className="font-medium mb-2 text-foreground">
+                    <h4 className="font-medium mb-2 text-sm md:text-base text-foreground">
                       {searchQuery
                         ? "No matching notifications"
                         : "No notifications"}
                     </h4>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs md:text-sm text-muted-foreground">
                       {searchQuery
                         ? "Try adjusting your search query"
+                        : isAdmin
+                        ? "No partnership requests at the moment"
                         : "You're all caught up! New notifications will appear here."}
                     </p>
                   </div>
@@ -613,14 +746,13 @@ const UnifiedNotificationBell = ({
                       );
                       const canReply =
                         notification.type === "feedback_request" &&
-                        canRespondToFeedback &&
-                        !notification.metadata?.response;
+                        canRespondToFeedback;
 
                       return (
                         <div
                           key={notification.id}
                           onClick={() => handleNotificationClick(notification)}
-                          className={`p-4 hover:bg-muted/50 cursor-pointer border-b transition-colors ${
+                          className={`p-3 md:p-4 hover:bg-muted/50 cursor-pointer border-b transition-colors ${
                             !notification.is_read
                               ? isUrgent
                                 ? config.urgentBg
@@ -628,17 +760,19 @@ const UnifiedNotificationBell = ({
                               : ""
                           }`}
                         >
-                          <div className="flex items-start gap-3">
+                          <div className="flex items-start gap-2 md:gap-3">
                             {/* Icon */}
-                            <div className={`${config.color} mt-1`}>
+                            <div
+                              className={`${config.color} mt-1 flex-shrink-0`}
+                            >
                               {config.icon}
                             </div>
 
                             {/* Content */}
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between mb-1">
+                              <div className="flex items-start justify-between mb-1 gap-2">
                                 <h4
-                                  className={`font-medium text-sm truncate ${
+                                  className={`font-medium text-xs md:text-sm truncate ${
                                     !notification.is_read
                                       ? "text-foreground"
                                       : "text-muted-foreground"
@@ -646,7 +780,7 @@ const UnifiedNotificationBell = ({
                                 >
                                   {notification.title}
                                 </h4>
-                                <div className="flex items-center gap-1 ml-2">
+                                <div className="flex items-center gap-1 flex-shrink-0">
                                   {getPriorityIndicator(notification)}
                                   {!notification.is_read && (
                                     <div className="w-2 h-2 bg-primary rounded-full"></div>
@@ -654,7 +788,7 @@ const UnifiedNotificationBell = ({
                                 </div>
                               </div>
 
-                              <p className="text-sm text-muted-foreground mb-2 line-clamp-2">
+                              <p className="text-xs md:text-sm text-muted-foreground mb-2 line-clamp-2">
                                 {notification.message}
                               </p>
 
@@ -662,26 +796,14 @@ const UnifiedNotificationBell = ({
                                 <span>
                                   {formatTime(notification.created_at)}
                                 </span>
-                                <div className="flex items-center gap-2">
-                                  {canReply && (
-                                    <div className="flex items-center gap-1 text-blue-600">
-                                      <Reply className="h-3 w-3" />
-                                      <span>Can Reply</span>
-                                    </div>
-                                  )}
-                                  {notification.sent_via && (
-                                    <div className="flex gap-1">
-                                      {notification.sent_via.map((channel) => (
-                                        <span
-                                          key={channel}
-                                          className="px-1 py-0.5 bg-muted rounded text-xs"
-                                        >
-                                          {channel}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
+                                {canReply && (
+                                  <div className="flex items-center gap-1 text-blue-600">
+                                    <Reply className="h-3 w-3" />
+                                    <span className="hidden md:inline">
+                                      Can Reply
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -692,32 +814,31 @@ const UnifiedNotificationBell = ({
                 )}
               </div>
 
-              {/* ✅ ENHANCED FOOTER */}
-              {!loading && (
-                <div className="p-3 border-t bg-muted/50 space-y-2">
-                  {/* Show preview count */}
+              {/* Footer */}
+              {!loading && userRelevantNotifications.length > 0 && (
+                <div className="p-2 md:p-3 border-t bg-muted/50 space-y-2">
                   <div className="text-xs text-center text-muted-foreground">
                     Showing{" "}
                     {Math.min(filteredNotifications.length, maxPreviewItems)}{" "}
-                    recent notifications
-                    {stats?.total > maxPreviewItems && (
+                    recent
+                    {userRelevantNotifications.length > maxPreviewItems && (
                       <span className="ml-1">
-                        • {stats.total - maxPreviewItems} more available
+                        • {userRelevantNotifications.length - maxPreviewItems}{" "}
+                        more
                       </span>
                     )}
                   </div>
 
-                  {/* View All Button */}
                   <Button
                     onClick={() => {
                       setIsOpen(false);
                       setAllNotificationsModal(true);
                     }}
                     variant="ghost"
-                    className="w-full text-sm"
+                    className="w-full text-xs md:text-sm h-8"
                   >
                     <MoreHorizontal className="h-4 w-4 mr-2" />
-                    View All Notifications ({stats?.total || 0})
+                    View All ({userRelevantNotifications.length})
                   </Button>
                 </div>
               )}
@@ -726,7 +847,7 @@ const UnifiedNotificationBell = ({
         )}
       </div>
 
-      {/* ✅ NOTIFICATION DETAILS MODAL */}
+      {/* Modals */}
       <NotificationDetailsModal
         isOpen={notificationDetailsModal.isOpen}
         onClose={() =>
@@ -739,35 +860,39 @@ const UnifiedNotificationBell = ({
         getFeedbackDetails={getFeedbackDetails}
       />
 
-      {/* ✅ ALL NOTIFICATIONS MODAL */}
       <AllNotificationsModal
         isOpen={allNotificationsModal}
         onClose={() => setAllNotificationsModal(false)}
-        allNotifications={allNotifications}
+        allNotifications={userRelevantNotifications}
         loading={loading}
         onMarkAsRead={markAsRead}
         onMarkAllAsRead={() =>
           markAsRead(
-            allNotifications.filter((n) => !n.is_read).map((n) => n.id)
+            userRelevantNotifications.filter((n) => !n.is_read).map((n) => n.id)
           )
         }
         onViewDetails={(notification) => {
           setAllNotificationsModal(false);
           setNotificationDetailsModal({ isOpen: true, notification });
         }}
-        stats={stats}
+        stats={{
+          ...stats,
+          total: userRelevantNotifications.length,
+          unread: userUnreadCount,
+        }}
         loadAllNotifications={loadAllNotifications}
       />
 
-      {/* ✅ FEEDBACK REPLY MODAL */}
-      <FeedbackReplyModal
-        isOpen={feedbackReplyModal.isOpen}
-        onClose={() =>
-          setFeedbackReplyModal({ isOpen: false, feedbackData: null })
-        }
-        feedbackData={feedbackReplyModal.feedbackData}
-        onSubmitReply={handleFeedbackReply}
-      />
+      {feedbackReplyModal.isOpen && (
+        <FeedbackReplyModal
+          isOpen={feedbackReplyModal.isOpen}
+          onClose={() =>
+            setFeedbackReplyModal({ isOpen: false, feedbackData: null })
+          }
+          feedbackData={feedbackReplyModal.feedbackData}
+          onSubmitReply={handleFeedbackReply}
+        />
+      )}
     </>
   );
 };
