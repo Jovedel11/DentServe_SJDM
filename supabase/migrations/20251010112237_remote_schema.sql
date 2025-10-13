@@ -490,7 +490,8 @@ create table "public"."treatment_plan_appointments" (
     "is_completed" boolean default false,
     "completion_notes" text,
     "recommended_next_visit_days" integer,
-    "created_at" timestamp with time zone default now()
+    "created_at" timestamp with time zone default now(),
+    "completed_at" timestamp with time zone,
 );
 
 
@@ -521,7 +522,8 @@ create table "public"."treatment_plans" (
     "updated_at" timestamp with time zone default now(),
     "completed_at" timestamp with time zone,
     "source_appointment_id" uuid,
-    "assigned_doctor_id" uuid
+    "assigned_doctor_id" uuid,
+    "last_visit_date" date null
 );
 
 
@@ -2699,6 +2701,12 @@ END;
         VALUES (appointment_id, NULL, p_treatment_plan_id);
     END IF;
 
+        reliability_check := check_patient_reliability(
+        patient_id_val,
+        p_clinic_id,
+        6  -- 6 months lookback
+    );
+
     -- ✅ Return response with FULL DATA STRUCTURE
     RETURN jsonb_build_object(
         'success', true,
@@ -2756,7 +2764,9 @@ END;
                 'policy_hours', COALESCE(validation_result.cancellation_policy_hours, 24),
                 'deadline', cancellation_deadline,
                 'can_cancel_now', NOW() < cancellation_deadline
-            )
+            ),
+            'patient_reliability', reliability_check,
+            'cross_clinic_context', appointment_limit_check->'data'->'cross_clinic_appointments'
         )
     );
 
@@ -5044,6 +5054,7 @@ DECLARE
     current_user_role TEXT;
     staff_clinic_id UUID;
     source_appointment_doctor_id UUID;
+    existing_treatment_plan_id UUID; -- ✅ NEW
 BEGIN
     current_context := get_current_user_context();
     
@@ -5086,7 +5097,9 @@ BEGIN
         END IF;
     END IF;
     
+    -- ✅ NEW: Check for duplicate treatment plan from same source appointment
     IF p_source_appointment_id IS NOT NULL THEN
+        -- Validate source appointment exists and is completed
         IF NOT EXISTS (
             SELECT 1 FROM appointments 
             WHERE id = p_source_appointment_id 
@@ -5097,6 +5110,23 @@ BEGIN
             RETURN jsonb_build_object('success', false, 'error', 'Invalid source appointment');
         END IF;
         
+        -- ✅ CRITICAL: Check if treatment plan already exists for this appointment
+        SELECT id INTO existing_treatment_plan_id
+        FROM treatment_plans
+        WHERE source_appointment_id = p_source_appointment_id
+        AND status IN ('active', 'paused')
+        LIMIT 1;
+        
+        IF existing_treatment_plan_id IS NOT NULL THEN
+            RETURN jsonb_build_object(
+                'success', false, 
+                'error', 'Treatment plan already exists for this appointment',
+                'existing_treatment_plan_id', existing_treatment_plan_id,
+                'reason', 'duplicate_prevention',
+                'message', 'A treatment plan has already been created from this appointment. Please use the existing plan or cancel it first.'
+            );
+        END IF;
+        
         IF p_assigned_doctor_id IS NULL THEN
             SELECT doctor_id INTO source_appointment_doctor_id
             FROM appointments 
@@ -5104,20 +5134,19 @@ BEGIN
         END IF;
     END IF;
     
-IF p_assigned_doctor_id IS NOT NULL THEN
-    -- ✅ Check through doctor_clinics junction table
-    IF NOT EXISTS (
-        SELECT 1 
-        FROM doctor_clinics dc
-        JOIN doctors d ON d.id = dc.doctor_id
-        WHERE dc.doctor_id = p_assigned_doctor_id 
-        AND dc.clinic_id = p_clinic_id
-        AND dc.is_active = true
-        AND d.is_available = true
-    ) THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Invalid doctor assignment or doctor not associated with this clinic');
+    IF p_assigned_doctor_id IS NOT NULL THEN
+        IF NOT EXISTS (
+            SELECT 1 
+            FROM doctor_clinics dc
+            JOIN doctors d ON d.id = dc.doctor_id
+            WHERE dc.doctor_id = p_assigned_doctor_id 
+            AND dc.clinic_id = p_clinic_id
+            AND dc.is_active = true
+            AND d.is_available = true
+        ) THEN
+            RETURN jsonb_build_object('success', false, 'error', 'Invalid doctor assignment or doctor not associated with this clinic');
+        END IF;
     END IF;
-END IF;
     
     INSERT INTO treatment_plans (
         patient_id,
@@ -5217,18 +5246,20 @@ END IF;
             'treatment_plan_id', v_treatment_plan_id,
             'patient_id', p_patient_id,
             'clinic_id', p_clinic_id,
+            'treatment_name', p_treatment_name,
             'status', 'active',
-            'initial_appointment_linked', p_initial_appointment_id IS NOT NULL,
-            'source_appointment_id', p_source_appointment_id,
-            'assigned_doctor_id', COALESCE(p_assigned_doctor_id, source_appointment_doctor_id),
-            'created_by', current_context->>'user_id',
-            'created_at', NOW()
+            'total_visits_planned', p_total_visits_planned,
+            'source_appointment_id', p_source_appointment_id
         )
     );
     
-EXCEPTION
-    WHEN OTHERS THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Failed to create treatment plan: ' || SQLERRM);
+    EXCEPTION
+        WHEN unique_violation THEN
+            RETURN jsonb_build_object(
+                'success', false,
+                'error', 'Treatment plan already exists for this appointment',
+                'reason', 'unique_violation'
+            );
 END;
 $function$;
 
@@ -8446,6 +8477,7 @@ END IF;
       tp.next_visit_date,
       tp.follow_up_interval_days,
       tp.patient_id,
+      tp.last_visit_date,
 
       up.first_name || ' ' || up.last_name as patient_name,
       
@@ -8558,6 +8590,7 @@ AND (
           'timeline', jsonb_build_object(
             'start_date', start_date,
             'expected_end_date', expected_end_date,
+            'last_visit_date', last_visit_date,
             'days_since_last_visit', days_since_last_visit,
             'is_overdue', is_overdue
           ),
@@ -14759,6 +14792,121 @@ END;
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION update_treatment_plan_on_appointment_completion()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    linked_treatment_plan_id UUID;
+    completed_visits_count INTEGER;
+    new_progress NUMERIC;
+BEGIN
+    -- Only process if appointment status changed to 'completed'
+    IF NEW.status = 'completed' AND OLD.status != 'completed' THEN
+        
+        RAISE NOTICE 'Appointment % completed, checking for treatment plan', NEW.id;
+        
+        -- ✅ FIX: Look in treatment_plan_appointments first (for follow-ups)
+        SELECT treatment_plan_id INTO linked_treatment_plan_id
+        FROM treatment_plan_appointments
+        WHERE appointment_id = NEW.id
+        LIMIT 1;
+        
+        -- ✅ FALLBACK: If not found, check appointment_services (for initial visits)
+        IF linked_treatment_plan_id IS NULL THEN
+            SELECT treatment_plan_id INTO linked_treatment_plan_id
+            FROM appointment_services
+            WHERE appointment_id = NEW.id
+            AND treatment_plan_id IS NOT NULL
+            LIMIT 1;
+        END IF;
+        
+        IF linked_treatment_plan_id IS NOT NULL THEN
+            RAISE NOTICE 'Found treatment plan % for appointment %', linked_treatment_plan_id, NEW.id;
+            
+            -- Update treatment_plan_appointments
+            UPDATE treatment_plan_appointments
+            SET 
+                is_completed = true,
+                completed_at = NOW()
+            WHERE appointment_id = NEW.id
+            AND treatment_plan_id = linked_treatment_plan_id
+            AND is_completed = false;  -- ✅ Only update if not already completed
+            
+            GET DIAGNOSTICS completed_visits_count = ROW_COUNT;
+            RAISE NOTICE 'Marked % visit(s) as completed', completed_visits_count;
+            
+            -- Calculate total completed visits
+            SELECT COUNT(*) INTO completed_visits_count
+            FROM treatment_plan_appointments
+            WHERE treatment_plan_id = linked_treatment_plan_id
+            AND is_completed = true;
+            
+            RAISE NOTICE 'Total completed visits: %', completed_visits_count;
+            
+            -- Calculate progress percentage
+            SELECT 
+                CASE 
+                    WHEN tp.total_visits_planned > 0 THEN
+                        LEAST(ROUND((completed_visits_count::NUMERIC / tp.total_visits_planned * 100), 1), 100)
+                    ELSE 0
+                END
+            INTO new_progress
+            FROM treatment_plans tp
+            WHERE tp.id = linked_treatment_plan_id;
+            
+            -- ✅ CRITICAL: Update treatment plan with all tracking fields
+            UPDATE treatment_plans
+            SET 
+                visits_completed = completed_visits_count,
+                progress_percentage = new_progress,
+                last_visit_date = NEW.appointment_date,  -- ✅ Track last visit
+                updated_at = NOW(),
+                -- Clear next_visit if this was it
+                next_visit_appointment_id = CASE 
+                    WHEN next_visit_appointment_id = NEW.id THEN NULL 
+                    ELSE next_visit_appointment_id 
+                END,
+                next_visit_date = CASE 
+                    WHEN next_visit_appointment_id = NEW.id THEN NULL 
+                    ELSE next_visit_date 
+                END
+            WHERE id = linked_treatment_plan_id;
+            
+            RAISE NOTICE 
+                'Updated treatment plan: visits=%/%, progress=%%%, last_visit=%', 
+                completed_visits_count,
+                (SELECT total_visits_planned FROM treatment_plans WHERE id = linked_treatment_plan_id),
+                new_progress,
+                NEW.appointment_date;
+            
+            -- ✅ Auto-complete if all visits done
+            UPDATE treatment_plans
+            SET 
+                status = 'completed',
+                actual_end_date = CURRENT_DATE,
+                completed_at = NOW(),
+                progress_percentage = 100,
+                next_visit_appointment_id = NULL,
+                next_visit_date = NULL
+            WHERE id = linked_treatment_plan_id
+            AND total_visits_planned IS NOT NULL
+            AND completed_visits_count >= total_visits_planned
+            AND status != 'completed';
+            
+            IF FOUND THEN
+                RAISE NOTICE 'Treatment plan % marked as completed!', linked_treatment_plan_id;
+            END IF;
+        ELSE
+            RAISE NOTICE 'No treatment plan found for appointment %', NEW.id;
+        END IF;
+    END IF;
+    
+    RETURN NEW;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.update_treatment_plan_progress(p_appointment_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -15582,62 +15730,6 @@ BEGIN
 END;
 $function$
 ;
-
-CREATE OR REPLACE FUNCTION update_treatment_plan_on_appointment_completion()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-    linked_treatment_plan_id UUID;
-BEGIN
-    -- Only process if appointment status changed to 'completed'
-    IF NEW.status = 'completed' AND OLD.status != 'completed' THEN
-        
-        -- Get the treatment plan ID from appointment_services
-        SELECT treatment_plan_id INTO linked_treatment_plan_id
-        FROM appointment_services
-        WHERE appointment_id = NEW.id
-        AND treatment_plan_id IS NOT NULL
-        LIMIT 1;
-        
-        IF linked_treatment_plan_id IS NOT NULL THEN
-            -- Update treatment_plan_appointments
-            UPDATE treatment_plan_appointments
-            SET 
-                is_completed = true,
-                completed_at = NOW()
-            WHERE appointment_id = NEW.id
-            AND treatment_plan_id = linked_treatment_plan_id;
-            
-            -- Update treatment plan visits_completed and progress
-            UPDATE treatment_plans
-            SET 
-                visits_completed = (
-                    SELECT COUNT(*)
-                    FROM treatment_plan_appointments
-                    WHERE treatment_plan_id = linked_treatment_plan_id
-                    AND is_completed = true
-                ),
-                progress_percentage = CASE 
-                    WHEN total_visits_planned > 0 THEN
-                        ROUND(((SELECT COUNT(*)
-                                FROM treatment_plan_appointments
-                                WHERE treatment_plan_id = linked_treatment_plan_id
-                                AND is_completed = true
-                        )::NUMERIC / total_visits_planned * 100), 1)
-                    ELSE NULL
-                END,
-                updated_at = NOW()
-            WHERE id = linked_treatment_plan_id;
-            
-            RAISE NOTICE 'Updated treatment plan % after appointment % completion', linked_treatment_plan_id, NEW.id;
-        END IF;
-    END IF;
-    
-    RETURN NEW;
-END;
-$$;
 
 CREATE OR REPLACE FUNCTION public.validate_archive_permissions(p_user_id uuid, p_user_role text, p_clinic_id uuid, p_item_type text, p_item_id uuid)
  RETURNS boolean
@@ -16794,7 +16886,6 @@ CREATE TRIGGER track_appointment_deletion_trigger BEFORE DELETE ON public.appoin
 
 CREATE TRIGGER update_appointments_updated_at BEFORE UPDATE ON public.appointments FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_treatment_progress_on_completion AFTER UPDATE ON public.appointments FOR EACH ROW WHEN ((new.status = 'completed'::appointment_status)) EXECUTE FUNCTION trigger_update_treatment_on_completion();
 
 CREATE TRIGGER validate_doctor_clinic_trigger BEFORE INSERT OR UPDATE ON public.appointments FOR EACH ROW EXECUTE FUNCTION validate_doctor_clinic_assignment();
 
@@ -16844,3 +16935,71 @@ CREATE TRIGGER on_email_verified AFTER UPDATE OF email_confirmed_at ON auth.user
 CREATE TRIGGER on_phone_verified AFTER UPDATE OF phone_confirmed_at ON auth.users FOR EACH ROW WHEN (((old.phone_confirmed_at IS NULL) AND (new.phone_confirmed_at IS NOT NULL))) EXECUTE FUNCTION handle_phone_verification();
 
 
+DO $$
+DECLARE
+    tp_record RECORD;
+    completed_count INTEGER;
+    new_prog NUMERIC;
+BEGIN
+    FOR tp_record IN 
+        SELECT DISTINCT tp.id, tp.total_visits_planned
+        FROM treatment_plans tp
+        WHERE tp.status = 'active'
+        AND EXISTS (
+            SELECT 1 FROM treatment_plan_appointments tpa
+            WHERE tpa.treatment_plan_id = tp.id
+            AND tpa.is_completed = true
+        )
+    LOOP
+        -- Count completed visits
+        SELECT COUNT(*) INTO completed_count
+        FROM treatment_plan_appointments
+        WHERE treatment_plan_id = tp_record.id
+        AND is_completed = true;
+        
+        -- Calculate progress
+        IF tp_record.total_visits_planned > 0 THEN
+            new_prog := LEAST(ROUND((completed_count::NUMERIC / tp_record.total_visits_planned * 100), 1), 100);
+        ELSE
+            new_prog := 0;
+        END IF;
+        
+        -- Update treatment plan
+        UPDATE treatment_plans
+        SET 
+            visits_completed = completed_count,
+            progress_percentage = new_prog,
+            last_visit_date = (
+                SELECT MAX(a.appointment_date)
+                FROM appointments a
+                JOIN treatment_plan_appointments tpa ON tpa.appointment_id = a.id
+                WHERE tpa.treatment_plan_id = tp_record.id
+                AND tpa.is_completed = true
+                AND a.status = 'completed'
+            ),
+            updated_at = NOW()
+        WHERE id = tp_record.id;
+        
+        -- ✅ Correct RAISE line (no line break after RAISE NOTICE)
+        RAISE NOTICE 'Backfilled treatment plan %: % visits, %%% complete', 
+            tp_record.id, 
+            completed_count, 
+            new_prog;
+        
+        -- Auto-complete if needed
+        IF tp_record.total_visits_planned IS NOT NULL AND completed_count >= tp_record.total_visits_planned THEN
+            UPDATE treatment_plans
+            SET 
+                status = 'completed',
+                actual_end_date = CURRENT_DATE,
+                completed_at = NOW(),
+                progress_percentage = 100
+            WHERE id = tp_record.id
+            AND status != 'completed';
+            
+            IF FOUND THEN
+                RAISE NOTICE 'Auto-completed treatment plan %', tp_record.id;
+            END IF;
+        END IF;
+    END LOOP;
+END $$;

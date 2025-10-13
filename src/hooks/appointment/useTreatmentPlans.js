@@ -309,11 +309,55 @@ export const useTreatmentPlans = () => {
     if (!isStaff && !isAdmin) {
       return { success: false, error: 'Only staff can link appointments' };
     }
-
+  
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
-
-      // insert into treatment_plan_appointments
+  
+      // ✅ NEW: Check if appointment is already linked to THIS treatment plan
+      const { data: existingLink, error: checkError } = await supabase
+        .from('treatment_plan_appointments')
+        .select('id, visit_number, treatment_plan_id')
+        .eq('appointment_id', appointmentId)
+        .eq('treatment_plan_id', treatmentPlanId)
+        .maybeSingle();
+  
+      if (checkError && checkError.code !== 'PGRST116') {  // PGRST116 = no rows
+        throw checkError;
+      }
+  
+      if (existingLink) {
+        setState(prev => ({ ...prev, loading: false }));
+        return {
+          success: false,
+          error: 'This appointment is already linked to this treatment plan',
+          existing: existingLink,
+          reason: 'duplicate_link'
+        };
+      }
+  
+      // ✅ NEW: Check if appointment is linked to ANY other treatment plan
+      const { data: otherPlanLink, error: otherCheckError } = await supabase
+        .from('treatment_plan_appointments')
+        .select('id, visit_number, treatment_plan:treatment_plans!inner(id, treatment_name, status)')
+        .eq('appointment_id', appointmentId)
+        .neq('treatment_plan_id', treatmentPlanId)
+        .maybeSingle();
+  
+      if (otherCheckError && otherCheckError.code !== 'PGRST116') {
+        throw otherCheckError;
+      }
+  
+      if (otherPlanLink && otherPlanLink.treatment_plan?.status === 'active') {
+        setState(prev => ({ ...prev, loading: false }));
+        return {
+          success: false,
+          error: `This appointment is already linked to treatment plan "${otherPlanLink.treatment_plan.treatment_name}"`,
+          existing: otherPlanLink,
+          reason: 'linked_to_different_plan'
+        };
+      }
+  
+      // Insert into treatment_plan_appointments
       const { data: tpaData, error: tpaError } = await supabase
         .from('treatment_plan_appointments')
         .insert({
@@ -324,26 +368,26 @@ export const useTreatmentPlans = () => {
         })
         .select()
         .single();
-
+  
       if (tpaError) throw tpaError;
-
-      //link appointment_services to treatment plan
+  
+      // Link appointment_services to treatment plan
       const { error: servicesError } = await supabase
         .from('appointment_services')
         .update({ treatment_plan_id: treatmentPlanId })
         .eq('appointment_id', appointmentId);
-
+  
       if (servicesError) {
         console.warn('Failed to link appointment_services:', servicesError);
       }
-
-      // treatment_plans.next_visit_appointment_id if needed
+  
+      // Update treatment_plans.next_visit_appointment_id if needed
       const { data: appointment } = await supabase
         .from('appointments')
         .select('appointment_date, status')
         .eq('id', appointmentId)
         .single();
-
+  
       if (appointment && appointment.status === 'confirmed') {
         await supabase
           .from('treatment_plans')
@@ -353,18 +397,18 @@ export const useTreatmentPlans = () => {
           })
           .eq('id', treatmentPlanId);
       }
-
+  
       setState(prev => ({ ...prev, loading: false }));
-
-      //Refresh treatments
+  
+      // Refresh treatments
       await getOngoingTreatments();
-
+  
       return {
         success: true,
         data: tpaData,
         message: 'Appointment linked to treatment plan successfully'
       };
-
+  
     } catch (err) {
       const errorMsg = err.message || 'Failed to link appointment';
       setState(prev => ({ ...prev, loading: false, error: errorMsg }));
@@ -420,25 +464,22 @@ export const useTreatmentPlans = () => {
     }
   }, [isStaff, isAdmin, profile?.role_specific_data?.clinic_id]);
 
-    const createTreatmentPlanFromAppointment = useCallback(async (appointmentData) => {
+  const createTreatmentPlanFromAppointment = useCallback(async (appointmentData) => {
     if (!isStaff && !isAdmin) {
       return { success: false, error: 'Only staff can create treatment plans' };
     }
-
+  
     const {
       appointmentId,
       patientId,
       clinicId,
       doctorId,
-      // From medical history
       recommendedTreatmentName,
       diagnosisSummary,
       recommendedVisits,
-      // Optional overrides
       treatmentCategory,
       followUpIntervalDays,
       assignedDoctorId,
-
       patientEmail,
       patientFirstName,
       clinicName,
@@ -446,7 +487,7 @@ export const useTreatmentPlans = () => {
       clinicEmail,
       doctorName
     } = appointmentData;
-
+  
     // Validate required fields
     if (!appointmentId || !patientId || !clinicId || !recommendedTreatmentName) {
       return {
@@ -454,7 +495,34 @@ export const useTreatmentPlans = () => {
         error: 'Missing required fields: appointmentId, patientId, clinicId, and treatment name are required'
       };
     }
-
+  
+    // ✅ NEW: Check if appointment already has a treatment plan
+    try {
+      const { data: existingPlans, error: checkError } = await supabase
+        .from('treatment_plans')
+        .select('id, treatment_name, status, created_at')
+        .eq('source_appointment_id', appointmentId)
+        .in('status', ['active', 'paused']);
+  
+      if (checkError) {
+        console.error('Error checking existing treatment plans:', checkError);
+        // Continue anyway - the database function will handle it
+      }
+  
+      if (existingPlans && existingPlans.length > 0) {
+        const existing = existingPlans[0];
+        return {
+          success: false,
+          error: `Treatment plan "${existing.treatment_name}" already exists for this appointment`,
+          existing: existing,
+          reason: 'duplicate_treatment_plan',
+          suggestion: 'Use the existing treatment plan or cancel it before creating a new one'
+        };
+      }
+    } catch (err) {
+      console.warn('Pre-check failed, proceeding with creation:', err);
+    }
+  
     return await createTreatmentPlan({
       patientId,
       clinicId,

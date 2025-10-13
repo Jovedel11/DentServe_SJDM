@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   Clock,
   User,
@@ -59,6 +59,79 @@ const AppointmentCard = ({
 
   const hasTreatmentPlan = appointment.treatment_plan != null;
 
+  // ✅ ENHANCED: Calculate accurate fees based on booking type
+  const feeBreakdown = useMemo(() => {
+    const bookingType = appointment.booking_type;
+    const services = appointment.services || [];
+    const consultationFee = appointment.consultation_fee_charged || 0;
+
+    // Calculate service fees from services array
+    const serviceFees = services.reduce((total, service) => {
+      // Use min_price or average of min/max price
+      const servicePrice = service.min_price || 0;
+      return total + servicePrice;
+    }, 0);
+
+    let totalEstimate = 0;
+    let label = "Estimated Fee:";
+    let breakdown = [];
+
+    switch (bookingType) {
+      case "consultation_only":
+        totalEstimate = consultationFee;
+        label = "Consultation Fee:";
+        breakdown = [{ label: "Consultation", amount: consultationFee }];
+        break;
+
+      case "service_only":
+        totalEstimate = serviceFees;
+        label = "Service Fee:";
+        breakdown = services.map((s) => ({
+          label: s.name,
+          amount: s.min_price || 0,
+        }));
+        break;
+
+      case "consultation_with_service":
+        totalEstimate = consultationFee + serviceFees;
+        label = "Total Estimated Fee:";
+        breakdown = [
+          { label: "Consultation", amount: consultationFee },
+          ...services.map((s) => ({
+            label: s.name,
+            amount: s.min_price || 0,
+          })),
+        ];
+        break;
+
+      case "treatment_plan_follow_up":
+        // For treatment follow-ups, show service fees if available
+        totalEstimate = serviceFees > 0 ? serviceFees : consultationFee;
+        label = "Treatment Visit Fee:";
+        breakdown =
+          services.length > 0
+            ? services.map((s) => ({ label: s.name, amount: s.min_price || 0 }))
+            : [{ label: "Follow-up Visit", amount: consultationFee }];
+        break;
+
+      default:
+        totalEstimate = consultationFee;
+        label = "Estimated Fee:";
+        breakdown = [{ label: "Fee", amount: consultationFee }];
+    }
+
+    return {
+      total: totalEstimate,
+      label,
+      breakdown,
+      hasBreakdown: breakdown.length > 1 || services.length > 0,
+    };
+  }, [
+    appointment.booking_type,
+    appointment.services,
+    appointment.consultation_fee_charged,
+  ]);
+
   return (
     <div
       className={`bg-card rounded-xl border p-6 hover:shadow-lg transition-all duration-300 ${
@@ -66,16 +139,20 @@ const AppointmentCard = ({
       }`}
     >
       {hasTreatmentPlan && (
-        <div className="text-xs text-muted-foreground">
-          <Activity className="w-3 h-3 inline mr-1" />
-          Treatment: {appointment.treatment_plan.treatment_name}
-          {appointment.treatment_plan.progress_percentage && (
-            <span className="ml-2">
-              ({appointment.treatment_plan.progress_percentage}% complete)
-            </span>
-          )}
+        <div className="mb-3 p-2 bg-orange-50 border border-orange-200 rounded-lg">
+          <div className="flex items-center gap-2 text-xs text-orange-800">
+            <Activity className="w-3 h-3" />
+            <span className="font-medium">Linked to Treatment:</span>
+            <span>{appointment.treatment_plan.treatment_name}</span>
+            {appointment.treatment_plan.progress_percentage != null && (
+              <Badge variant="outline" className="ml-auto text-xs">
+                {appointment.treatment_plan.progress_percentage}% complete
+              </Badge>
+            )}
+          </div>
         </div>
       )}
+
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div className="flex-1">
@@ -180,35 +257,43 @@ const AppointmentCard = ({
         </div>
       </div>
 
-      {/* Consultation Fee Info */}
-      {appointment.consultation_fee_charged != null && (
-        <div className="mb-4 p-3 bg-muted/50 rounded-lg border">
-          <div className="flex items-center justify-between">
+      {/* ✅ ENHANCED: Fee Information with Breakdown */}
+      {feeBreakdown.total > 0 && (
+        <div className="mb-4 p-4 bg-muted/50 rounded-lg border">
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm font-medium text-foreground">
-                {/* ✅ FIXED: Show correct label based on booking type */}
-                {appointment.booking_type === "consultation_only"
-                  ? "Consultation Fee:"
-                  : appointment.booking_type === "service_only"
-                  ? "Service Fee:"
-                  : appointment.booking_type === "treatment_plan_follow_up"
-                  ? "Treatment Fee:"
-                  : "Estimated Fee:"}
+                {feeBreakdown.label}
               </span>
             </div>
-            <span className="font-bold text-foreground">
-              ₱{Number(appointment.consultation_fee_charged).toLocaleString()}
+            <span className="font-bold text-lg text-foreground">
+              ₱{Number(feeBreakdown.total).toLocaleString()}
             </span>
           </div>
-          {/* ✅ NEW: Show breakdown hint for non-consultation bookings */}
-          {appointment.booking_type !== "consultation_only" &&
-            appointment.services &&
-            appointment.services.length > 0 && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Includes {appointment.services.map((s) => s.name).join(", ")}
-              </p>
-            )}
+
+          {/* ✅ NEW: Fee Breakdown */}
+          {feeBreakdown.hasBreakdown && feeBreakdown.breakdown.length > 1 && (
+            <div className="mt-3 pt-3 border-t border-border space-y-1">
+              <p className="text-xs text-muted-foreground mb-2">Breakdown:</p>
+              {feeBreakdown.breakdown.map((item, idx) => (
+                <div key={idx} className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">{item.label}:</span>
+                  <span className="font-medium">
+                    ₱{Number(item.amount).toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Note about estimates */}
+          {appointment.booking_type !== "consultation_only" && (
+            <p className="text-xs text-muted-foreground mt-2 italic">
+              * Actual fees may vary. Final cost will be determined at the
+              clinic.
+            </p>
+          )}
         </div>
       )}
 

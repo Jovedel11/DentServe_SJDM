@@ -249,6 +249,32 @@ export const useAppointmentManagement = (options = {}) => {
     try {
       setState(prev => ({ ...prev, loading: true }));
   
+      // ✅ NEW: Validate completion data
+      if (completionData.requiresTreatmentPlan) {
+        if (!completionData.recommendedTreatmentName || completionData.recommendedTreatmentName.trim() === '') {
+          throw new Error('Treatment name is required when recommending a treatment plan');
+        }
+        if (!completionData.diagnosisSummary || completionData.diagnosisSummary.trim() === '') {
+          throw new Error('Diagnosis summary is required when recommending a treatment plan');
+        }
+      }
+  
+      // ✅ NEW: Validate services completed
+      if (completionData.servicesCompleted && completionData.servicesCompleted.length > 0) {
+        const appointment = state.appointments.find(apt => apt.id === appointmentId);
+        if (appointment) {
+          const scheduledServiceIds = appointment.services?.map(s => s.id) || [];
+          const invalidServices = completionData.servicesCompleted.filter(
+            serviceId => !scheduledServiceIds.includes(serviceId)
+          );
+          
+          if (invalidServices.length > 0) {
+            console.warn('Some completed services were not originally scheduled:', invalidServices);
+            // Allow but warn - services may have been added during appointment
+          }
+        }
+      }
+  
       const { data, error } = await supabase.rpc('complete_appointment', {
         p_appointment_id: appointmentId,
         p_completion_notes: completionData.notes || '',
@@ -268,7 +294,7 @@ export const useAppointmentManagement = (options = {}) => {
       // Get appointment details for email
       const appointment = state.appointments.find(apt => apt.id === appointmentId);
   
-      // ✅ NEW: Send completion email to patient
+      // Send completion email to patient
       if (appointment) {
         const feedbackUrl = `${window.location.origin}/patient/feedback?appointment=${appointmentId}`;
         
@@ -309,7 +335,13 @@ export const useAppointmentManagement = (options = {}) => {
       return { 
         success: true, 
         data: data.data, 
-        message: data.message 
+        message: data.message,
+        requiresTreatmentPlan: completionData.requiresTreatmentPlan,
+        treatmentPlanRecommendation: completionData.requiresTreatmentPlan ? {
+          treatmentName: completionData.recommendedTreatmentName,
+          diagnosis: completionData.diagnosisSummary,
+          recommendedVisits: completionData.recommendedVisits
+        } : null
       };
   
     } catch (err) {

@@ -14,7 +14,7 @@ import {
   CardTitle,
 } from "@/core/components/ui/card";
 import { Alert, AlertDescription } from "@/core/components/ui/alert";
-import { Loader2, MapPin, Upload, X } from "lucide-react";
+import { Loader2, MapPin, Upload, X, Plus, Trash2 } from "lucide-react";
 import { useImageUpload } from "@/hooks/file_upload/useImageUpload";
 
 const StaffCompleteProfile = () => {
@@ -32,43 +32,48 @@ const StaffCompleteProfile = () => {
 
   const clinicImageUpload = useImageUpload({
     uploadType: "general",
-    maxSizeMB: 2, // Compress to 2MB
+    maxSizeMB: 2,
     maxWidthOrHeight: 1200,
     autoCompress: true,
     folder: "clinics",
-    maxFileSize: 10 * 1024 * 1024, // 10MB max
+    maxFileSize: 10 * 1024 * 1024,
   });
 
   const doctorImageUpload = useImageUpload({
     uploadType: "general",
-    maxSizeMB: 1, // Compress to 1MB
+    maxSizeMB: 1,
     maxWidthOrHeight: 800,
     autoCompress: true,
     folder: "doctors",
-    maxFileSize: 5 * 1024 * 1024, // 5MB max
+    maxFileSize: 5 * 1024 * 1024,
   });
 
+  // ✅ ENHANCED: Complete clinic data with description and timezone
   const [formData, setFormData] = useState({
     clinicName: clinicName || "",
+    clinicDescription: "", // ✅ NEW
     clinicAddress: "",
     clinicCity: "San Jose Del Monte",
     clinicProvince: "Bulacan",
     clinicZipCode: "",
     clinicPhone: "",
     clinicEmail: user?.email || "",
-    clinicImageUrl: "", // 🆕
+    clinicWebsite: "", // ✅ NEW
+    clinicImageUrl: "",
+    timezone: "Asia/Manila", // ✅ NEW
 
     latitude: 14.8169,
     longitude: 121.0583,
 
+    // ✅ FIXED: Proper operating hours structure matching database
     operatingHours: {
-      monday: { isOpen: true, open: "09:00", close: "17:00" },
-      tuesday: { isOpen: true, open: "09:00", close: "17:00" },
-      wednesday: { isOpen: true, open: "09:00", close: "17:00" },
-      thursday: { isOpen: true, open: "09:00", close: "17:00" },
-      friday: { isOpen: true, open: "09:00", close: "17:00" },
-      saturday: { isOpen: false, open: "09:00", close: "12:00" },
-      sunday: { isOpen: false, open: "", close: "" },
+      monday: { isOpen: true, start: "09:00", end: "17:00" },
+      tuesday: { isOpen: true, start: "09:00", end: "17:00" },
+      wednesday: { isOpen: true, start: "09:00", end: "17:00" },
+      thursday: { isOpen: true, start: "09:00", end: "17:00" },
+      friday: { isOpen: true, start: "09:00", end: "17:00" },
+      saturday: { isOpen: false, start: "09:00", end: "12:00" },
+      sunday: { isOpen: false, start: "", end: "" },
     },
   });
 
@@ -82,7 +87,7 @@ const StaffCompleteProfile = () => {
     max_price: "",
   });
 
-  // 🆕 DOCTORS STATE WITH IMAGE
+  // ✅ ENHANCED: Complete doctor state with certifications and awards
   const [doctors, setDoctors] = useState([]);
   const [newDoctor, setNewDoctor] = useState({
     first_name: "",
@@ -94,9 +99,18 @@ const StaffCompleteProfile = () => {
     bio: "",
     consultation_fee: "",
     languages_spoken: ["English", "Tagalog"],
+    certifications: [], // ✅ NEW: Array of {name, year}
+    awards: [], // ✅ NEW: Array of strings
     image_url: "",
-    uploadingImage: false, // 🆕 Local upload state
+    uploadingImage: false,
   });
+
+  // ✅ NEW: Temporary state for adding certifications
+  const [newCertification, setNewCertification] = useState({
+    name: "",
+    year: "",
+  });
+  const [newAward, setNewAward] = useState("");
 
   const serviceCategories = [
     "General Dentistry",
@@ -143,6 +157,7 @@ const StaffCompleteProfile = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  // ✅ FIXED: Use 'start' and 'end' instead of 'open' and 'close'
   const handleTimeChange = (day, field, value) => {
     setFormData((prev) => ({
       ...prev,
@@ -208,7 +223,7 @@ const StaffCompleteProfile = () => {
     }
   };
 
-  // 🆕 CLINIC IMAGE UPLOAD HANDLER
+  // Clinic image handlers
   const handleClinicImageSelect = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -273,7 +288,59 @@ const StaffCompleteProfile = () => {
     setServices((prev) => prev.filter((s) => s.id !== id));
   };
 
-  // 🆕 DOCTOR MANAGEMENT
+  // ✅ NEW: Certification management
+  const addCertification = () => {
+    if (!newCertification.name.trim()) {
+      setError("Certification name is required");
+      setTimeout(() => setError(""), 3000);
+      return;
+    }
+
+    setNewDoctor((prev) => ({
+      ...prev,
+      certifications: [
+        ...prev.certifications,
+        {
+          name: newCertification.name,
+          year: newCertification.year ? parseInt(newCertification.year) : null,
+        },
+      ],
+    }));
+
+    setNewCertification({ name: "", year: "" });
+  };
+
+  const removeCertification = (index) => {
+    setNewDoctor((prev) => ({
+      ...prev,
+      certifications: prev.certifications.filter((_, i) => i !== index),
+    }));
+  };
+
+  // ✅ NEW: Award management
+  const addAward = () => {
+    if (!newAward.trim()) {
+      setError("Award name is required");
+      setTimeout(() => setError(""), 3000);
+      return;
+    }
+
+    setNewDoctor((prev) => ({
+      ...prev,
+      awards: [...prev.awards, newAward],
+    }));
+
+    setNewAward("");
+  };
+
+  const removeAward = (index) => {
+    setNewDoctor((prev) => ({
+      ...prev,
+      awards: prev.awards.filter((_, i) => i !== index),
+    }));
+  };
+
+  // Doctor management
   const handleDoctorInputChange = (e) => {
     const { name, value } = e.target;
     setNewDoctor((prev) => ({ ...prev, [name]: value }));
@@ -292,7 +359,6 @@ const StaffCompleteProfile = () => {
     setNewDoctor((prev) => ({ ...prev, uploadingImage: true }));
 
     try {
-      // Use the pre-initialized hook
       const selectResult = await doctorImageUpload.selectFile(file);
 
       if (!selectResult.success) {
@@ -311,7 +377,7 @@ const StaffCompleteProfile = () => {
           uploadingImage: false,
         }));
         console.log("✅ Doctor image uploaded:", uploadResult.data.imageUrl);
-        doctorImageUpload.reset(); // Clean up after successful upload
+        doctorImageUpload.reset();
       } else {
         setError(uploadResult.error || "Failed to upload doctor image");
         setNewDoctor((prev) => ({ ...prev, uploadingImage: false }));
@@ -351,6 +417,8 @@ const StaffCompleteProfile = () => {
       bio: "",
       consultation_fee: "",
       languages_spoken: ["English", "Tagalog"],
+      certifications: [],
+      awards: [],
       image_url: "",
       uploadingImage: false,
     });
@@ -382,6 +450,32 @@ const StaffCompleteProfile = () => {
     return null;
   };
 
+  // ✅ CRITICAL: Transform operating hours to match database format
+  const transformOperatingHoursForDatabase = (hours) => {
+    const weekdays = {};
+    const weekends = {};
+
+    Object.entries(hours).forEach(([day, config]) => {
+      if (!config.isOpen) return; // Skip closed days
+
+      const dayData = {
+        start: config.start,
+        end: config.end,
+      };
+
+      if (day === "saturday" || day === "sunday") {
+        weekends[day] = dayData;
+      } else {
+        weekdays[day] = dayData;
+      }
+    });
+
+    return {
+      weekdays,
+      weekends,
+    };
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -397,18 +491,24 @@ const StaffCompleteProfile = () => {
 
       const profileData = {};
 
+      // ✅ ENHANCED: Complete clinic data with all fields
       const clinicData = {
         name: formData.clinicName,
+        description: formData.clinicDescription || null, // ✅ NEW
         address: formData.clinicAddress,
         city: formData.clinicCity,
         province: formData.clinicProvince,
-        zip_code: formData.clinicZipCode,
+        zip_code: formData.clinicZipCode || null,
         phone: formData.clinicPhone,
         email: formData.clinicEmail,
-        operating_hours: formData.operatingHours,
+        website_url: formData.clinicWebsite || null, // ✅ NEW
+        operating_hours: transformOperatingHoursForDatabase(
+          formData.operatingHours
+        ), // ✅ FIXED
         latitude: parseFloat(formData.latitude),
         longitude: parseFloat(formData.longitude),
-        image_url: formData.clinicImageUrl || null, // 🆕
+        image_url: formData.clinicImageUrl || null,
+        timezone: formData.timezone, // ✅ NEW
       };
 
       const servicesData = services.map((service) => ({
@@ -422,7 +522,7 @@ const StaffCompleteProfile = () => {
         priority: 10,
       }));
 
-      // 🆕 DOCTORS DATA WITH IMAGE
+      // ✅ ENHANCED: Complete doctors data with certifications and awards
       const doctorsData = doctors.map((doctor) => ({
         first_name: doctor.first_name,
         last_name: doctor.last_name,
@@ -437,7 +537,10 @@ const StaffCompleteProfile = () => {
           ? parseFloat(doctor.consultation_fee)
           : null,
         languages_spoken: doctor.languages_spoken,
-        image_url: doctor.image_url || null, // 🆕
+        certifications:
+          doctor.certifications.length > 0 ? doctor.certifications : null, // ✅ NEW
+        awards: doctor.awards.length > 0 ? doctor.awards : null, // ✅ NEW
+        image_url: doctor.image_url || null,
         is_available: true,
       }));
 
@@ -506,19 +609,17 @@ const StaffCompleteProfile = () => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* 🆕 CLINIC IMAGE UPLOAD */}
+            {/* Clinic Image Upload */}
             <div className="space-y-3 border rounded-lg p-4 bg-blue-50">
               <Label className="text-base font-semibold">Clinic Image</Label>
               <p className="text-sm text-muted-foreground">
                 Upload the clinic's logo or a representative image.
               </p>
-              {/* 🆕 SIZE LIMIT WARNING */}
               <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
                 <span>⚠️</span>
                 <span>
                   Maximum file size:{" "}
-                  <strong>{FILE_SIZE_LIMITS.clinic.display}</strong> (Free tier
-                  limit)
+                  <strong>{FILE_SIZE_LIMITS.clinic.display}</strong>
                 </span>
               </div>
 
@@ -582,7 +683,7 @@ const StaffCompleteProfile = () => {
                       Click to upload clinic image
                     </p>
                     <p className="text-xs text-gray-500">
-                      JPEG, PNG, or WebP (Max 5MB)
+                      JPEG, PNG, or WebP (Max 10MB)
                     </p>
                   </div>
                   <input
@@ -622,8 +723,33 @@ const StaffCompleteProfile = () => {
                   value={formData.clinicPhone}
                   onChange={handleInputChange}
                   required
+                  placeholder="+639171234567"
                 />
               </div>
+            </div>
+
+            {/* ✅ NEW: Description & Website */}
+            <div className="space-y-2">
+              <Label htmlFor="clinicDescription">Description (Optional)</Label>
+              <Textarea
+                id="clinicDescription"
+                name="clinicDescription"
+                value={formData.clinicDescription}
+                onChange={handleInputChange}
+                rows={3}
+                placeholder="Brief description of your clinic and services..."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="clinicWebsite">Website URL (Optional)</Label>
+              <Input
+                id="clinicWebsite"
+                name="clinicWebsite"
+                value={formData.clinicWebsite}
+                onChange={handleInputChange}
+                placeholder="https://www.yourdentalclinic.com"
+              />
             </div>
 
             {/* Address */}
@@ -635,28 +761,31 @@ const StaffCompleteProfile = () => {
                 value={formData.clinicAddress}
                 onChange={handleInputChange}
                 required
+                placeholder="Street address, building, etc."
               />
             </div>
 
             {/* City, Province, Zip */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="clinicCity">City</Label>
+                <Label htmlFor="clinicCity">City *</Label>
                 <Input
                   id="clinicCity"
                   name="clinicCity"
                   value={formData.clinicCity}
                   onChange={handleInputChange}
+                  required
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="clinicProvince">Province</Label>
+                <Label htmlFor="clinicProvince">Province *</Label>
                 <Input
                   id="clinicProvince"
                   name="clinicProvince"
                   value={formData.clinicProvince}
                   onChange={handleInputChange}
+                  required
                 />
               </div>
 
@@ -667,6 +796,7 @@ const StaffCompleteProfile = () => {
                   name="clinicZipCode"
                   value={formData.clinicZipCode}
                   onChange={handleInputChange}
+                  placeholder="3023"
                 />
               </div>
             </div>
@@ -689,7 +819,8 @@ const StaffCompleteProfile = () => {
               </div>
 
               <p className="text-sm text-muted-foreground">
-                This helps patients find your clinic on the map.
+                This helps patients find your clinic on the map. Click "Use
+                Current Location" or enter coordinates manually.
               </p>
 
               <div className="grid grid-cols-2 gap-4">
@@ -756,9 +887,12 @@ const StaffCompleteProfile = () => {
               )}
             </div>
 
-            {/* Operating Hours */}
+            {/* ✅ FIXED: Operating Hours with proper field names */}
             <div className="space-y-3">
               <h4 className="font-semibold">Operating Hours</h4>
+              <p className="text-sm text-muted-foreground">
+                Set your clinic's working hours for each day
+              </p>
               {Object.keys(formData.operatingHours).map((day) => (
                 <div key={day} className="flex items-center gap-4">
                   <div className="w-32">
@@ -768,25 +902,25 @@ const StaffCompleteProfile = () => {
                         checked={formData.operatingHours[day].isOpen}
                         onChange={() => handleDayToggle(day)}
                       />
-                      <span className="capitalize">{day}</span>
+                      <span className="capitalize font-medium">{day}</span>
                     </label>
                   </div>
                   {formData.operatingHours[day].isOpen && (
                     <>
                       <Input
                         type="time"
-                        value={formData.operatingHours[day].open}
+                        value={formData.operatingHours[day].start}
                         onChange={(e) =>
-                          handleTimeChange(day, "open", e.target.value)
+                          handleTimeChange(day, "start", e.target.value)
                         }
                         className="w-32"
                       />
                       <span>to</span>
                       <Input
                         type="time"
-                        value={formData.operatingHours[day].close}
+                        value={formData.operatingHours[day].end}
                         onChange={(e) =>
-                          handleTimeChange(day, "close", e.target.value)
+                          handleTimeChange(day, "end", e.target.value)
                         }
                         className="w-32"
                       />
@@ -903,7 +1037,7 @@ const StaffCompleteProfile = () => {
           </CardContent>
         </Card>
 
-        {/* 🆕 DOCTORS CARD WITH IMAGE */}
+        {/* ✅ ENHANCED: DOCTORS CARD with Certifications and Awards */}
         <Card>
           <CardHeader>
             <CardTitle>3. Doctors *</CardTitle>
@@ -913,7 +1047,7 @@ const StaffCompleteProfile = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="border p-4 rounded-lg space-y-3 bg-green-50">
-              {/* 🆕 DOCTOR IMAGE UPLOAD */}
+              {/* Doctor Image Upload */}
               <div className="space-y-2">
                 <Label>Doctor Photo (Optional)</Label>
                 <p className="text-xs text-muted-foreground">
@@ -1033,6 +1167,105 @@ const StaffCompleteProfile = () => {
                 />
               </div>
 
+              {/* ✅ NEW: Certifications Section */}
+              <div className="border-t pt-3 space-y-2">
+                <Label className="font-semibold">
+                  Certifications (Optional)
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Certification name"
+                    value={newCertification.name}
+                    onChange={(e) =>
+                      setNewCertification((prev) => ({
+                        ...prev,
+                        name: e.target.value,
+                      }))
+                    }
+                  />
+                  <Input
+                    type="number"
+                    placeholder="Year"
+                    value={newCertification.year}
+                    onChange={(e) =>
+                      setNewCertification((prev) => ({
+                        ...prev,
+                        year: e.target.value,
+                      }))
+                    }
+                    className="w-32"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addCertification}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {newDoctor.certifications.length > 0 && (
+                  <div className="space-y-1">
+                    {newDoctor.certifications.map((cert, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between bg-white p-2 rounded text-sm"
+                      >
+                        <span>
+                          {cert.name} {cert.year && `(${cert.year})`}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeCertification(index)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ✅ NEW: Awards Section */}
+              <div className="border-t pt-3 space-y-2">
+                <Label className="font-semibold">Awards (Optional)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Award name"
+                    value={newAward}
+                    onChange={(e) => setNewAward(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addAward}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {newDoctor.awards.length > 0 && (
+                  <div className="space-y-1">
+                    {newDoctor.awards.map((award, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between bg-white p-2 rounded text-sm"
+                      >
+                        <span>{award}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeAward(index)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <Button
                 type="button"
                 onClick={addDoctor}
@@ -1073,6 +1306,16 @@ const StaffCompleteProfile = () => {
                           {doctor.experience_years} years experience
                         </p>
                       )}
+                      {doctor.certifications.length > 0 && (
+                        <p className="text-xs text-green-700">
+                          {doctor.certifications.length} certification(s)
+                        </p>
+                      )}
+                      {doctor.awards.length > 0 && (
+                        <p className="text-xs text-blue-700">
+                          {doctor.awards.length} award(s)
+                        </p>
+                      )}
                     </div>
                     <Button
                       type="button"
@@ -1105,6 +1348,8 @@ const StaffCompleteProfile = () => {
                 <li>✓ Services: {services.length} added</li>
                 <li>✓ Doctors: {doctors.length} added</li>
                 {formData.clinicImageUrl && <li>✓ Clinic image uploaded</li>}
+                {formData.clinicDescription && <li>✓ Description added</li>}
+                {formData.clinicWebsite && <li>✓ Website URL added</li>}
               </ul>
             </div>
 

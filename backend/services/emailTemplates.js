@@ -149,8 +149,8 @@ const newAppointmentRequest = ({ patient, appointment, clinic, doctor, services,
       'info'
     ) : ''}
 
-    ${patient.reliability?.risk_level !== 'reliable' ? alertBox(
-      `NOTICE: Patient has ${patient.reliability.no_show_count || 0} no-shows and ${patient.reliability.completion_rate || 0}% completion rate.`,
+    ${patient.reliability && patient.reliability.risk_level && patient.reliability.risk_level !== 'reliable' && patient.reliability.statistics ? alertBox(
+      `NOTICE: Patient has ${patient.reliability.statistics.no_show_count || 0} no-shows and ${patient.reliability.statistics.completion_rate || 0}% completion rate.`,
       'warning'
     ) : ''}
 

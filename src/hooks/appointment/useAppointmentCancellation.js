@@ -54,31 +54,39 @@ export const useAppointmentCancellation = () => {
       const { data: appointmentDetails, error: fetchError } = await supabase
         .from('appointments')
         .select(`
-          *,
-          patient:patients!inner (
-            user_profiles!inner (
-              email,
-              first_name,
-              last_name,
-              phone
-            )
-          ),
-          clinic:clinics!inner (
+          id,
+          appointment_date,
+          appointment_time,
+          patient_id,
+          clinics!inner (
             name,
             email,
             contact_email,
             phone
           ),
-          doctor:doctors!inner (
+          doctors (
             first_name,
             last_name
           )
         `)
         .eq('id', appointmentId)
         .single();
-  
+
       if (fetchError) {
-        throw new Error('Failed to fetch appointment details');
+        console.error('Fetch error:', fetchError);
+        throw new Error('Failed to fetch appointment details: ' + fetchError.message);
+      }
+
+      // ✅ Fetch patient profile separately
+      const { data: patientProfile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('email, first_name, last_name, phone')
+        .eq('user_id', appointmentDetails.patient_id)
+        .single();
+
+      if (profileError) {
+        console.error('Profile fetch error:', profileError);
+        throw new Error('Failed to fetch patient profile: ' + profileError.message);
       }
   
       // Check eligibility first for patients
@@ -107,21 +115,21 @@ export const useAppointmentCancellation = () => {
       if (userRole === 'patient') {
         // Notify staff
         const emailResult = await notifyStaffAppointmentCancelled({
-          staff_email: appointmentDetails.clinic?.email || appointmentDetails.clinic?.contact_email,
+          staff_email: appointmentDetails.clinics?.email || appointmentDetails.clinics?.contact_email,
           patient: {
-            name: `${appointmentDetails.patient?.user_profiles?.first_name} ${appointmentDetails.patient?.user_profiles?.last_name}`.trim(),
-            email: appointmentDetails.patient?.user_profiles?.email,
-            phone: appointmentDetails.patient?.user_profiles?.phone
+            name: `${patientProfile.first_name} ${patientProfile.last_name}`.trim(),
+            email: patientProfile.email,
+            phone: patientProfile.phone
           },
           appointment: {
             date: appointmentDetails.appointment_date,
             time: appointmentDetails.appointment_time
           },
           clinic: {
-            name: appointmentDetails.clinic?.name
+            name: appointmentDetails.clinics?.name
           },
           doctor: {
-            name: `Dr. ${appointmentDetails.doctor?.first_name} ${appointmentDetails.doctor?.last_name}`.trim()
+            name: `Dr. ${appointmentDetails.doctors?.first_name} ${appointmentDetails.doctors?.last_name}`.trim()
           },
           cancellation: {
             reason: cancellationReason,
@@ -136,20 +144,20 @@ export const useAppointmentCancellation = () => {
         // Notify patient
         const emailResult = await notifyPatientAppointmentCancelled({
           patient: {
-            email: appointmentDetails.patient?.user_profiles?.email,
-            first_name: appointmentDetails.patient?.user_profiles?.first_name
+            email: patientProfile.email,
+            first_name: patientProfile.first_name
           },
           appointment: {
             date: appointmentDetails.appointment_date,
             time: appointmentDetails.appointment_time
           },
           clinic: {
-            name: appointmentDetails.clinic?.name,
-            phone: appointmentDetails.clinic?.phone,
-            email: appointmentDetails.clinic?.email || appointmentDetails.clinic?.contact_email
+            name: appointmentDetails.clinics?.name,
+            phone: appointmentDetails.clinics?.phone,
+            email: appointmentDetails.clinics?.email || appointmentDetails.clinics?.contact_email
           },
           doctor: {
-            name: `Dr. ${appointmentDetails.doctor?.first_name} ${appointmentDetails.doctor?.last_name}`.trim()
+            name: `Dr. ${appointmentDetails.doctors?.first_name} ${appointmentDetails.doctors?.last_name}`.trim()
           },
           cancellation: {
             reason: cancellationReason
