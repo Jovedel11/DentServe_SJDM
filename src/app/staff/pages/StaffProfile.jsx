@@ -188,7 +188,6 @@ const StaffProfile = () => {
     [editedData?.services_data, handleInputChange]
   );
 
-  // 🔥 **FIXED: Doctor operations with proper event handling**
   const handleAddDoctor = useCallback(
     (e) => {
       if (e) {
@@ -206,10 +205,10 @@ const StaffProfile = () => {
 
       const newDoctor = {
         id: `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        license_number: tempLicenseNumber, // ✅ FIX: Use temp license instead of empty string
+        license_number: tempLicenseNumber,
         specialization: "General Dentistry",
-        first_name: "",
-        last_name: "",
+        first_name: "New", // 🔥 FIX: Default to "New" instead of empty
+        last_name: "Doctor", // 🔥 FIX: Default to "Doctor" instead of empty
         education: "",
         experience_years: 0,
         bio: "",
@@ -260,30 +259,78 @@ const StaffProfile = () => {
     [editedData?.doctors_data, handleInputChange]
   );
 
-  // 🔥 **NEW: Operating Hours Handlers**
   const handleOperatingHoursChange = useCallback(
     (day, field, value) => {
-      const currentHours = currentData?.clinic_data?.operating_hours || {};
+      const sourceData = isEditing ? editedData : currentData;
+      const currentHours = sourceData?.clinic_data?.operating_hours || {
+        weekdays: {},
+        weekends: {},
+      };
 
+      // Determine if it's a weekend
+      const isWeekend = day === "saturday" || day === "sunday";
+      const group = isWeekend ? "weekends" : "weekdays";
+
+      // Get current day data
+      const currentDayData = currentHours[group]?.[day] || {
+        start: "09:00",
+        end: "17:00",
+      };
+
+      let updatedDayData;
+
+      if (field === "isOpen") {
+        // Handle open/close toggle
+        updatedDayData = value ? currentDayData : null;
+      } else {
+        // Map UI fields to DB fields
+        const dbField =
+          field === "open" ? "start" : field === "close" ? "end" : field;
+        updatedDayData = {
+          ...currentDayData,
+          [dbField]: value,
+        };
+      }
+
+      // Build updated structure
       const updatedHours = {
         ...currentHours,
-        [day]: {
-          ...(currentHours[day] || {}),
-          [field]: value,
+        [group]: {
+          ...currentHours[group],
+          [day]: updatedDayData,
         },
       };
 
+      // Remove null entries (closed days)
+      if (updatedHours[group][day] === null) {
+        delete updatedHours[group][day];
+      }
+
       handleInputChange("clinic_data", "operating_hours", updatedHours);
     },
-    [currentData?.clinic_data?.operating_hours, handleInputChange]
+    [
+      currentData?.clinic_data?.operating_hours,
+      editedData,
+      isEditing,
+      handleInputChange,
+    ]
   );
 
   const getOperatingHours = (day) => {
-    const hours = currentData?.clinic_data?.operating_hours?.[day];
+    // 🔥 FIX: Read from editedData when editing
+    const sourceData = isEditing ? editedData : currentData;
+    const operatingHours = sourceData?.clinic_data?.operating_hours;
+
+    // Determine if it's a weekend
+    const isWeekend = day === "saturday" || day === "sunday";
+    const group = isWeekend ? "weekends" : "weekdays";
+
+    const hours = operatingHours?.[group]?.[day];
+
     return {
-      isOpen: hours?.isOpen ?? true,
-      open: hours?.open || "09:00",
-      close: hours?.close || "17:00",
+      isOpen: !!hours,
+      open: hours?.start || "09:00",
+      close: hours?.end || "17:00",
     };
   };
 

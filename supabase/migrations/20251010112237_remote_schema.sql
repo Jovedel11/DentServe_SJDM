@@ -14611,7 +14611,6 @@ SET
     max_price = COALESCE((service_record->>'max_price')::numeric, max_price),
     priority = COALESCE((service_record->>'priority')::integer, priority),
     is_active = COALESCE((service_record->>'is_active')::boolean, is_active),
-    -- ✅ ADD MISSING FIELDS:
     requires_multiple_visits = COALESCE((service_record->>'requires_multiple_visits')::boolean, requires_multiple_visits),
     typical_visit_count = COALESCE((service_record->>'typical_visit_count')::integer, typical_visit_count),
     requires_consultation = COALESCE((service_record->>'requires_consultation')::boolean, requires_consultation),
@@ -14639,7 +14638,6 @@ INSERT INTO services (
     max_price, 
     priority, 
     is_active,
-    -- ✅ ADD MISSING FIELDS:
     requires_multiple_visits,
     typical_visit_count,
     requires_consultation
@@ -14653,7 +14651,6 @@ INSERT INTO services (
     (service_record->>'max_price')::numeric,
     COALESCE((service_record->>'priority')::integer, 10),
     COALESCE((service_record->>'is_active')::boolean, true),
-    -- ✅ ADD MISSING VALUES:
     COALESCE((service_record->>'requires_multiple_visits')::boolean, false),
     COALESCE((service_record->>'typical_visit_count')::integer, 1),
     COALESCE((service_record->>'requires_consultation')::boolean, true)
@@ -14849,13 +14846,11 @@ BEGIN
         
         RAISE NOTICE 'Appointment % completed, checking for treatment plan', NEW.id;
         
-        -- ✅ FIX: Look in treatment_plan_appointments first (for follow-ups)
         SELECT treatment_plan_id INTO linked_treatment_plan_id
         FROM treatment_plan_appointments
         WHERE appointment_id = NEW.id
         LIMIT 1;
         
-        -- ✅ FALLBACK: If not found, check appointment_services (for initial visits)
         IF linked_treatment_plan_id IS NULL THEN
             SELECT treatment_plan_id INTO linked_treatment_plan_id
             FROM appointment_services
@@ -14874,7 +14869,7 @@ BEGIN
                 completed_at = NOW()
             WHERE appointment_id = NEW.id
             AND treatment_plan_id = linked_treatment_plan_id
-            AND is_completed = false;  -- ✅ Only update if not already completed
+            AND is_completed = false;
             
             GET DIAGNOSTICS completed_visits_count = ROW_COUNT;
             RAISE NOTICE 'Marked % visit(s) as completed', completed_visits_count;
@@ -14898,12 +14893,11 @@ BEGIN
             FROM treatment_plans tp
             WHERE tp.id = linked_treatment_plan_id;
             
-            -- ✅ CRITICAL: Update treatment plan with all tracking fields
             UPDATE treatment_plans
             SET 
                 visits_completed = completed_visits_count,
                 progress_percentage = new_progress,
-                last_visit_date = NEW.appointment_date,  -- ✅ Track last visit
+                last_visit_date = NEW.appointment_date,
                 updated_at = NOW(),
                 -- Clear next_visit if this was it
                 next_visit_appointment_id = CASE 

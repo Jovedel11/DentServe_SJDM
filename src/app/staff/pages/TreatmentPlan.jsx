@@ -920,9 +920,9 @@ const TreatmentPlans = () => {
                   <div>
                     <p className="text-xs text-muted-foreground">Last Visit</p>
                     <p className="text-sm font-semibold">
-                      {treatment.last_visit_date // ✅ Use last_visit_date from DB
+                      {treatment.timeline?.last_visit_date // ✅ FIXED: Correct path
                         ? new Date(
-                            treatment.last_visit_date
+                            treatment.timeline.last_visit_date
                           ).toLocaleDateString()
                         : treatment.timeline?.days_since_last_visit
                         ? `${treatment.timeline.days_since_last_visit}d ago`

@@ -274,7 +274,39 @@ const handleArrayUpdate = useCallback((arrayName, index, field, value) => {
         }
       });
     }
-
+    if (processed.clinic_data?.operating_hours) {
+      const hours = processed.clinic_data.operating_hours;
+      
+      // Check if it's already in correct format
+      if (!hours.weekdays && !hours.weekends) {
+        // Convert flat format to grouped format
+        const normalized = {
+          weekdays: {},
+          weekends: {}
+        };
+        
+        ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].forEach(day => {
+          if (hours[day]) {
+            normalized.weekdays[day] = {
+              start: hours[day].open || hours[day].start || "09:00",
+              end: hours[day].close || hours[day].end || "17:00"
+            };
+          }
+        });
+        
+        ['saturday', 'sunday'].forEach(day => {
+          if (hours[day]) {
+            normalized.weekends[day] = {
+              start: hours[day].open || hours[day].start || "09:00",
+              end: hours[day].close || hours[day].end || "17:00"
+            };
+          }
+        });
+        
+        processed.clinic_data.operating_hours = normalized;
+      }
+    }
+  
     return processed;
   }, []);
 
@@ -363,6 +395,11 @@ const handleArrayUpdate = useCallback((arrayName, index, field, value) => {
         const doctorsData = enableDoctorManagement ? dataToSave.doctors_data || [] : [];
 
         result = await updateStaffProfile(profileUpdateData, staffData, clinicData, servicesData, doctorsData);
+
+      if (!result?.success) {
+        console.error('❌ Profile update failed:', result?.error);
+        console.log('📋 Data sent:', { profileUpdateData, staffData, clinicData, servicesData: servicesData.length, doctorsData: doctorsData.length });
+      }
 
       } else if (isAdmin) {
         result = await updateAdminProfile(profileUpdateData);
