@@ -13236,7 +13236,7 @@ DECLARE
     patient_contact RECORD;
     reminder_message TEXT;
 BEGIN
-    -- ✅ Get current user context
+    --  Get current user context
     current_context := get_current_user_context();
     
     IF NOT (current_context->>'authenticated')::boolean THEN
@@ -13246,14 +13246,14 @@ BEGIN
     v_current_role := current_context->>'user_type';
     current_user_id := (current_context->>'user_id')::UUID;
     
-    -- ✅ Only staff can send reschedule reminders
+    --  Only staff can send reschedule reminders
     IF v_current_role != 'staff' THEN
         RETURN jsonb_build_object('success', false, 'error', 'Access denied: Staff only');
     END IF;
     
     clinic_id_val := (current_context->>'clinic_id')::UUID;
     
-    -- ✅ Input validation
+    --  Input validation
     IF p_appointment_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Appointment ID is required');
     END IF;
@@ -13262,7 +13262,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Reason is required');
     END IF;
     
-    -- ✅ Get appointment details with patient info
+    --  Get appointment details with patient info
     SELECT 
         a.id,
         a.patient_id,
@@ -13290,7 +13290,7 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Appointment not found or access denied');
     END IF;
     
-    -- ✅ Verify appointment is cancelled (can only send reminder for cancelled appointments)
+    --  Verify appointment is cancelled (can only send reminder for cancelled appointments)
     IF appointment_record.status != 'cancelled' THEN
         RETURN jsonb_build_object(
             'success', false, 
@@ -13298,7 +13298,7 @@ BEGIN
         );
     END IF;
     
-    -- ✅ Build reminder message
+    --  Build reminder message
     reminder_message := format(
         'Your appointment on %s at %s was cancelled. Reason: %s. You can reschedule your appointment at your convenience. Please contact us at %s or book online.',
         appointment_record.appointment_date::text,
@@ -13307,13 +13307,13 @@ BEGIN
         COALESCE(appointment_record.clinic_phone, appointment_record.clinic_email, 'the clinic')
     );
     
-    -- ✅ Add suggested dates if provided
+    --  Add suggested dates if provided
     IF p_suggested_dates IS NOT NULL AND array_length(p_suggested_dates, 1) > 0 THEN
         reminder_message := reminder_message || E'\n\nSuggested available dates: ' || 
             array_to_string(p_suggested_dates, ', ');
     END IF;
     
-    -- ✅ Create notification for patient
+    --  Create notification for patient
     BEGIN
         INSERT INTO notifications (
             user_id,
@@ -13333,7 +13333,7 @@ BEGIN
             NOW()
         );
         
-        -- ✅ Log analytics event
+        --  Log analytics event
         INSERT INTO analytics_events (
             clinic_id,
             user_id,
@@ -13422,92 +13422,134 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.submit_clinic_partnership_request(p_clinic_name character varying, p_email character varying, p_address text, p_reason text, p_staff_name character varying DEFAULT NULL::character varying, p_contact_number character varying DEFAULT NULL::character varying)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
+CREATE OR REPLACE FUNCTION public.submit_clinic_partnership_request(
+    p_clinic_name VARCHAR,
+    p_email VARCHAR,
+    p_address TEXT,
+    p_reason TEXT,
+    p_staff_name VARCHAR DEFAULT NULL,
+    p_contact_number VARCHAR DEFAULT NULL,
+    p_recaptcha_token TEXT DEFAULT NULL,
+    p_recaptcha_score NUMERIC DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public', 'pg_catalog'
 AS $function$
 DECLARE
-    request_id UUID;
-    admin_users UUID[];
     existing_request_id UUID;
+    new_request_id UUID;
+    request_count INTEGER;
+    email_domain TEXT;
 BEGIN
-    -- Check if request with this email already exists and is pending
-    SELECT id INTO existing_request_id 
-    FROM clinic_partnership_requests 
-    WHERE email = p_email AND status = 'pending';
+    -- ✅ Validate inputs
+    IF p_clinic_name IS NULL OR trim(p_clinic_name) = '' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Clinic name is required');
+    END IF;
+    
+    IF p_email IS NULL OR trim(p_email) = '' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Email is required');
+    END IF;
+    
+    IF p_reason IS NULL OR trim(p_reason) = '' OR length(trim(p_reason)) < 20 THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Please provide a detailed reason (at least 20 characters)');
+    END IF;
+
+    -- ✅ Validate reCAPTCHA score
+    IF p_recaptcha_score IS NOT NULL AND p_recaptcha_score < 0.3 THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Security verification failed. If you are a legitimate clinic, please contact us directly.',
+            'code', 'LOW_RECAPTCHA_SCORE'
+        );
+    END IF;
+    
+    -- ✅ Check for existing pending/approved request with same email
+    SELECT id INTO existing_request_id
+    FROM clinic_partnership_requests
+    WHERE LOWER(email) = LOWER(trim(p_email))
+    AND status IN ('pending', 'approved')
+    AND created_at > NOW() - INTERVAL '30 days';
     
     IF existing_request_id IS NOT NULL THEN
         RETURN jsonb_build_object(
             'success', false, 
-            'error', 'A pending partnership request already exists for this email'
+            'error', 'An application with this email already exists. Please check your inbox or contact us.'
         );
     END IF;
     
-    -- Rate limiting check (max 3 per day per email)
-    IF (
-        SELECT COUNT(*) 
-        FROM clinic_partnership_requests 
-        WHERE email = p_email 
-        AND created_at >= CURRENT_DATE 
-        AND created_at < CURRENT_DATE + INTERVAL '1 day'
-    ) >= 3 THEN
+    -- ✅ Rate limiting: Max 3 requests per email per 24 hours
+    SELECT COUNT(*) INTO request_count
+    FROM clinic_partnership_requests
+    WHERE LOWER(email) = LOWER(trim(p_email))
+    AND created_at > NOW() - INTERVAL '24 hours';
+    
+    IF request_count >= 3 THEN
         RETURN jsonb_build_object(
             'success', false, 
-            'error', 'Rate limit exceeded. Maximum 3 applications per day allowed.'
+            'error', 'Rate limit exceeded. Maximum 3 applications per day. Please try again tomorrow.'
         );
     END IF;
     
-    -- Insert partnership request (using existing table structure)
+    -- ✅ Block suspicious email domains
+    email_domain := substring(LOWER(trim(p_email)) from '@(.*)$');
+    IF email_domain IN ('tempmail.com', 'guerrillamail.com', 'mailinator.com', '10minutemail.com', 'throwaway.email') THEN
+        RETURN jsonb_build_object(
+            'success', false, 
+            'error', 'Temporary email addresses are not allowed. Please use your business email.',
+            'code', 'BLOCKED_EMAIL_DOMAIN'
+        );
+    END IF;
+    
+    -- ✅ FIXED: Create partnership request with safe metadata
     INSERT INTO clinic_partnership_requests (
         clinic_name,
         email,
         address,
         reason,
-        status
+        staff_name,
+        contact_number,
+        status,
+        created_at,
+        metadata
     ) VALUES (
-        p_clinic_name,
-        p_email,
-        p_address,
-        p_reason,
-        'pending'
-    ) RETURNING id INTO request_id;
+        trim(p_clinic_name),
+        LOWER(trim(p_email)),
+        trim(p_address),
+        trim(p_reason),
+        NULLIF(trim(p_staff_name), ''),
+        NULLIF(trim(p_contact_number), ''),
+        'pending',
+        NOW(),
+        -- ✅ FIXED: Safe metadata without request headers
+        jsonb_build_object(
+            'recaptcha_token', p_recaptcha_token,
+            'recaptcha_score', p_recaptcha_score,
+            'submission_method', 'public_form',
+            'submitted_at', NOW()
+        )
+    ) RETURNING id INTO new_request_id;
     
-    -- Get all admin users for notification
-    SELECT ARRAY_AGG(u.id) INTO admin_users
-    FROM users u 
-    JOIN user_profiles up ON u.id = up.user_id
-    WHERE up.user_type = 'admin' AND u.is_active = true;
+    RAISE LOG 'New partnership request created: % (reCAPTCHA score: %)', new_request_id, p_recaptcha_score;
     
-    -- Create notifications for all admins
-    IF admin_users IS NOT NULL AND array_length(admin_users, 1) > 0 THEN
-        INSERT INTO notifications (user_id, notification_type, title, message)
-        SELECT 
-            unnest(admin_users),
-            'partnership_request',
-            'New Partnership Application',
-            format('New partnership application from %s (%s) for clinic: %s', 
-                   COALESCE(p_staff_name, 'Staff'), p_email, p_clinic_name);
-    END IF;
-    
-    -- Log the request
-    RAISE LOG 'Partnership request submitted: %, %, %', request_id, p_email, p_clinic_name;
-    
+    -- ✅ Return success with request details
     RETURN jsonb_build_object(
         'success', true,
         'message', 'Partnership application submitted successfully',
-        'request_id', request_id
+        'request_id', new_request_id
     );
     
 EXCEPTION
     WHEN OTHERS THEN
+        RAISE LOG 'Partnership request error: %', SQLERRM;
         RETURN jsonb_build_object(
-            'success', false, 
-            'error', 'Failed to submit partnership request: ' || SQLERRM
+            'success', false,
+            'error', 'Failed to submit application. Please try again or contact support.',
+            'detail', SQLERRM
         );
 END;
-$function$
-;
+$function$;
 
 CREATE OR REPLACE FUNCTION public.submit_feedback(p_clinic_rating integer DEFAULT NULL::integer, p_doctor_rating integer DEFAULT NULL::integer, p_comment text DEFAULT NULL::text, p_appointment_id uuid DEFAULT NULL::uuid, p_feedback_type feedback_type DEFAULT 'general'::feedback_type, p_is_anonymous boolean DEFAULT false)
  RETURNS jsonb

@@ -7,9 +7,12 @@ import {
   User,
   Mail,
   Phone,
+  Shield,
 } from "lucide-react";
 import { supabase } from "../../../lib/supabaseClient";
+import { useRecaptcha } from "@/auth/hooks/useRecaptcha";
 import styles from "../../style/components/contact_styles/StaffApplicationForm.module.scss";
+import { notifyAdminNewPartnership } from "@/services/emailService";
 
 const StaffApplicationForm = forwardRef((props, ref) => {
   const [formData, setFormData] = useState({
@@ -21,6 +24,9 @@ const StaffApplicationForm = forwardRef((props, ref) => {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+
+  const { executeRecaptchaWithFallback, isLoaded, isVerifying } =
+    useRecaptcha();
 
   const validateForm = () => {
     const newErrors = {};
@@ -73,19 +79,58 @@ const StaffApplicationForm = forwardRef((props, ref) => {
 
     if (!validateForm()) return;
 
+    //  Check if reCAPTCHA is ready
+    if (!isLoaded) {
+      toast.error(
+        "Security verification is loading. Please wait a moment and try again."
+      );
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      // Submit partnership request (address removed)
+      // Execute reCAPTCHA verification
+      console.log("🔒 Verifying reCAPTCHA for partnership application...");
+
+      let recaptchaResult;
+      try {
+        recaptchaResult = await executeRecaptchaWithFallback(
+          "partnership_application",
+          2
+        );
+        console.log("✅ reCAPTCHA verified:", recaptchaResult);
+      } catch (recaptchaError) {
+        console.error("❌ reCAPTCHA verification failed:", recaptchaError);
+        toast.error(
+          "Security verification failed. Please refresh the page and try again.",
+          { autoClose: 5000 }
+        );
+        return;
+      }
+
+      // Check reCAPTCHA score (threshold for partnership applications)
+      if (recaptchaResult.score < 0.5) {
+        console.warn("⚠️ Low reCAPTCHA score:", recaptchaResult.score);
+        toast.error(
+          "Your submission appears suspicious. If you're a legitimate clinic, please contact us directly.",
+          { autoClose: 7000 }
+        );
+        return;
+      }
+
+      // Submit partnership request with reCAPTCHA token
       const { data, error } = await supabase.rpc(
         "submit_clinic_partnership_request",
         {
           p_clinic_name: formData.clinicName.trim(),
           p_email: formData.staffEmail.trim(),
-          p_address: "To be provided during profile completion", // Placeholder
+          p_address: "To be provided during profile completion",
           p_reason: formData.reason.trim(),
           p_staff_name: formData.staffName.trim(),
           p_contact_number: formData.contactNumber.trim(),
+          p_recaptcha_token: recaptchaResult.token, // Send token
+          p_recaptcha_score: recaptchaResult.score, // Send score
         }
       );
 
@@ -94,6 +139,34 @@ const StaffApplicationForm = forwardRef((props, ref) => {
       }
 
       if (data?.success) {
+        // ✅ Send email notification to admin
+        try {
+          const emailResult = await notifyAdminNewPartnership({
+            id: data.request_id, // If returned from database
+            clinic_name: formData.clinicName.trim(),
+            email: formData.staffEmail.trim(),
+            staff_name: formData.staffName.trim(),
+            contact_number: formData.contactNumber.trim(),
+            address: "To be provided during profile completion",
+            reason: formData.reason.trim(),
+            recaptcha_score: recaptchaResult.score,
+            created_at: new Date().toISOString(),
+          });
+
+          if (!emailResult.success) {
+            console.warn(
+              "⚠️ Failed to send admin notification:",
+              emailResult.error
+            );
+            // Don't show error to user - partnership still submitted
+          } else {
+            console.log("✅ Admin notification sent");
+          }
+        } catch (emailError) {
+          console.error("❌ Email notification error:", emailError);
+          // Silent fail - partnership request was still saved
+        }
+
         toast.success(
           "Partnership application submitted successfully! We'll review your application and contact you within 24-48 hours.",
           { autoClose: 5000 }
@@ -119,7 +192,13 @@ const StaffApplicationForm = forwardRef((props, ref) => {
           "You've reached the daily submission limit. Please try again tomorrow."
         );
       } else if (error.message.includes("already exists")) {
-        toast.error("An application with this email already exists.");
+        toast.error(
+          "An application with this email already exists. Please check your inbox or contact us if you need assistance."
+        );
+      } else if (error.message.includes("blocked")) {
+        toast.error(
+          "Your submission has been blocked due to suspicious activity. Please contact us directly if this is an error."
+        );
       } else {
         toast.error(
           error.message || "Failed to submit application. Please try again."
@@ -146,6 +225,21 @@ const StaffApplicationForm = forwardRef((props, ref) => {
             Join our network of trusted dental care providers and expand your
             reach
           </p>
+          {/* Security badge */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              marginTop: "12px",
+              fontSize: "13px",
+              color: "#10b981",
+            }}
+          >
+            <Shield size={16} />
+            <span>Protected by reCAPTCHA</span>
+          </div>
         </div>
 
         <form
@@ -170,6 +264,7 @@ const StaffApplicationForm = forwardRef((props, ref) => {
                 className={`${styles.fieldInput} ${
                   errors.clinicName ? styles.error : ""
                 }`}
+                disabled={isSubmitting || isVerifying}
               />
               {errors.clinicName && (
                 <span className={styles.errorMessage}>
@@ -195,6 +290,7 @@ const StaffApplicationForm = forwardRef((props, ref) => {
                 className={`${styles.fieldInput} ${
                   errors.staffName ? styles.error : ""
                 }`}
+                disabled={isSubmitting || isVerifying}
               />
               {errors.staffName && (
                 <span className={styles.errorMessage}>
@@ -220,6 +316,7 @@ const StaffApplicationForm = forwardRef((props, ref) => {
                 className={`${styles.fieldInput} ${
                   errors.staffEmail ? styles.error : ""
                 }`}
+                disabled={isSubmitting || isVerifying}
               />
               {errors.staffEmail && (
                 <span className={styles.errorMessage}>
@@ -245,6 +342,7 @@ const StaffApplicationForm = forwardRef((props, ref) => {
                 className={`${styles.fieldInput} ${
                   errors.contactNumber ? styles.error : ""
                 }`}
+                disabled={isSubmitting || isVerifying}
               />
               {errors.contactNumber && (
                 <span className={styles.errorMessage}>
@@ -270,6 +368,7 @@ const StaffApplicationForm = forwardRef((props, ref) => {
                 errors.reason ? styles.error : ""
               }`}
               rows={4}
+              disabled={isSubmitting || isVerifying}
             />
             {errors.reason && (
               <span className={styles.errorMessage}>
@@ -282,15 +381,25 @@ const StaffApplicationForm = forwardRef((props, ref) => {
           <div className={styles.submitSection}>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isVerifying || !isLoaded}
               className={`${styles.submitButton} ${
-                isSubmitting ? styles.submitting : ""
+                isSubmitting || isVerifying ? styles.submitting : ""
               }`}
             >
-              {isSubmitting ? (
+              {isVerifying ? (
+                <>
+                  <div className={styles.spinner}></div>
+                  Verifying Security...
+                </>
+              ) : isSubmitting ? (
                 <>
                   <div className={styles.spinner}></div>
                   Submitting Application...
+                </>
+              ) : !isLoaded ? (
+                <>
+                  <div className={styles.spinner}></div>
+                  Loading Security...
                 </>
               ) : (
                 <>
@@ -299,6 +408,36 @@ const StaffApplicationForm = forwardRef((props, ref) => {
                 </>
               )}
             </button>
+
+            {/* reCAPTCHA disclaimer */}
+            <p
+              style={{
+                fontSize: "11px",
+                color: "#9ca3af",
+                textAlign: "center",
+                marginTop: "12px",
+              }}
+            >
+              This site is protected by reCAPTCHA and the Google{" "}
+              <a
+                href="https://policies.google.com/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#2563eb" }}
+              >
+                Privacy Policy
+              </a>{" "}
+              and{" "}
+              <a
+                href="https://policies.google.com/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "#2563eb" }}
+              >
+                Terms of Service
+              </a>{" "}
+              apply.
+            </p>
           </div>
         </form>
 

@@ -604,6 +604,59 @@ const treatmentPlanCompleted = ({ patient, treatmentPlan, clinic, doctor }) => {
   return baseTemplate(content, `Congratulations! Treatment completed: ${treatmentPlan.treatment_name}`);
 };
 
+const newPartnershipRequest = ({ request }) => {
+  const content = `
+    <h2 style="color: #f59e0b; margin: 0 0 10px 0; font-size: 22px;">[NEW PARTNERSHIP] New Clinic Partnership Request</h2>
+    <p style="color: #6b7280; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0;">
+      A new clinic has applied to partner with DentServe and requires your review.
+    </p>
+
+    ${infoBox([
+      { label: 'Clinic Name', value: request.clinic_name },
+      { label: 'Contact Person', value: request.staff_name || 'Not provided' },
+      { label: 'Email', value: request.email },
+      { label: 'Phone', value: request.contact_number || 'Not provided' },
+      { label: 'Submitted', value: new Date(request.created_at).toLocaleString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }) },
+      { label: 'Security Score', value: request.recaptcha_score ? `${(request.recaptcha_score * 100).toFixed(0)}% ${request.recaptcha_score >= 0.7 ? '(High Trust ✅)' : request.recaptcha_score >= 0.5 ? '(Medium Trust ⚠️)' : '(Low Trust ❌)'}` : 'N/A' }
+    ], 'Application Details')}
+
+    <h3 style="color: #1f2937; font-size: 16px; margin: 20px 0 10px 0;">Reason for Partnership:</h3>
+    <div style="background-color: #fef3c7; padding: 16px; border-left: 3px solid #f59e0b; border-radius: 4px;">
+      <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;">${request.reason}</p>
+    </div>
+
+    ${request.address ? `
+      <h3 style="color: #1f2937; font-size: 16px; margin: 20px 0 10px 0;">Address:</h3>
+      <p style="color: #4b5563; font-size: 14px; margin: 0;">${request.address}</p>
+    ` : ''}
+
+    ${request.recaptcha_score && request.recaptcha_score < 0.5 ? alertBox(
+      `<strong>⚠️ Security Notice:</strong> This application has a low trust score (${(request.recaptcha_score * 100).toFixed(0)}%). Please review carefully for potential spam.`,
+      'warning'
+    ) : ''}
+
+    ${alertBox(
+      'Please review this application in the admin dashboard and approve or reject it within 48 hours.',
+      'info'
+    )}
+
+    ${button('Review in Admin Dashboard', `${FRONTEND_URL}/admin/partnerships`)}
+
+    <p style="color: #9ca3af; font-size: 13px; margin: 30px 0 0 0; text-align: center;">
+      Partnership requests are automatically reviewed and managed in your admin panel.
+    </p>
+  `;
+
+  return baseTemplate(content, `New partnership request from ${request.clinic_name}`);
+};
+
 // staff emails
 const dailyStaffDigest = ({ staff, clinic, todayAppointments, stats, pendingActions }) => {
   const formatTime = (time) => {
@@ -702,4 +755,5 @@ export default {
   
   // Staff emails
   dailyStaffDigest,
+  newPartnershipRequest,
 };

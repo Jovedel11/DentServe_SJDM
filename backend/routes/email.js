@@ -586,6 +586,41 @@ router.post('/daily-staff-digest', reminderLimiter, async (req, res) => {
   }
 });
 
+router.post('/new-partnership-request', emailLimiter, async (req, res) => {
+  try {
+    const { adminEmail, request } = req.body;
+
+    if (!adminEmail || !request) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: adminEmail and request'
+      });
+    }
+
+    const html = emailTemplates.newPartnershipRequest({ request });
+
+    const result = await sendEmail({
+      to: adminEmail,
+      subject: `🤝 [NEW PARTNERSHIP] ${request.clinic_name} - Partnership Request`,
+      html,
+      replyTo: request.email // Allow admin to reply directly
+    });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+
+  } catch (error) {
+    console.error('❌ Partnership notification error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send partnership notification'
+    });
+  }
+});
+
 // bulk reminder endpoint (for staff to send multiple)
 router.post('/bulk-appointment-reminders', reminderLimiter, async (req, res) => {
   try {

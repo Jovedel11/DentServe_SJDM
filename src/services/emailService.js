@@ -250,6 +250,15 @@ export const sendDailyStaffDigest = async ({
   });
 };
 
+export const notifyAdminNewPartnership = async (request) => {
+  const adminEmail = 'jovedelhermosa11@gmail.com'; 
+  
+  return sendEmail('new-partnership-request', {
+    adminEmail,
+    request,
+  });
+};
+
  // send bulk appointment reminders (manual trigger)
 export const sendBulkAppointmentReminders = async (appointments) => {
   return sendEmail('bulk-appointment-reminders', {
