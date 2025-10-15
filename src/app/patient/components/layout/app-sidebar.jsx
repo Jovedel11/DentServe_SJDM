@@ -67,7 +67,6 @@ const navigationData = {
       name: "Feedbacks",
       url: "/patient/feedbacks",
       icon: MessageSquareHeart,
-      badge: "3",
     },
     {
       name: "Profile",

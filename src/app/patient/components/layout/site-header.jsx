@@ -54,8 +54,6 @@ export function SiteHeader() {
 
         {/* Right Side Actions */}
         <div className="ml-auto flex items-center gap-2">
-          <SearchForm className="hidden sm:flex" />
-
           {/* Unified Notification Bell */}
           <UnifiedNotificationBell />
 

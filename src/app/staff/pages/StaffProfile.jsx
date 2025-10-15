@@ -32,6 +32,7 @@ import {
   validatePassword,
   validateConfirmPassword,
 } from "@/utils/validation/auth-validation";
+import ClinicSettings from "./ClinicSettings";
 
 // ==================== SECURITY SETTINGS COMPONENT ====================
 const SecuritySettings = ({ isStaff }) => {
@@ -2074,7 +2075,7 @@ const StaffProfile = () => {
         )}
 
         {/* Security Section */}
-        {activeSection === "security" && <SecuritySettings isStaff={true} />}
+        {<ClinicSettings />}
       </div>
     </div>
   );

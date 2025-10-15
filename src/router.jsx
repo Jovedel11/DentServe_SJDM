@@ -233,7 +233,6 @@ export const router = createBrowserRouter([
           { path: "clinic-analytics", element: withSuspense(ClinicAnalytics) },
           { path: "clinic-profile", element: withSuspense(StaffProfile) },
           { path: "feedbacks", element: withSuspense(FeedbackManagement) },
-          { path: "settings", element: withSuspense(ClinicSettings) },
           { path: "help", element: withSuspense(Help) },
         ]),
       },

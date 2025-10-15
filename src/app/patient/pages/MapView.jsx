@@ -598,23 +598,6 @@ const MapView = () => {
                   {locationPermission === "granted" ? "Set" : "Location"}
                 </span>
               </button>
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl font-medium transition-all duration-200 border-2 text-xs sm:text-sm md:text-base min-h-[44px] touch-manipulation ${
-                  showFilters
-                    ? "bg-primary/10 text-primary border-primary/30"
-                    : "bg-card text-foreground border-border hover:border-primary/50"
-                }`}
-              >
-                <SlidersHorizontal className="w-4 h-4" />
-                <span className="hidden sm:inline">Filters</span>
-                <span className="inline sm:hidden">Filter</span>
-                {(filters.services.length > 0 ||
-                  filters.rating > 0 ||
-                  filters.openNow) && (
-                  <span className="w-2 h-2 bg-primary rounded-full" />
-                )}
-              </button>
             </div>
           </div>
           {/* Sort and Stats */}

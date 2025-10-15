@@ -192,9 +192,7 @@ const ClinicSettings = () => {
   // Tab configuration
   const tabs = [
     { id: "appearance", label: "Appearance", icon: Palette },
-    { id: "notifications", label: "Notifications", icon: Bell },
     { id: "security", label: "Security", icon: Shield },
-    { id: "activity", label: "Activity", icon: Activity },
   ];
 
   return (
@@ -237,7 +235,7 @@ const ClinicSettings = () => {
               isMobile ? "text-2xl" : "text-3xl"
             } font-bold text-foreground`}
           >
-            Settings
+            Security
           </h1>
           <p className="text-muted-foreground mt-1 text-sm md:text-base">
             Manage your preferences and account security
@@ -340,72 +338,6 @@ const ClinicSettings = () => {
                           );
                         })}
                       </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Notification Settings */}
-              {activeTab === "notifications" && (
-                <div className="p-4 md:p-6 space-y-6">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <h2 className="text-xl font-semibold text-card-foreground">
-                      Notifications
-                    </h2>
-                    <button
-                      onClick={handleSaveNotifications}
-                      disabled={saving}
-                      className="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors text-sm md:text-base"
-                    >
-                      {saving ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                      )}
-                      {saving ? "Saving..." : "Save Changes"}
-                    </button>
-                  </div>
-
-                  <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-4">
-                    <p className="text-sm text-blue-900 dark:text-blue-100">
-                      <strong>📧 Note:</strong> SMS notifications are not yet
-                      implemented. Critical notifications (appointment
-                      reminders, system alerts) are always sent via email for
-                      safety.
-                    </p>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg gap-4">
-                      <div className="flex items-start space-x-3 flex-1 min-w-0">
-                        <Mail className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                        <div className="min-w-0">
-                          <h3 className="font-medium text-card-foreground">
-                            Email Notifications
-                          </h3>
-                          <p className="text-sm text-muted-foreground">
-                            Receive general email notifications for appointments
-                            and updates
-                          </p>
-                        </div>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
-                        <input
-                          type="checkbox"
-                          checked={settings.notifications.email_enabled}
-                          onChange={(e) =>
-                            setSettings((prev) => ({
-                              ...prev,
-                              notifications: {
-                                ...prev.notifications,
-                                email_enabled: e.target.checked,
-                              },
-                            }))
-                          }
-                          className="sr-only peer"
-                        />
-                        <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                      </label>
                     </div>
                   </div>
                 </div>
