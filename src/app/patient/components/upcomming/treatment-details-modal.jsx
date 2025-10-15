@@ -26,14 +26,12 @@ const TreatmentDetailsModal = ({
 
   if (!treatment) return null;
 
-  // ✅ FIX: Access the nested data correctly
-  const treatmentData = treatment.data || treatment; // Handles both structures
-
-  const progressPercentage = treatmentData.progress_percentage || 0;
-  const visitsCompleted = treatmentData.visits_completed || 0;
-  const totalVisits = treatmentData.total_visits_planned || 0;
+  // ✅ Use treatment directly (after hook fix extracts data properly)
+  const progressPercentage = treatment.progress_percentage || 0;
+  const visitsCompleted = treatment.visits_completed || 0;
+  const totalVisits = treatment.total_visits_planned; // Can be null
   const visits =
-    treatmentData.visits || treatmentData.treatment_plan_appointments || [];
+    treatment.visits || treatment.treatment_plan_appointments || [];
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -44,11 +42,11 @@ const TreatmentDetailsModal = ({
             <Activity className="w-6 h-6 text-primary" />
             <div>
               <h2 className="text-2xl font-bold text-foreground">
-                {treatmentData.treatment_name}
+                {treatment.treatment_name}
               </h2>
-              {treatmentData.treatment_category && (
+              {treatment.treatment_category && (
                 <p className="text-sm text-muted-foreground capitalize">
-                  {treatmentData.treatment_category}
+                  {treatment.treatment_category}
                 </p>
               )}
             </div>
@@ -74,7 +72,7 @@ const TreatmentDetailsModal = ({
                   {Math.round(progressPercentage)}%
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  {visitsCompleted}/{totalVisits} visits
+                  {visitsCompleted}/{totalVisits ?? "∞"} visits
                 </div>
               </div>
             </div>
@@ -88,12 +86,10 @@ const TreatmentDetailsModal = ({
             </div>
 
             <Badge
-              variant={
-                treatmentData.status === "active" ? "default" : "secondary"
-              }
+              variant={treatment.status === "active" ? "default" : "secondary"}
               className="capitalize"
             >
-              {treatmentData.status}
+              {treatment.status}
             </Badge>
           </div>
 
@@ -110,26 +106,26 @@ const TreatmentDetailsModal = ({
                     Clinic Name:
                   </span>
                   <p className="font-medium text-foreground">
-                    {treatmentData.clinic?.name || "N/A"}
+                    {treatment.clinic?.name || "N/A"}
                   </p>
                 </div>
-                {treatmentData.clinic?.address && (
+                {treatment.clinic?.address && (
                   <div>
                     <span className="text-sm text-muted-foreground">
                       Address:
                     </span>
                     <p className="font-medium text-foreground">
-                      {treatmentData.clinic.address}
+                      {treatment.clinic.address}
                     </p>
                   </div>
                 )}
-                {treatmentData.clinic?.phone && (
+                {treatment.clinic?.phone && (
                   <div>
                     <span className="text-sm text-muted-foreground">
                       Phone:
                     </span>
                     <p className="font-medium text-foreground">
-                      {treatmentData.clinic.phone}
+                      {treatment.clinic.phone}
                     </p>
                   </div>
                 )}
@@ -143,44 +139,44 @@ const TreatmentDetailsModal = ({
                 Timeline
               </h4>
               <div className="space-y-3">
-                {treatmentData.start_date && (
+                {treatment.start_date && (
                   <div>
                     <span className="text-sm text-muted-foreground">
                       Started:
                     </span>
                     <p className="font-medium text-foreground">
-                      {formatDate(treatmentData.start_date)}
+                      {formatDate(treatment.start_date)}
                     </p>
                   </div>
                 )}
                 {/* ✅ NEW: Show last visit date */}
-                {treatmentData.last_visit_date && (
+                {treatment.last_visit_date && (
                   <div>
                     <span className="text-sm text-muted-foreground">
                       Last Visit:
                     </span>
                     <p className="font-medium text-foreground">
-                      {formatDate(treatmentData.last_visit_date)}
+                      {formatDate(formatDate.last_visit_date)}
                     </p>
                   </div>
                 )}
-                {treatmentData.expected_end_date && (
+                {formatDate.expected_end_date && (
                   <div>
                     <span className="text-sm text-muted-foreground">
                       Expected End:
                     </span>
                     <p className="font-medium text-foreground">
-                      {formatDate(treatmentData.expected_end_date)}
+                      {formatDate(formatDate.expected_end_date)}
                     </p>
                   </div>
                 )}
-                {treatmentData.follow_up_interval_days && (
+                {formatDate.follow_up_interval_days && (
                   <div>
                     <span className="text-sm text-muted-foreground">
                       Follow-up Interval:
                     </span>
                     <p className="font-medium text-foreground">
-                      Every {treatmentData.follow_up_interval_days} days
+                      Every {formatDate.follow_up_interval_days} days
                     </p>
                   </div>
                 )}
@@ -188,25 +184,64 @@ const TreatmentDetailsModal = ({
             </div>
           </div>
 
+          {formatDate.cancelled_attempts &&
+            formatDate.cancelled_attempts.length > 0 && (
+              <div className="mt-8">
+                <h4 className="font-bold text-foreground mb-4 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-muted-foreground" />
+                  Cancellation History
+                </h4>
+                <div className="space-y-2">
+                  {formatDate.cancelled_attempts.map((cancellation, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-muted/30 rounded-lg p-4 border border-muted"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            {cancellation.cancellation_type === "patient_cancel"
+                              ? "You cancelled this appointment"
+                              : "Appointment was rejected"}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {formatDate(cancellation.booking_date)}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          Not counted as visit
+                        </Badge>
+                      </div>
+                      {cancellation.cancellation_reason && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Reason: {cancellation.cancellation_reason}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
           {/* Description */}
-          {treatmentData.description && (
+          {formatDate.description && (
             <div className="mb-8 p-6 bg-muted/30 rounded-lg border">
               <h4 className="font-bold text-foreground mb-3 flex items-center gap-2">
                 <FileText className="w-5 h-5 text-primary" />
                 Treatment Description
               </h4>
-              <p className="text-foreground">{treatmentData.description}</p>
+              <p className="text-foreground">{formatDate.description}</p>
             </div>
           )}
 
           {/* Diagnosis */}
-          {treatmentData.diagnosis && (
+          {formatDate.diagnosis && (
             <div className="mb-8 p-6 bg-blue-50 rounded-lg border border-blue-200">
               <h4 className="font-bold text-blue-900 mb-3 flex items-center gap-2">
                 <Stethoscope className="w-5 h-5 text-blue-600" />
                 Diagnosis
               </h4>
-              <p className="text-blue-800">{treatmentData.diagnosis}</p>
+              <p className="text-blue-800">{formatDate.diagnosis}</p>
             </div>
           )}
 
@@ -286,7 +321,7 @@ const TreatmentDetailsModal = ({
           )}
 
           {/* Completed Treatment */}
-          {treatmentData.status === "completed" && (
+          {formatDate.status === "completed" && (
             <div className="p-6 bg-green-50 border border-green-200 rounded-lg text-center">
               <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-3" />
               <h4 className="font-bold text-green-900 mb-2">
@@ -296,9 +331,9 @@ const TreatmentDetailsModal = ({
                 You have successfully completed all {totalVisits} visits for
                 this treatment.
               </p>
-              {treatmentData.actual_end_date && (
+              {formatDate.actual_end_date && (
                 <p className="text-xs text-green-700 mt-2">
-                  Completed on {formatDate(treatmentData.actual_end_date)}
+                  Completed on {formatDate(formatDate.actual_end_date)}
                 </p>
               )}
             </div>

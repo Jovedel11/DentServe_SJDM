@@ -286,6 +286,7 @@ const useAppointmentBooking = () => {
           bookingType: appointmentData.booking_type,
           consultationFeeCharged: appointmentData.consultation_fee_charged,
           treatmentPlanLink: appointmentData.treatment_plan_link,
+          visitNumber: appointmentData.visit_number, // ADD THIS - from database response
           patient_info: appointmentData.patient_info,
           details: appointmentData.appointment_details,
           clinic: appointmentData.clinic,
@@ -295,9 +296,11 @@ const useAppointmentBooking = () => {
           cancellation_policy: appointmentData.cancellation_policy,
           reliability: appointmentData.patient_reliability,
           cross_clinic_context: appointmentData.cross_clinic_context,
-          emailSent: emailResult.success // Track if email was sent
+          emailSent: emailResult.success
         },
-        message: data.message
+        message: treatmentPlanId 
+          ? `Follow-up appointment booked successfully (Visit #${appointmentData.visit_number || 'pending'})`
+          : data.message
       };
   
     } catch (err) {
@@ -536,10 +539,12 @@ const useAppointmentBooking = () => {
       }
       
       const slotsArray = Array.isArray(data.slots) ? data.slots : [];
+      const clinicInfo = data.clinic_info || null;
       
       return {
         success: true,
         slots: slotsArray,
+        clinicInfo: clinicInfo, // ✅ NEW: Include clinic hours information
         metadata: {
           date: data.date,
           doctorId: data.doctor_id,
@@ -663,6 +668,14 @@ const useAppointmentBooking = () => {
             .map(slot => slot.time);
           
           setAvailableTimes(availableSlots);
+          
+          // ✅ NEW: Store clinic info in booking data
+          if (result.clinicInfo) {
+            setBookingData(prev => ({
+              ...prev,
+              clinicInfo: result.clinicInfo
+            }));
+          }
         } else {
           setAvailableTimes([]);
         }

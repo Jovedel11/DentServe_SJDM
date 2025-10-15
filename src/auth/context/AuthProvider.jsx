@@ -329,6 +329,38 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const changePassword = async (currentPassword, newPassword) => {
+    return wrapAuthAction("changePassword", async () => {
+      const result = await authService.changePassword(
+        currentPassword,
+        newPassword
+      );
+      if (result.success) {
+        // Sign out user so they can sign in with new password
+        setTimeout(() => signOut(), 2000);
+      }
+      return result;
+    });
+  };
+
+  const deactivateAccount = async (
+    password,
+    reason,
+    permanentDelete = false
+  ) => {
+    return wrapAuthAction("deactivateAccount", async () => {
+      const result = await authService.deactivateAccount(
+        password,
+        reason,
+        permanentDelete
+      );
+      if (result.success) {
+        resetAuthState();
+      }
+      return result;
+    });
+  };
+
   const updateStaffProfile = async (
     profileData,
     staffData,
@@ -439,6 +471,8 @@ export const AuthProvider = ({ children }) => {
       refreshAuthStatus,
       updatePassword,
       resetPassword,
+      changePassword,
+      deactivateAccount,
       updatePatientProfile,
       updateStaffProfile,
       updateAdminProfile,
@@ -463,6 +497,8 @@ export const AuthProvider = ({ children }) => {
       profile,
       dashboardData,
       useRedirectPath,
+      changePassword,
+      deactivateAccount,
     ]
   );
 

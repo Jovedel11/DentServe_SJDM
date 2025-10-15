@@ -815,10 +815,13 @@ const TreatmentPlans = () => {
   const TreatmentCard = ({ treatment }) => {
     const category = getCategoryInfo(treatment.treatment_category);
     const IconComponent = category.icon;
-    const progress = treatment.progress?.percentage || 0;
+
+    // ✅ FIXED: Proper null handling
+    const progressPercentage = treatment.progress_percentage || 0;
     const isOverdue = treatment.timeline?.is_overdue;
-    const visitsCompleted = treatment.progress?.visits_completed || 0;
-    const totalVisits = treatment.progress?.total_visits_planned || 0;
+    const visitsCompleted = treatment.visits_completed || 0;
+    const totalVisits = treatment.total_visits_planned; // Can be null/undefined for unlimited
+    const nextVisitNumber = visitsCompleted + 1;
 
     const hasNextAppointment = treatment.next_appointment?.date != null;
     const nextAppointmentDate = hasNextAppointment
@@ -837,7 +840,7 @@ const TreatmentPlans = () => {
           className={`cursor-pointer transition-all hover:shadow-lg border-l-4 ${
             isOverdue
               ? "border-l-red-500"
-              : hasNextAppointment // ✅ NEW: Green border if next appointment is scheduled
+              : hasNextAppointment
               ? "border-l-green-500"
               : category.color.replace("bg-", "border-l-")
           }`}
@@ -845,7 +848,11 @@ const TreatmentPlans = () => {
           <CardContent className="p-6">
             <div className="flex gap-6">
               <div className="flex-shrink-0">
-                <ProgressRing progress={progress} size={100} strokeWidth={6} />
+                <ProgressRing
+                  progress={progressPercentage}
+                  size={100}
+                  strokeWidth={6}
+                />
               </div>
 
               <div className="flex-1 min-w-0">
@@ -876,7 +883,6 @@ const TreatmentPlans = () => {
                         Overdue
                       </Badge>
                     )}
-                    {/* ✅ NEW: Show next appointment badge */}
                     {hasNextAppointment && !isOverdue && (
                       <Badge className="flex items-center gap-1 bg-green-100 text-green-700 border-green-300">
                         <CheckCircle className="w-3 h-3" />
@@ -888,15 +894,12 @@ const TreatmentPlans = () => {
                   </div>
                 </div>
 
-                {/* ✅ ENHANCED: Patient info with better display */}
+                {/* Patient info */}
                 <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
                   <div className="flex items-center gap-1.5">
                     <User className="w-4 h-4" />
                     <span className="font-medium">
-                      {/* ✅ FIX: Handle both patient_name formats */}
-                      {treatment.patient_name ||
-                        treatment.patient?.name ||
-                        "Unknown Patient"}
+                      {treatment.patient_name || "Unknown Patient"}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -910,42 +913,52 @@ const TreatmentPlans = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 mb-3">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Visits</p>
-                    <p className="text-sm font-semibold">
-                      {visitsCompleted} / {totalVisits || "∞"}
-                    </p>
+                <div className="space-y-2">
+                  {/* ✅ FIXED: Visits display */}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      Visits Completed
+                    </span>
+                    <span className="font-medium">
+                      {visitsCompleted} / {totalVisits ?? "∞"}
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Last Visit</p>
-                    <p className="text-sm font-semibold">
-                      {treatment.timeline?.last_visit_date // ✅ FIXED: Correct path
-                        ? new Date(
-                            treatment.timeline.last_visit_date
-                          ).toLocaleDateString()
-                        : treatment.timeline?.days_since_last_visit
-                        ? `${treatment.timeline.days_since_last_visit}d ago`
-                        : "N/A"}
-                    </p>
+
+                  {/* ✅ FIXED: Next visit number */}
+                  {treatment.status === "active" && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Next Visit</span>
+                      <span className="font-semibold text-primary">
+                        Visit #{nextVisitNumber}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Progress Bar */}
+                  <div className="w-full bg-muted rounded-full h-2">
+                    <div
+                      className="h-2 bg-primary rounded-full transition-all"
+                      style={{
+                        width: `${Math.min(progressPercentage, 100)}%`,
+                      }}
+                    />
                   </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Next Visit</p>
-                    {/* ✅ ENHANCED: Better next appointment display */}
-                    <p className="text-sm font-semibold">
-                      {hasNextAppointment ? (
-                        <span className="text-green-600">
-                          {nextAppointmentDate.toLocaleDateString()}
-                        </span>
-                      ) : (
-                        <span className="text-orange-600">Not scheduled</span>
-                      )}
-                    </p>
-                  </div>
+
+                  {/* Cancelled attempts */}
+                  {treatment.total_cancelled_attempts > 0 && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <AlertCircle className="w-3 h-3" />
+                      <span>
+                        {treatment.total_cancelled_attempts} cancelled
+                        booking(s)
+                      </span>
+                    </div>
+                  )}
                 </div>
 
+                {/* Next appointment info */}
                 {hasNextAppointment && (
-                  <div className="mb-3 p-2 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded-lg">
                     <div className="flex items-center gap-2 text-xs">
                       <Calendar className="w-3 h-3 text-green-600" />
                       <span className="font-medium text-green-900">
@@ -965,7 +978,7 @@ const TreatmentPlans = () => {
                   </div>
                 )}
 
-                <div className="flex items-center gap-2 pt-2 border-t">
+                <div className="flex items-center gap-2 pt-2 border-t mt-3">
                   <Button
                     variant="outline"
                     size="sm"

@@ -19,8 +19,6 @@ import Loader from "@/core/components/Loader";
 
 // Specialized Components
 import StatsCard from "../components/upcomming/stats-card";
-import SearchBar from "../components/upcomming/search-bar";
-import FilterSection from "../components/upcomming/filter-section";
 import UrgentReminders from "../components/upcomming/urgent-reminders";
 import OngoingTreatments from "../components/upcomming/ongoing-treatments";
 import AppointmentCard from "../components/upcomming/appointment-card";
@@ -375,23 +373,6 @@ Consultation Fee: ₱${appointment.consultation_fee_charged || 0}
               color="green-600"
             />
           </div>
-
-          {/* Search Bar */}
-          <SearchBar
-            value={searchTerm}
-            onChange={setSearchTerm}
-            onClear={() => setSearchTerm("")}
-            placeholder="Search appointments, doctors, or clinics..."
-          />
-
-          {/* Filter Section */}
-          <FilterSection
-            statusFilter={statusFilter}
-            setStatusFilter={setStatusFilter}
-            bookingTypeFilter={bookingTypeFilter}
-            setBookingTypeFilter={setBookingTypeFilter}
-            stats={stats}
-          />
         </div>
 
         {/* Urgent Treatment Alerts */}

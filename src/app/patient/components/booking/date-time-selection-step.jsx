@@ -13,6 +13,8 @@ import {
   CheckCircle2,
   Smartphone,
   X,
+  CalendarDays,
+  RefreshCw,
 } from "lucide-react";
 import {
   Card,
@@ -22,7 +24,7 @@ import {
 } from "@/core/components/ui/card";
 import { Button } from "@/core/components/ui/button";
 import { Badge } from "@/core/components/ui/badge";
-import { Alert } from "@/core/components/ui/alert";
+import { Alert, AlertDescription } from "@/core/components/ui/alert";
 import { Input } from "@/core/components/ui/input";
 import { Label } from "@/core/components/ui/label";
 import { Textarea } from "@/core/components/ui/text-area";
@@ -45,11 +47,10 @@ const DateTimeSelectionStep = ({
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [showManualInput, setShowManualInput] = useState(false);
 
-  // ✅ FIX: Properly sync selectedMonth when date changes from ANY source
+  // Sync selectedMonth when date changes from ANY source
   useEffect(() => {
     if (bookingData.date) {
       try {
-        // Parse date string correctly (avoid timezone issues)
         const [year, month, day] = bookingData.date.split("-").map(Number);
         const dateObj = new Date(year, month - 1, day);
 
@@ -65,7 +66,7 @@ const DateTimeSelectionStep = ({
     }
   }, [bookingData.date, selectedMonth]);
 
-  // ✅ IMPROVED: Handle date changes with proper formatting
+  // Handle date changes with proper formatting
   const handleDateChange = useCallback(
     (dateString) => {
       try {
@@ -131,7 +132,7 @@ const DateTimeSelectionStep = ({
     [onUpdateBookingData]
   );
 
-  // ✅ OPTIMIZED: Memoize calendar days generation
+  // Memoize calendar days generation
   const calendarDays = useMemo(() => {
     const year = selectedMonth.getFullYear();
     const month = selectedMonth.getMonth();
@@ -152,7 +153,6 @@ const DateTimeSelectionStep = ({
       const isPast = date < today;
       const isToday = date.getTime() === today.getTime();
 
-      // ✅ FIX: Use consistent date string format
       const dateString = `${date.getFullYear()}-${String(
         date.getMonth() + 1
       ).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -181,7 +181,7 @@ const DateTimeSelectionStep = ({
     });
   }, []);
 
-  // ✅ OPTIMIZED: Memoize time slot formatting
+  // Memoize time slot formatting
   const timeSlots = useMemo(() => {
     if (!Array.isArray(availableTimes)) return [];
 
@@ -215,7 +215,7 @@ const DateTimeSelectionStep = ({
     }, {});
   }, [timeSlots]);
 
-  // ✅ IMPROVED: Better date formatting
+  // Better date formatting
   const formattedSelectedDate = useMemo(() => {
     if (!bookingData.date) return null;
 
@@ -224,7 +224,7 @@ const DateTimeSelectionStep = ({
       const date = new Date(year, month - 1, day);
 
       return date.toLocaleDateString("en-US", {
-        weekday: "long",
+        weekday: isMobile ? "short" : "long",
         year: "numeric",
         month: "long",
         day: "numeric",
@@ -232,11 +232,11 @@ const DateTimeSelectionStep = ({
     } catch (error) {
       return null;
     }
-  }, [bookingData.date]);
+  }, [bookingData.date, isMobile]);
 
   const hasConflict = sameDayConflict || sameDayConflictDetails;
 
-  // ✅ NEW: Clear date and time
+  // Clear date and time
   const handleClearDateTime = useCallback(() => {
     if (onClearDate) {
       onClearDate();
@@ -245,263 +245,186 @@ const DateTimeSelectionStep = ({
     }
   }, [onClearDate, onUpdateBookingData]);
 
+  const periodIcons = {
+    morning: "🌅",
+    afternoon: "☀️",
+    evening: "🌙",
+  };
+
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-6 sm:mb-8">
-        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-          <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-primary/20 to-primary/10 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm">
+          <CalendarDays className="w-6 h-6 sm:w-7 sm:h-7 text-primary" />
         </div>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
             Select Date & Time
           </h2>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1">
+          <p className="text-sm sm:text-base text-muted-foreground mt-0.5">
             Choose your preferred appointment date and time
           </p>
         </div>
         {isMobile && (
           <Badge variant="outline" className="gap-1.5">
             <Smartphone className="w-3 h-3" />
-            Mobile
+            Mobile View
           </Badge>
         )}
       </div>
 
-      {/* ⚠️ CRITICAL: Same-Day Conflict Warning */}
+      {/* CRITICAL: Same-Day Conflict Warning */}
       {hasConflict && bookingData.date && (
         <Alert
           variant="destructive"
-          className="border-2 border-destructive animate-in fade-in-50 slide-in-from-top-2"
+          className="border-2 animate-in fade-in-50 slide-in-from-top-4"
         >
           <XCircle className="h-5 w-5 sm:h-6 sm:w-6 flex-shrink-0" />
-          <div className="flex-1 space-y-3">
-            <strong className="text-base sm:text-lg block">
-              ⚠️ Cannot Book: Existing Appointment on This Date
-            </strong>
+          <AlertDescription>
+            <div className="space-y-4">
+              <div>
+                <p className="font-bold text-base sm:text-lg mb-1">
+                  Cannot Book: Existing Appointment on This Date
+                </p>
+                <p className="text-xs sm:text-sm opacity-90">
+                  You already have an appointment scheduled for the selected
+                  date
+                </p>
+              </div>
 
-            {sameDayConflictDetails && (
-              <>
-                {/* Appointment details */}
-                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 sm:p-4">
-                  <p className="text-xs sm:text-sm font-semibold mb-2">
-                    📅 Your Existing Appointment:
-                  </p>
-                  <div className="space-y-1.5 text-xs sm:text-sm">
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Date:</span>
-                      <strong className="text-right">
-                        {new Date(
-                          sameDayConflictDetails.date
-                        ).toLocaleDateString("en-US", {
-                          weekday: isMobile ? "short" : "long",
-                          month: "long",
-                          day: "numeric",
-                        })}
-                      </strong>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Time:</span>
-                      <strong>{sameDayConflictDetails.time}</strong>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Clinic:</span>
-                      <strong className="text-right break-words">
-                        {sameDayConflictDetails.clinicName}
-                      </strong>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Doctor:</span>
-                      <strong className="text-right">
-                        {sameDayConflictDetails.doctorName}
-                      </strong>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-muted-foreground">Status:</span>
-                      <Badge
-                        variant={
-                          sameDayConflictDetails.status === "confirmed"
-                            ? "default"
-                            : "secondary"
-                        }
-                        className="text-xs"
-                      >
-                        {sameDayConflictDetails.status}
-                      </Badge>
+              {sameDayConflictDetails && (
+                <>
+                  {/* Appointment Details Card */}
+                  <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 sm:p-4">
+                    <p className="text-xs sm:text-sm font-semibold mb-3 flex items-center gap-2">
+                      <Calendar className="w-4 h-4" />
+                      Your Existing Appointment
+                    </p>
+                    <div className="space-y-2 text-xs sm:text-sm">
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Date:</span>
+                        <strong className="text-right">
+                          {new Date(
+                            sameDayConflictDetails.date
+                          ).toLocaleDateString("en-US", {
+                            weekday: isMobile ? "short" : "long",
+                            month: "long",
+                            day: "numeric",
+                          })}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Time:</span>
+                        <strong>{sameDayConflictDetails.time}</strong>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Clinic:</span>
+                        <strong className="text-right line-clamp-1">
+                          {sameDayConflictDetails.clinicName}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Doctor:</span>
+                        <strong className="text-right">
+                          {sameDayConflictDetails.doctorName}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted-foreground">Status:</span>
+                        <Badge
+                          variant={
+                            sameDayConflictDetails.status === "confirmed"
+                              ? "default"
+                              : "secondary"
+                          }
+                          className="text-xs capitalize"
+                        >
+                          {sameDayConflictDetails.status}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Policy explanation */}
-                <div className="bg-background border rounded-lg p-3 sm:p-4">
-                  <p className="text-xs sm:text-sm font-semibold mb-2">
-                    📋 Our Booking Policy:
-                  </p>
-                  <ul className="text-xs sm:text-sm space-y-1.5 ml-4 list-disc marker:text-primary">
-                    <li>
-                      <strong>Only 1 appointment per day</strong> is allowed
-                      across all clinics
-                    </li>
-                    <li>
-                      To book another appointment on the same day, you must{" "}
-                      <strong>first cancel</strong> your existing appointment
-                    </li>
-                    <li className="text-xs">
-                      {sameDayConflictDetails.status === "confirmed" ? (
-                        <span className="text-warning">
-                          ⚠️ <strong>Important:</strong> Your existing
-                          appointment is confirmed.
-                          {!isMobile &&
-                            " If it's part of an ongoing treatment, canceling may affect your treatment plan."}
-                        </span>
-                      ) : (
-                        <span className="text-success">
-                          ✓ Your existing appointment is pending and can be
-                          canceled if needed.
-                        </span>
+                  {/* Policy Explanation */}
+                  <div className="bg-background border rounded-xl p-3 sm:p-4">
+                    <p className="text-xs sm:text-sm font-semibold mb-2 flex items-center gap-2">
+                      <Info className="w-4 h-4" />
+                      Booking Policy
+                    </p>
+                    <ul className="text-xs sm:text-sm space-y-2 ml-4 list-disc marker:text-primary">
+                      <li>
+                        <strong>Only 1 appointment per day</strong> is allowed
+                        across all clinics
+                      </li>
+                      <li>
+                        To book another appointment on the same day, you must{" "}
+                        <strong>cancel</strong> your existing one first
+                      </li>
+                      {sameDayConflictDetails.status === "confirmed" && (
+                        <li className="text-amber-600 dark:text-amber-400">
+                          <AlertTriangle className="w-3 h-3 inline mr-1" />
+                          Your existing appointment is confirmed. Canceling may
+                          affect your treatment plan.
+                        </li>
                       )}
-                    </li>
-                  </ul>
-                </div>
+                    </ul>
+                  </div>
 
-                {/* Actions */}
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      (window.location.href = "/patient/appointments/upcoming")
-                    }
-                    className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground w-full sm:w-auto"
-                  >
-                    <Calendar className="w-4 h-4 mr-2" />
-                    View Appointments
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleClearDateTime}
-                    className="w-full sm:w-auto"
-                  >
-                    <ChevronLeft className="w-4 h-4 mr-2" />
-                    Choose Different Date
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-        </Alert>
-      )}
-
-      {/* Booking Limits Info */}
-      {bookingData.date && !hasConflict && bookingLimitsInfo && (
-        <Alert
-          className={cn(
-            "animate-in fade-in-50 slide-in-from-top-2",
-            bookingLimitsInfo.totalPending >= bookingLimitsInfo.maxTotalPending
-              ? "border-destructive bg-destructive/10"
-              : "border-blue-200 bg-blue-50 dark:bg-blue-950/20"
-          )}
-        >
-          <Info className="h-4 w-4 flex-shrink-0" />
-          <div className="text-xs sm:text-sm flex-1">
-            <strong>Your Booking Status:</strong>
-            <div className="mt-2 space-y-1.5">
-              {bookingLimitsInfo.totalPending >=
-              bookingLimitsInfo.maxTotalPending ? (
-                <div className="text-destructive font-semibold flex items-start gap-2">
-                  <Ban className="w-4 h-4 mt-0.5 shrink-0" />
-                  <div className="flex-1">
-                    <strong>Booking limit reached:</strong>
-                    <div className="text-xs font-normal mt-1">
-                      You have{" "}
-                      <strong>
-                        {bookingLimitsInfo.totalPending} pending appointment(s)
-                      </strong>
-                      . You cannot book more until at least one is confirmed or
-                      canceled.
-                    </div>
+                  {/* Action Buttons */}
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="mt-2 w-full sm:w-auto"
                       onClick={() =>
                         (window.location.href =
                           "/patient/appointments/upcoming")
                       }
+                      className="w-full sm:w-auto border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
                     >
-                      View My Appointments
+                      <Calendar className="w-4 h-4 mr-2" />
+                      View Appointments
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClearDateTime}
+                      className="w-full sm:w-auto"
+                    >
+                      <ChevronLeft className="w-4 h-4 mr-2" />
+                      Choose Different Date
                     </Button>
                   </div>
-                </div>
-              ) : (
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 text-xs sm:text-sm">
-                    <span>
-                      <strong>Current:</strong> {bookingLimitsInfo.totalPending}
-                      /{bookingLimitsInfo.maxTotalPending} pending
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs sm:text-sm">
-                    <span className="text-muted-foreground">
-                      <strong>After this:</strong>{" "}
-                      {bookingLimitsInfo.totalPending + 1}/
-                      {bookingLimitsInfo.maxTotalPending}
-                    </span>
-                  </div>
-                  {bookingLimitsInfo.totalPending + 1 >=
-                  bookingLimitsInfo.maxTotalPending ? (
-                    <div className="flex items-center gap-2 text-warning">
-                      <AlertTriangle className="w-4 h-4" />
-                      <span className="text-xs sm:text-sm font-semibold">
-                        ⚠️ This will be your last available slot
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2 text-success">
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span className="text-xs sm:text-sm">
-                        You can book{" "}
-                        <strong>
-                          {bookingLimitsInfo.maxTotalPending -
-                            bookingLimitsInfo.totalPending -
-                            1}{" "}
-                          more
-                        </strong>{" "}
-                        after this
-                      </span>
-                    </div>
-                  )}
-                </div>
+                </>
               )}
             </div>
-          </div>
+          </AlertDescription>
         </Alert>
       )}
 
       {/* Date & Time Selection Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 lg:gap-8">
         {/* Date Selection */}
         <Card
           className={cn(
-            "transition-all duration-200",
-            hasConflict && "opacity-50 pointer-events-none blur-sm"
+            "transition-all duration-300",
+            hasConflict && "opacity-50 pointer-events-none blur-[2px]"
           )}
         >
           <CardHeader className="pb-3 sm:pb-4">
             <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <span className="text-lg sm:text-xl">Choose Date</span>
+              <span className="text-lg sm:text-xl font-bold">Choose Date</span>
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <Button
                   variant="outline"
                   size="icon"
                   onClick={() => navigateMonth(-1)}
-                  className="h-8 w-8 flex-shrink-0"
+                  className="h-9 w-9 flex-shrink-0"
                   aria-label="Previous month"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <span className="text-sm font-medium min-w-[120px] text-center flex-1 sm:flex-none">
+                <span className="text-sm font-semibold min-w-[140px] text-center flex-1 sm:flex-none">
                   {selectedMonth.toLocaleDateString("en-US", {
                     month: "long",
                     year: "numeric",
@@ -511,7 +434,7 @@ const DateTimeSelectionStep = ({
                   variant="outline"
                   size="icon"
                   onClick={() => navigateMonth(1)}
-                  className="h-8 w-8 flex-shrink-0"
+                  className="h-9 w-9 flex-shrink-0"
                   aria-label="Next month"
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -519,21 +442,23 @@ const DateTimeSelectionStep = ({
               </div>
             </CardTitle>
           </CardHeader>
-          <CardContent className="pb-4 sm:pb-6">
+          <CardContent className="pb-5 sm:pb-6">
             <div className="space-y-4">
               {/* Calendar Grid */}
-              <div className="grid grid-cols-7 gap-0.5 sm:gap-1 text-center text-xs sm:text-sm">
+              <div className="grid grid-cols-7 gap-1 text-center">
+                {/* Weekday Headers */}
                 {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
                   (day) => (
                     <div
                       key={day}
-                      className="p-1 sm:p-2 font-medium text-muted-foreground text-xs"
+                      className="p-2 font-semibold text-muted-foreground text-xs sm:text-sm"
                     >
                       {isMobile ? day.charAt(0) : day}
                     </div>
                   )
                 )}
 
+                {/* Calendar Days */}
                 {calendarDays.map((day, index) => (
                   <button
                     key={index}
@@ -542,21 +467,21 @@ const DateTimeSelectionStep = ({
                     }
                     disabled={day.isDisabled}
                     className={cn(
-                      "aspect-square p-0.5 sm:p-2 text-xs sm:text-sm rounded-md transition-all duration-200",
-                      "hover:bg-muted active:scale-95 touch-manipulation",
-                      "min-h-[32px] sm:min-h-[40px]", // Minimum touch target
+                      "aspect-square p-1 text-xs sm:text-sm rounded-lg transition-all duration-200",
+                      "hover:bg-muted active:scale-95 touch-manipulation font-medium",
+                      "min-h-[44px]", // Minimum touch target
                       day.isCurrentMonth
                         ? "text-foreground"
-                        : "text-muted-foreground/40",
+                        : "text-muted-foreground/30",
                       day.isToday &&
-                        "bg-primary/10 text-primary font-semibold ring-1 ring-primary/20",
+                        "bg-primary/10 text-primary font-bold ring-2 ring-primary/30",
                       day.isSelected &&
-                        "bg-primary text-primary-foreground font-semibold shadow-md ring-2 ring-primary",
+                        "bg-primary text-primary-foreground font-bold shadow-lg ring-2 ring-primary scale-105",
                       day.isDisabled &&
-                        "opacity-30 cursor-not-allowed hover:bg-transparent",
+                        "opacity-30 cursor-not-allowed hover:bg-transparent active:scale-100",
                       !day.isDisabled &&
                         !day.isSelected &&
-                        "hover:bg-muted hover:shadow-sm"
+                        "hover:bg-muted hover:shadow-sm hover:scale-105"
                     )}
                     aria-label={day.date.toLocaleDateString()}
                     aria-selected={day.isSelected}
@@ -567,7 +492,7 @@ const DateTimeSelectionStep = ({
               </div>
 
               {/* Manual Input Toggle */}
-              <div className="pt-3 sm:pt-4 border-t">
+              <div className="pt-4 border-t">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -588,7 +513,7 @@ const DateTimeSelectionStep = ({
                 </Button>
 
                 {showManualInput && (
-                  <div className="mt-3 animate-in slide-in-from-top-2 fade-in-50">
+                  <div className="mt-3 space-y-2 animate-in slide-in-from-top-2 fade-in-50">
                     <Label
                       htmlFor="date-input"
                       className="text-xs sm:text-sm font-medium"
@@ -601,7 +526,7 @@ const DateTimeSelectionStep = ({
                       value={bookingData.date || ""}
                       onChange={(e) => handleDateChange(e.target.value)}
                       min={new Date().toISOString().split("T")[0]}
-                      className="mt-2"
+                      className="w-full"
                     />
                   </div>
                 )}
@@ -613,71 +538,126 @@ const DateTimeSelectionStep = ({
         {/* Time Selection */}
         <Card
           className={cn(
-            "transition-all duration-200",
-            hasConflict && "opacity-50 pointer-events-none blur-sm"
+            "transition-all duration-300",
+            hasConflict && "opacity-50 pointer-events-none blur-[2px]"
           )}
         >
           <CardHeader className="pb-3 sm:pb-4">
-            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl font-bold">
               <Clock className="w-5 h-5" />
               Choose Time
             </CardTitle>
             {formattedSelectedDate && (
               <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                {isMobile
-                  ? "Times for selected date"
-                  : `Available times for ${formattedSelectedDate}`}
+                Available times for {formattedSelectedDate}
               </p>
             )}
           </CardHeader>
-          <CardContent className="pb-4 sm:pb-6">
+          <CardContent className="pb-5 sm:pb-6">
+            {/* Clinic Hours Information */}
+            {bookingData.clinicInfo && (
+              <div className="mb-4">
+                {bookingData.clinicInfo.is_closed ? (
+                  <Alert className="border-amber-200 dark:border-amber-800/50 bg-gradient-to-r from-amber-50/50 to-orange-50/50 dark:from-amber-950/10 dark:to-orange-950/10">
+                    <Info className="h-5 w-5 text-amber-600 dark:text-amber-500 flex-shrink-0" />
+                    <AlertDescription>
+                      <div className="space-y-1">
+                        <p className="font-semibold text-sm text-amber-900 dark:text-amber-100">
+                          Clinic Closed on{" "}
+                          {bookingData.clinicInfo.day_of_week
+                            .charAt(0)
+                            .toUpperCase() +
+                            bookingData.clinicInfo.day_of_week.slice(1)}
+                          s
+                        </p>
+                        <p className="text-xs text-amber-800 dark:text-amber-200">
+                          This clinic is normally closed on this day. Please
+                          select a different date.
+                        </p>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <Alert className="border-primary/30 bg-primary/5">
+                    <Info className="h-5 w-5 text-primary flex-shrink-0" />
+                    <AlertDescription>
+                      <div className="space-y-1">
+                        <p className="font-semibold text-sm">Operating Hours</p>
+                        <p className="text-xs text-muted-foreground">
+                          Open from{" "}
+                          <strong>{bookingData.clinicInfo.opening_time}</strong>{" "}
+                          to{" "}
+                          <strong>{bookingData.clinicInfo.closing_time}</strong>
+                          {bookingData.date ===
+                            new Date().toISOString().split("T")[0] && (
+                            <span className="block mt-1 text-amber-700 dark:text-amber-300">
+                              Same-day bookings must be at least{" "}
+                              <strong>2 hours</strong> in advance
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            )}
+
             {!bookingData.date ? (
-              <div className="flex flex-col items-center justify-center py-8 sm:py-12 text-center">
-                <Calendar className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground mb-3 sm:mb-4" />
+              <div className="flex flex-col items-center justify-center py-12 sm:py-16 text-center">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 bg-gradient-to-br from-muted/50 to-muted rounded-2xl flex items-center justify-center">
+                  <Calendar className="w-8 h-8 sm:w-10 sm:h-10 text-muted-foreground" />
+                </div>
                 <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2">
                   Select a Date First
                 </h3>
-                <p className="text-xs sm:text-sm text-muted-foreground px-4">
+                <p className="text-xs sm:text-sm text-muted-foreground max-w-xs">
                   Please choose a date to see available time slots
                 </p>
               </div>
             ) : checkingAvailability ? (
-              <div className="flex flex-col items-center justify-center py-8 sm:py-12">
+              <div className="flex flex-col items-center justify-center py-12 sm:py-16">
                 <Loader message="Checking available times..." />
               </div>
             ) : timeSlots.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 sm:py-12 text-center">
-                <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground mb-3 sm:mb-4" />
+              <div className="flex flex-col items-center justify-center py-12 sm:py-16 text-center">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 bg-gradient-to-br from-muted/50 to-muted rounded-2xl flex items-center justify-center">
+                  <AlertCircle className="w-8 h-8 sm:w-10 sm:h-10 text-muted-foreground" />
+                </div>
                 <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2">
                   No Times Available
                 </h3>
-                <p className="text-xs sm:text-sm text-muted-foreground px-4">
-                  No appointment slots are available for the selected date.
-                  Please choose a different date.
+                <p className="text-xs sm:text-sm text-muted-foreground max-w-xs mb-4">
+                  No appointment slots available for this date
                 </p>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleClearDateTime}
-                  className="mt-4"
                 >
                   <ChevronLeft className="w-4 h-4 mr-2" />
                   Choose Different Date
                 </Button>
               </div>
             ) : (
-              <div className="space-y-3 sm:space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar">
+              <div className="space-y-4 max-h-[450px] overflow-y-auto pr-2">
                 {Object.entries(groupedTimeSlots).map(([period, slots]) => (
-                  <div key={period} className="space-y-2 sm:space-y-3">
-                    <div className="flex items-center gap-2 sticky top-0 bg-card z-10 pb-2">
-                      <Badge variant="outline" className="capitalize text-xs">
+                  <div key={period} className="space-y-3">
+                    {/* Period Header */}
+                    <div className="flex items-center gap-2 sticky top-0 bg-card z-10 pb-2 pt-1">
+                      <Badge
+                        variant="outline"
+                        className="capitalize text-xs font-semibold"
+                      >
+                        <Clock className="w-3 h-3 mr-1" />
                         {period}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {slots.length} slot{slots.length !== 1 ? "s" : ""}
+                        {slots.length} available
                       </span>
                     </div>
 
+                    {/* Time Slots Grid */}
                     <div
                       className={cn(
                         "grid gap-2",
@@ -695,10 +675,10 @@ const DateTimeSelectionStep = ({
                           size="sm"
                           onClick={() => handleTimeSelect(slot.value)}
                           className={cn(
-                            "justify-center transition-all duration-200 touch-manipulation",
-                            "min-h-[44px]", // Minimum touch target
+                            "justify-center transition-all duration-200 touch-manipulation font-medium",
+                            "min-h-[48px]", // Larger touch target
                             bookingData.time === slot.value &&
-                              "ring-2 ring-primary shadow-md"
+                              "ring-2 ring-primary shadow-lg scale-105"
                           )}
                         >
                           {slot.label}
@@ -715,14 +695,14 @@ const DateTimeSelectionStep = ({
 
       {/* Symptoms/Notes Section */}
       {bookingData.date && bookingData.time && !hasConflict && (
-        <Card className="border-primary/20 bg-primary/5 dark:bg-primary/10 animate-in fade-in-50 slide-in-from-bottom-2">
+        <Card className="border-primary/30 bg-gradient-to-br from-primary/5 via-primary/3 to-purple-500/5 animate-in fade-in-50 slide-in-from-bottom-4">
           <CardHeader className="pb-3 sm:pb-4">
             <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
-              <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
+              <FileText className="w-5 h-5" />
               Additional Notes (Optional)
             </CardTitle>
           </CardHeader>
-          <CardContent className="pb-4 sm:pb-6">
+          <CardContent className="pb-5 sm:pb-6">
             <div className="space-y-3">
               <Label
                 htmlFor="symptoms"
@@ -735,15 +715,17 @@ const DateTimeSelectionStep = ({
                 placeholder="Please describe any symptoms, concerns, or special requests that will help us prepare for your visit..."
                 value={bookingData.symptoms || ""}
                 onChange={handleSymptomsChange}
-                className="min-h-[100px] sm:min-h-[120px] resize-none text-sm"
+                className="min-h-[120px] resize-none text-sm"
                 maxLength={500}
               />
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Info className="w-3 h-3" />
+                <span className="flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5" />
                   Shared with clinic staff
                 </span>
-                <span>{bookingData.symptoms?.length || 0}/500</span>
+                <span className="font-medium">
+                  {bookingData.symptoms?.length || 0}/500
+                </span>
               </div>
             </div>
           </CardContent>
@@ -752,36 +734,23 @@ const DateTimeSelectionStep = ({
 
       {/* Selection Summary */}
       {bookingData.date && bookingData.time && !hasConflict && (
-        <Alert className="animate-in fade-in-50 slide-in-from-bottom-2">
-          <CheckCircle2 className="h-4 w-4 text-success" />
-          <div className="flex-1">
-            <strong className="text-sm sm:text-base">
-              Appointment Scheduled
-            </strong>
-            <p className="text-xs sm:text-sm mt-1">
-              {formattedSelectedDate} at{" "}
-              {timeSlots.find((t) => t.value === bookingData.time)?.label}
-            </p>
-          </div>
+        <Alert className="border-green-200 dark:border-green-800/50 bg-gradient-to-r from-green-50/50 to-emerald-50/50 dark:from-green-950/10 dark:to-emerald-950/10 animate-in fade-in-50 slide-in-from-bottom-2">
+          <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-500" />
+          <AlertDescription>
+            <div className="space-y-1">
+              <p className="font-semibold text-sm sm:text-base text-green-900 dark:text-green-100">
+                Appointment Scheduled
+              </p>
+              <p className="text-xs sm:text-sm text-green-800 dark:text-green-200">
+                {formattedSelectedDate} at{" "}
+                <strong>
+                  {timeSlots.find((t) => t.value === bookingData.time)?.label}
+                </strong>
+              </p>
+            </div>
+          </AlertDescription>
         </Alert>
       )}
-
-      {/* Custom Scrollbar Styles */}
-      <style jsx>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: hsl(var(--muted-foreground) / 0.3);
-          border-radius: 3px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: hsl(var(--muted-foreground) / 0.5);
-        }
-      `}</style>
     </div>
   );
 };

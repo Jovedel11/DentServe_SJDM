@@ -56,24 +56,6 @@ const data = {
       ],
     },
     {
-      title: "Reports & Feedbacks",
-      url: "/admin/reports-feedbacks",
-      icon: FileText,
-      items: [
-        { title: "User Reports", url: "/admin/reports-feedbacks/financial" },
-        { title: "Clinic Feedback", url: "/admin/reports-feedbacks/feedback" },
-      ],
-    },
-    {
-      title: "System Settings",
-      url: "/admin/settings",
-      icon: Settings,
-      items: [
-        { title: "General Settings", url: "/admin/settings/general" },
-        { title: "User Management", url: "/admin/settings/users" },
-      ],
-    },
-    {
       title: "Profile",
       url: "/admin/profile",
       icon: User,

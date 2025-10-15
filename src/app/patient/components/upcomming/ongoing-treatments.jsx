@@ -14,6 +14,7 @@ import {
   MapPin,
   Phone,
   Eye,
+  RefreshCw,
 } from "lucide-react";
 import Loader from "@/core/components/Loader";
 import { Badge } from "@/core/components/ui/badge";
@@ -164,15 +165,28 @@ const OngoingTreatments = ({
                       )}
                       %
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {treatment.visits_completed ||
-                        treatment.progress?.visits_completed ||
-                        0}
-                      /
-                      {treatment.total_visits_planned ||
-                        treatment.progress?.total_visits_planned ||
-                        "?"}{" "}
-                      visits
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-primary" />
+                      <span className="text-sm text-muted-foreground">
+                        Visit {(treatment.visits_completed || 0) + 1}
+                        {treatment.total_visits_planned
+                          ? ` of ${treatment.total_visits_planned}`
+                          : ""}
+                      </span>
+                      {treatment.visits_completed > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {treatment.visits_completed} completed
+                        </Badge>
+                      )}
+                      {/* ✅ NEW: Show cancelled attempts */}
+                      {treatment.total_cancelled_attempts > 0 && (
+                        <Badge
+                          variant="outline"
+                          className="text-xs border-yellow-500 text-yellow-700"
+                        >
+                          {treatment.total_cancelled_attempts} cancelled
+                        </Badge>
+                      )}
                     </div>
                     {treatment.status && (
                       <Badge variant="outline" className="mt-1 capitalize">
@@ -284,84 +298,149 @@ const OngoingTreatments = ({
                 )}
 
                 {/* Next Appointment or Schedule Reminder */}
-                {treatment.next_appointment ? (
-                  <div
-                    className={`p-4 ${alertConfig.bg} border ${alertConfig.border} rounded-lg mb-4`}
-                  >
-                    <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-primary" />
-                      Next Scheduled Visit
-                    </h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                        <span className="font-medium">
-                          {formatDate(treatment.next_appointment.date)} at{" "}
-                          {formatTime(treatment.next_appointment.time)}
-                        </span>
-                      </div>
-                      {treatment.next_appointment.doctor && (
-                        <div className="flex items-center gap-2">
-                          <Stethoscope className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                          <span>
-                            {treatment.next_appointment.doctor.name}
-                            {treatment.next_appointment.doctor.specialization &&
-                              ` - ${treatment.next_appointment.doctor.specialization}`}
-                          </span>
+                {(() => {
+                  const hasActiveNextAppointment =
+                    treatment.next_appointment &&
+                    ["pending", "confirmed"].includes(
+                      treatment.next_appointment.status
+                    );
+
+                  if (hasActiveNextAppointment) {
+                    // Show scheduled appointment
+                    return (
+                      <div
+                        className={`p-4 ${alertConfig.bg} border ${alertConfig.border} rounded-lg mb-4`}
+                      >
+                        <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-primary" />
+                          Next Scheduled Visit
+                        </h4>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                            <span className="font-medium">
+                              {formatDate(treatment.next_appointment.date)} at{" "}
+                              {formatTime(treatment.next_appointment.time)}
+                            </span>
+                          </div>
+                          {treatment.next_appointment.doctor && (
+                            <div className="flex items-center gap-2">
+                              <Stethoscope className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                              <span>
+                                {treatment.next_appointment.doctor.name}
+                                {treatment.next_appointment.doctor
+                                  .specialization &&
+                                  ` - ${treatment.next_appointment.doctor.specialization}`}
+                              </span>
+                            </div>
+                          )}
+                          <Badge
+                            variant={
+                              treatment.next_appointment.status === "confirmed"
+                                ? "default"
+                                : treatment.next_appointment.status ===
+                                  "pending"
+                                ? "secondary"
+                                : "outline"
+                            }
+                            className="capitalize"
+                          >
+                            {treatment.next_appointment.status === "pending" &&
+                              "⏳ "}
+                            {treatment.next_appointment.status ===
+                              "confirmed" && "✓ "}
+                            {treatment.next_appointment.status}
+                          </Badge>
                         </div>
-                      )}
-                      <Badge variant="outline" className="capitalize">
-                        {treatment.next_appointment.status}
-                      </Badge>
-                    </div>
-                  </div>
-                ) : requiresScheduling ? (
-                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg mb-4">
-                    <div className="flex items-start gap-2 mb-3">
-                      <CalendarPlus className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="font-semibold text-yellow-900 text-sm">
-                          Schedule Your Next Visit
-                        </p>
-                        <p className="text-xs text-yellow-700 mt-1">
-                          {treatment.follow_up_interval_days
-                            ? `Recommended interval: ${treatment.follow_up_interval_days} days`
-                            : "Continue your treatment plan"}
+                      </div>
+                    );
+                  }
+
+                  // Check if treatment is completed
+                  if (
+                    treatment.status === "completed" ||
+                    (treatment.total_visits_planned &&
+                      treatment.visits_completed >=
+                        treatment.total_visits_planned)
+                  ) {
+                    return (
+                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center mb-4">
+                        <CheckCircle className="w-5 h-5 text-green-600 mx-auto mb-1" />
+                        <p className="text-sm text-green-800 font-medium">
+                          Treatment Completed! 🎉
                         </p>
                       </div>
+                    );
+                  }
+
+                  // Show "Book Next Visit" button
+                  return (
+                    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg mb-4">
+                      <div className="flex items-start gap-2 mb-3">
+                        <CalendarPlus className="w-5 h-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="font-semibold text-yellow-900 text-sm">
+                            {isOverdue
+                              ? "Overdue - Book Your Next Visit"
+                              : "Schedule Your Next Visit"}
+                          </p>
+                          <p className="text-xs text-yellow-700 mt-1">
+                            Visit #{treatment.visits_completed + 1}
+                            {treatment.total_visits_planned &&
+                              ` of ${treatment.total_visits_planned}`}
+                            {treatment.follow_up_interval_days &&
+                              ` • Recommended interval: ${treatment.follow_up_interval_days} days`}
+                          </p>
+                          {treatment.total_cancelled_attempts > 0 && (
+                            <p className="text-xs text-yellow-600 mt-1 flex items-center gap-1">
+                              <AlertCircle className="w-3 h-3" />
+                              {treatment.total_cancelled_attempts} previous
+                              booking(s) cancelled
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="w-full"
+                        onClick={() =>
+                          navigate(
+                            `/patient/appointments/book-follow-up/${treatment.id}`
+                          )
+                        }
+                      >
+                        <CalendarPlus className="w-4 h-4 mr-2" />
+                        Book Next Visit
+                      </Button>
                     </div>
-                    {/* ✅ NEW: Direct Follow-Up Booking Button */}
-                    <Button
-                      size="sm"
-                      className="w-full"
-                      onClick={() =>
-                        navigate(
-                          `/patient/appointments/book-follow-up/${treatment.id}`
-                        )
-                      }
-                    >
-                      <CalendarPlus className="w-4 h-4 mr-2" />
-                      Book Next Visit
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-center mb-4">
-                    <CheckCircle className="w-5 h-5 text-green-600 mx-auto mb-1" />
-                    <p className="text-sm text-green-800 font-medium">
-                      Treatment on track
-                    </p>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* View Details Button */}
                 {onViewDetails && (
-                  <button
-                    onClick={() => onViewDetails(treatment)}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg hover:bg-primary/20 transition-colors font-medium"
-                  >
-                    <Eye className="w-4 h-4" />
-                    View Treatment Details
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => onViewDetails(treatment)}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-lg hover:bg-primary/20 transition-colors font-medium"
+                    >
+                      <Eye className="w-4 h-4" />
+                      View Treatment Details
+                    </button>
+
+                    {/* ✅ NEW: Manual Refresh Button */}
+                    <button
+                      onClick={() => {
+                        // Trigger parent refresh
+                        if (window.dispatchEvent) {
+                          window.dispatchEvent(new Event("focus"));
+                        }
+                      }}
+                      className="px-4 py-2 bg-muted text-foreground border border-border rounded-lg hover:bg-muted/80 transition-colors"
+                      title="Refresh treatment status"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
+                  </div>
                 )}
               </div>
             );

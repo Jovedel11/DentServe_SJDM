@@ -1,7 +1,6 @@
 import React from "react";
 import {
   Stethoscope,
-  Calendar,
   Star,
   CreditCard,
   Award,
@@ -11,16 +10,20 @@ import {
   Info,
   Briefcase,
   Languages,
-  CheckCheck,
+  UserCheck,
+  Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import { Card, CardContent } from "@/core/components/ui/card";
 import { Badge } from "@/core/components/ui/badge";
+import { Switch } from "@/core/components/ui/switch";
+import { Label } from "@/core/components/ui/label";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/core/components/ui/avatar";
-import { Alert } from "@/core/components/ui/alert";
+import { Alert, AlertDescription } from "@/core/components/ui/alert";
 import { Button } from "@/core/components/ui/button";
 import { useIsMobile } from "@/core/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -51,43 +54,58 @@ const DoctorSelectionStep = ({
   if (!doctors || doctors.length === 0) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-green-100 dark:bg-green-950 rounded-full flex items-center justify-center">
-            <Stethoscope className="w-6 h-6 text-green-600 dark:text-green-400" />
+        {/* Header */}
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-green-500/20 to-green-500/10 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm">
+            <Stethoscope className="w-6 h-6 sm:w-7 sm:h-7 text-green-600 dark:text-green-400" />
           </div>
-          <div>
-            <h2 className="text-2xl sm:text-3xl font-bold">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
               Choose Your Doctor
             </h2>
-            <p className="text-sm sm:text-base text-muted-foreground">
+            <p className="text-sm sm:text-base text-muted-foreground mt-0.5">
               Select from our qualified dental professionals
             </p>
           </div>
         </div>
 
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <div>
-            <strong>No Doctors Available</strong>
-            <p className="text-sm mt-1">
-              No doctors are currently available at the selected clinic.
-            </p>
+        {/* Error State */}
+        <div className="text-center py-16 sm:py-20">
+          <div className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-5 bg-gradient-to-br from-destructive/20 to-destructive/10 rounded-2xl flex items-center justify-center shadow-sm">
+            <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12 text-destructive" />
           </div>
-        </Alert>
+          <h3 className="text-xl sm:text-2xl font-bold mb-2 text-foreground">
+            No Doctors Available
+          </h3>
+          <p className="text-sm sm:text-base text-muted-foreground mb-6 max-w-md mx-auto px-4">
+            No doctors are currently available at the selected clinic. Please
+            try again later or choose another clinic.
+          </p>
+          <Button
+            onClick={() => window.location.reload()}
+            variant="outline"
+            size={isMobile ? "default" : "lg"}
+          >
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4 sm:mb-6">
-        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-green-100 dark:bg-green-950 rounded-full flex items-center justify-center flex-shrink-0">
-          <Stethoscope className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 dark:text-green-400" />
+      <div className="flex items-center gap-3 sm:gap-4">
+        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-green-500/20 to-green-500/10 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm">
+          <Stethoscope className="w-6 h-6 sm:w-7 sm:h-7 text-green-600 dark:text-green-400" />
         </div>
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-bold">Choose Your Doctor</h2>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1">
+        <div className="flex-1 min-w-0">
+          <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
+            Choose Your Doctor
+          </h2>
+          <p className="text-sm sm:text-base text-muted-foreground mt-0.5">
             {doctors.length} qualified professional
             {doctors.length !== 1 ? "s" : ""} available
           </p>
@@ -96,72 +114,106 @@ const DoctorSelectionStep = ({
 
       {/* Consultation Skip Notice */}
       {!isConsultationOnly && consultationCheckResult && (
-        <div
+        <Alert
           className={cn(
-            "rounded-xl border-2 p-4",
+            "border-2 animate-in fade-in-50 slide-in-from-top-2",
             consultationCheckResult.canSkipConsultation
-              ? "bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 border-green-200 dark:border-green-800"
-              : "bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 border-amber-200 dark:border-amber-800"
+              ? "border-green-200 dark:border-green-800/50 bg-gradient-to-r from-green-50/50 to-emerald-50/50 dark:from-green-950/10 dark:to-emerald-950/10"
+              : "border-amber-200 dark:border-amber-800/50 bg-gradient-to-r from-amber-50/50 to-orange-50/50 dark:from-amber-950/10 dark:to-orange-950/10"
           )}
         >
-          <div className="flex items-start gap-3">
-            {consultationCheckResult.canSkipConsultation ? (
-              <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
-            ) : (
-              <Info className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-            )}
+          {consultationCheckResult.canSkipConsultation ? (
+            <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-500 flex-shrink-0" />
+          ) : (
+            <Info className="w-5 h-5 text-amber-600 dark:text-amber-500 flex-shrink-0" />
+          )}
 
-            <div className="flex-1">
-              <div className="flex items-center justify-between gap-4 mb-2">
-                <strong
-                  className={
-                    consultationCheckResult.canSkipConsultation
-                      ? "text-green-900 dark:text-green-100"
-                      : "text-amber-900 dark:text-amber-100"
-                  }
-                >
-                  {consultationCheckResult.canSkipConsultation
-                    ? "✓ Consultation Fee Can Be Waived"
-                    : "Consultation Fee Required"}
-                </strong>
+          <AlertDescription>
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={cn(
+                      "font-semibold text-sm sm:text-base mb-1",
+                      consultationCheckResult.canSkipConsultation
+                        ? "text-green-900 dark:text-green-100"
+                        : "text-amber-900 dark:text-amber-100"
+                    )}
+                  >
+                    {consultationCheckResult.canSkipConsultation
+                      ? "Consultation Fee Can Be Waived"
+                      : "Consultation Fee Required"}
+                  </p>
+                  <p
+                    className={cn(
+                      "text-xs sm:text-sm",
+                      consultationCheckResult.canSkipConsultation
+                        ? "text-green-800 dark:text-green-200"
+                        : "text-amber-800 dark:text-amber-200"
+                    )}
+                  >
+                    {consultationCheckResult.canSkipConsultation
+                      ? "You had a recent consultation at this clinic."
+                      : "Selected service(s) require consultation."}
+                  </p>
+                </div>
 
+                {/* Toggle Switch */}
                 {consultationCheckResult.canSkipConsultation && (
-                  <label className="flex items-center gap-2 cursor-pointer shrink-0">
-                    <input
-                      type="checkbox"
+                  <div className="flex items-center gap-2.5 flex-shrink-0">
+                    <Switch
+                      id="skip-consultation"
                       checked={skipConsultation}
-                      onChange={(e) => setSkipConsultation(e.target.checked)}
-                      className="w-4 h-4 rounded border-green-300 text-green-600 focus:ring-green-500"
+                      onCheckedChange={setSkipConsultation}
+                      className="data-[state=checked]:bg-green-600"
                     />
-                    <span className="text-sm font-medium whitespace-nowrap">
+                    <Label
+                      htmlFor="skip-consultation"
+                      className="text-sm font-medium cursor-pointer whitespace-nowrap"
+                    >
                       Skip fee
-                    </span>
-                  </label>
+                    </Label>
+                  </div>
                 )}
               </div>
 
-              <p className="text-xs sm:text-sm mb-2">
-                {consultationCheckResult.canSkipConsultation
-                  ? "You had a recent consultation at this clinic."
-                  : "Selected service(s) require consultation."}
-              </p>
-
+              {/* Last Consultation Info */}
               {consultationCheckResult.checks?.map(
                 (check, idx) =>
                   check.last_consultation_date && (
-                    <p key={idx} className="text-xs text-muted-foreground">
-                      Last visit:{" "}
-                      {new Date(
-                        check.last_consultation_date
-                      ).toLocaleDateString()}
-                      {check.days_valid_remaining &&
-                        ` (Valid for ${check.days_valid_remaining} more days)`}
-                    </p>
+                    <div
+                      key={idx}
+                      className="flex items-start gap-2 pt-2 border-t border-border/50"
+                    >
+                      <Info className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                      <div className="text-xs text-muted-foreground space-y-1">
+                        <p>
+                          Last visit:{" "}
+                          <strong className="text-foreground">
+                            {new Date(
+                              check.last_consultation_date
+                            ).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
+                          </strong>
+                        </p>
+                        {check.days_valid_remaining && (
+                          <p className="text-success">
+                            Valid for{" "}
+                            <strong>
+                              {check.days_valid_remaining} more days
+                            </strong>
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   )
               )}
             </div>
-          </div>
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Doctors Grid */}
@@ -178,50 +230,54 @@ const DoctorSelectionStep = ({
             <Card
               key={doctor.id}
               className={cn(
-                "cursor-pointer transition-all duration-200 hover:shadow-lg overflow-hidden touch-manipulation",
-                "border-2",
+                "group cursor-pointer transition-all duration-300 overflow-hidden border-2",
+                "hover:shadow-lg touch-manipulation",
                 isSelected
-                  ? "ring-2 ring-primary border-primary shadow-md bg-primary/5"
+                  ? "ring-2 ring-primary border-primary shadow-xl bg-primary/[0.02]"
                   : "border-border hover:border-primary/50"
               )}
               onClick={() => onDoctorSelect(doctor)}
             >
               <CardContent className="p-0">
                 {/* Doctor Header with Gradient Background */}
-                <div className="bg-gradient-to-r from-primary/10 to-purple-500/10 p-5 sm:p-6 border-b">
+                <div className="bg-gradient-to-r from-green-500/10 via-primary/10 to-purple-500/10 p-5 sm:p-6 border-b">
                   <div className="flex items-start gap-4">
-                    <Avatar className="w-16 h-16 sm:w-20 sm:h-20 border-4 border-background shadow-md">
-                      <AvatarImage src={doctor.image_url} alt={fullName} />
-                      <AvatarFallback className="bg-primary text-primary-foreground font-bold text-xl">
+                    <Avatar className="w-16 h-16 sm:w-20 sm:h-20 border-4 border-background shadow-lg ring-2 ring-primary/10">
+                      <AvatarImage
+                        src={doctor.image_url}
+                        alt={fullName}
+                        className="object-cover"
+                      />
+                      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground font-bold text-lg sm:text-xl">
                         {doctor.first_name?.[0]}
                         {doctor.last_name?.[0]}
                       </AvatarFallback>
                     </Avatar>
 
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-lg sm:text-xl font-bold text-foreground mb-1 truncate">
+                      <h3 className="text-lg sm:text-xl font-bold text-foreground mb-1 line-clamp-1">
                         {doctor.display_name || fullName}
                       </h3>
-                      <p className="text-primary font-semibold text-sm sm:text-base mb-2">
+                      <p className="text-primary font-semibold text-sm sm:text-base mb-2 line-clamp-1">
                         {doctor.specialization}
                       </p>
 
                       {doctor.rating > 0 && (
                         <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-0.5">
                             {[...Array(5)].map((_, i) => (
                               <Star
                                 key={i}
                                 className={cn(
-                                  "w-4 h-4",
+                                  "w-3.5 h-3.5 sm:w-4 sm:h-4",
                                   i < Math.floor(doctor.rating)
                                     ? "text-yellow-500 fill-yellow-500"
-                                    : "text-gray-300"
+                                    : "text-muted/30 fill-muted/30"
                                 )}
                               />
                             ))}
                           </div>
-                          <span className="text-sm font-medium">
+                          <span className="text-sm font-semibold text-foreground">
                             {doctor.rating.toFixed(1)}
                           </span>
                           {doctor.total_reviews > 0 && (
@@ -234,33 +290,41 @@ const DoctorSelectionStep = ({
                     </div>
 
                     {isSelected && (
-                      <CheckCircle2 className="w-6 h-6 text-primary flex-shrink-0" />
+                      <div className="flex-shrink-0">
+                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center ring-2 ring-primary/20">
+                          <CheckCircle2 className="w-5 h-5 text-primary" />
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
 
                 {/* Doctor Details */}
                 <div className="p-5 sm:p-6 space-y-4">
-                  {/* Consultation Fee */}
-                  <div className="bg-gradient-to-r from-primary/5 to-purple-500/5 rounded-lg p-4 border">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium flex items-center gap-2">
-                        <CreditCard className="w-4 h-4 text-primary" />
-                        Consultation Fee
-                      </span>
+                  {/* Consultation Fee Highlight */}
+                  <div className="bg-gradient-to-r from-primary/5 via-primary/3 to-purple-500/5 rounded-xl p-4 border border-primary/10">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <CreditCard className="w-4 h-4 text-primary" />
+                        </div>
+                        <span className="text-sm font-medium text-muted-foreground">
+                          Consultation Fee
+                        </span>
+                      </div>
                       <div className="text-right">
                         {skipConsultation &&
                         consultationCheckResult?.canSkipConsultation ? (
-                          <>
-                            <span className="line-through text-muted-foreground text-sm mr-2">
+                          <div className="space-y-1">
+                            <span className="line-through text-muted-foreground text-xs block">
                               {formatConsultationFee(doctor.consultation_fee)}
                             </span>
-                            <span className="font-bold text-green-600 text-lg">
+                            <Badge className="bg-green-600 hover:bg-green-700 font-bold">
                               FREE
-                            </span>
-                          </>
+                            </Badge>
+                          </div>
                         ) : (
-                          <span className="font-bold text-primary text-lg">
+                          <span className="font-bold text-primary text-lg sm:text-xl">
                             {formatConsultationFee(doctor.consultation_fee)}
                           </span>
                         )}
@@ -268,32 +332,40 @@ const DoctorSelectionStep = ({
                     </div>
                   </div>
 
-                  {/* Quick Stats */}
+                  {/* Quick Stats Grid */}
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Briefcase className="w-4 h-4 text-muted-foreground" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">
+                    <div className="flex items-start gap-2.5 p-3 rounded-lg bg-muted/30">
+                      <div className="w-8 h-8 rounded-lg bg-background flex items-center justify-center flex-shrink-0">
+                        <Briefcase className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground mb-0.5">
                           Experience
                         </p>
-                        <p className="font-medium">
+                        <p className="font-semibold text-sm text-foreground line-clamp-1">
                           {formatExperience(doctor.experience_years)}
                         </p>
                       </div>
                     </div>
 
                     {doctor.is_available !== undefined && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <CheckCheck className="w-4 h-4 text-muted-foreground" />
-                        <div>
-                          <p className="text-xs text-muted-foreground">
+                      <div className="flex items-start gap-2.5 p-3 rounded-lg bg-muted/30">
+                        <div className="w-8 h-8 rounded-lg bg-background flex items-center justify-center flex-shrink-0">
+                          <UserCheck className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-muted-foreground mb-1">
                             Status
                           </p>
                           <Badge
                             variant={
                               doctor.is_available ? "default" : "secondary"
                             }
-                            className="text-xs"
+                            className={cn(
+                              "text-xs font-medium",
+                              doctor.is_available &&
+                                "bg-green-600 hover:bg-green-700"
+                            )}
                           >
                             {doctor.is_available ? "Available" : "Busy"}
                           </Badge>
@@ -304,31 +376,37 @@ const DoctorSelectionStep = ({
 
                   {/* Education */}
                   {doctor.education && (
-                    <div className="flex items-start gap-2 text-sm">
-                      <GraduationCap className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <GraduationCap className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground mb-1">
                           Education
                         </p>
-                        <p className="text-foreground">{doctor.education}</p>
+                        <p className="text-sm text-foreground leading-relaxed">
+                          {doctor.education}
+                        </p>
                       </div>
                     </div>
                   )}
 
                   {/* Languages */}
                   {languages.length > 0 && (
-                    <div className="flex items-start gap-2 text-sm">
-                      <Languages className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-1">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Languages className="w-4 h-4 text-primary" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground mb-1.5">
                           Languages
                         </p>
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1.5">
                           {languages.map((lang, idx) => (
                             <Badge
                               key={idx}
                               variant="outline"
-                              className="text-xs"
+                              className="text-xs font-medium"
                             >
                               {lang}
                             </Badge>
@@ -340,7 +418,7 @@ const DoctorSelectionStep = ({
 
                   {/* Bio */}
                   {doctor.bio && (
-                    <p className="text-sm text-muted-foreground line-clamp-3 border-t pt-3">
+                    <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed pt-3 border-t">
                       {doctor.bio}
                     </p>
                   )}
@@ -348,27 +426,40 @@ const DoctorSelectionStep = ({
                   {/* Certifications & Awards */}
                   {(Object.keys(certifications).length > 0 ||
                     awards.length > 0) && (
-                    <div className="border-t pt-3 space-y-2">
+                    <div className="pt-3 border-t space-y-3">
                       {Object.keys(certifications).length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {Object.entries(certifications)
-                            .slice(0, 3)
-                            .map(([cert, details]) => (
-                              <Badge
-                                key={cert}
-                                variant="secondary"
-                                className="text-xs"
-                              >
-                                {details.name || cert}
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="w-4 h-4 text-primary" />
+                            <p className="text-xs font-semibold text-muted-foreground">
+                              Certifications
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {Object.entries(certifications)
+                              .slice(0, 3)
+                              .map(([cert, details]) => (
+                                <Badge
+                                  key={cert}
+                                  variant="secondary"
+                                  className="text-xs"
+                                >
+                                  {details.name || cert}
+                                </Badge>
+                              ))}
+                            {Object.keys(certifications).length > 3 && (
+                              <Badge variant="outline" className="text-xs">
+                                +{Object.keys(certifications).length - 3} more
                               </Badge>
-                            ))}
+                            )}
+                          </div>
                         </div>
                       )}
 
                       {awards.length > 0 && (
-                        <div className="flex items-center gap-2 text-sm">
-                          <Award className="w-4 h-4 text-yellow-500" />
-                          <span className="text-muted-foreground">
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/30">
+                          <Award className="w-4 h-4 text-amber-600 dark:text-amber-500 flex-shrink-0" />
+                          <span className="text-xs sm:text-sm font-medium text-amber-900 dark:text-amber-100">
                             {awards.length} professional award
                             {awards.length !== 1 ? "s" : ""}
                           </span>
@@ -380,7 +471,10 @@ const DoctorSelectionStep = ({
                   {/* Action Button */}
                   <Button
                     variant={isSelected ? "default" : "outline"}
-                    className="w-full mt-4"
+                    className={cn(
+                      "w-full mt-4 touch-manipulation",
+                      isSelected && "shadow-md"
+                    )}
                     size="lg"
                     onClick={(e) => {
                       e.stopPropagation();

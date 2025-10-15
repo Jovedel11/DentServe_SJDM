@@ -304,6 +304,40 @@ export const useTreatmentPlans = () => {
     }
   }, [isStaff, isAdmin, getOngoingTreatments]);
 
+  const getTreatmentPlanHistory = useCallback(async (treatmentPlanId) => {
+    try {
+      setState(prev => ({ ...prev, loading: true, error: null }));
+  
+      const { data, error } = await supabase.rpc('get_treatment_plan_history', {
+        p_treatment_plan_id: treatmentPlanId
+      });
+  
+      if (error) throw error;
+  
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to fetch treatment plan history');
+      }
+  
+      const history = data.data;
+  
+      setState(prev => ({ ...prev, loading: false }));
+  
+      return {
+        success: true,
+        history: {
+          completed: history.completed_visits || [],
+          pending: history.pending_visits || [],
+          cancelled: history.cancelled_attempts || []
+        }
+      };
+  
+    } catch (err) {
+      const errorMsg = err.message || 'Failed to fetch treatment plan history';
+      setState(prev => ({ ...prev, loading: false, error: errorMsg }));
+      return { success: false, error: errorMsg };
+    }
+  }, []);
+
   //  Link Appointment to Treatment Plan
   const linkAppointmentToPlan = useCallback(async (treatmentPlanId, appointmentId, visitNumber, visitPurpose = null) => {
     if (!isStaff && !isAdmin) {
@@ -614,6 +648,7 @@ export const useTreatmentPlans = () => {
 
     followUpBooking,
     startFollowUpBooking,
+    getTreatmentPlanHistory,
     
     // Helper: Check if treatment needs follow-up booking
     needsFollowUpBooking: (treatmentId) => {

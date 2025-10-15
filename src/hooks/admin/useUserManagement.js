@@ -151,6 +151,35 @@ export const useUserManagement = () => {
     }
   }, [isAdmin]);
 
+  const changeUserPassword = useCallback(async (userId, newPassword) => {
+    if (!isAdmin) {
+      return { success: false, error: 'Access denied: Admin required' };
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const result = await authService.adminChangeUserPassword(userId, newPassword);
+      
+      if (!result.success) {
+        setError(result.error);
+      }
+
+      return result;
+
+    } catch (err) {
+      const errorMessage = err.message || 'Failed to change password';
+      setError(errorMessage);
+      return {
+        success: false,
+        error: errorMessage
+      };
+    } finally {
+      setLoading(false);
+    }
+  }, [isAdmin]);
+
   // Get user details by type
   const getUsersByType = useCallback(async (userType) => {
     return await fetchUsers({ userType });
@@ -175,6 +204,7 @@ export const useUserManagement = () => {
     searchUsers,
     fetchIncompleteStaff,
     cleanupIncompleteStaff,
-    sendCompletionReminder
+    sendCompletionReminder,
+    changeUserPassword
   };
 };

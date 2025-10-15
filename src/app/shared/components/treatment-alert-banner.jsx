@@ -130,10 +130,10 @@ export const TreatmentAlertBanner = ({ treatments, summary, onDismiss }) => {
                     {treatment.treatment_name}
                   </p>
                   <p className="text-xs text-yellow-700">
-                    Progress: {treatment.progress.visits_completed}/
-                    {treatment.progress.total_visits_planned} visits •
+                    Progress: {treatment.visits_completed || 0}/
+                    {treatment.total_visits_planned || "?"} visits
                     {treatment.follow_up_interval_days &&
-                      ` Recommended interval: ${treatment.follow_up_interval_days} days`}
+                      ` • Recommended interval: ${treatment.follow_up_interval_days} days`}
                   </p>
                 </div>
               ))}

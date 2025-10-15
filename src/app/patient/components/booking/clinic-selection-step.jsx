@@ -10,12 +10,14 @@ import {
   Building2,
   Circle,
   AlertTriangle,
-  Ban,
+  Info,
+  CalendarClock,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/core/components/ui/button";
 import { Card, CardContent } from "@/core/components/ui/card";
 import { Badge } from "@/core/components/ui/badge";
-import { Alert } from "@/core/components/ui/alert";
+import { Alert, AlertDescription } from "@/core/components/ui/alert";
 import { useIsMobile } from "@/core/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
@@ -90,68 +92,39 @@ const ClinicSelectionStep = ({
     }
   }, []);
 
-  // ✅ NEW: Check if clinic can be booked
-  const canBookClinic = useCallback(
-    (clinic, hoursInfo) => {
-      // ✅ RULE 1: Clinic must be open
-      if (!hoursInfo.isOpen) {
-        return {
-          allowed: false,
-          reason: "Clinic is currently closed",
-          type: "closed",
-          detail: `Opens at ${hoursInfo.openTime || "scheduled time"}`,
-        };
-      }
-
-      // ✅ RULE 2: Check same-day appointment (from profile statistics)
-      const today = new Date().toISOString().split("T")[0];
-      const hasAppointmentToday =
-        profile?.profile?.statistics?.upcoming_appointments?.some((apt) => {
-          const aptDate = new Date(apt.appointment_date)
-            .toISOString()
-            .split("T")[0];
-          return aptDate === today;
-        });
-
-      if (hasAppointmentToday) {
-        return {
-          allowed: false,
-          reason: "You already have an appointment today",
-          type: "same_day_limit",
-          detail: "Only one appointment per day allowed across all clinics",
-        };
-      }
-
-      return { allowed: true };
-    },
-    [profile]
-  );
-
   if (clinicsLoading) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 sm:py-16">
-        <Loader2 className="w-10 h-10 sm:w-12 sm:h-12 animate-spin text-primary mb-4" />
-        <span className="text-sm sm:text-base text-muted-foreground">
+      <div className="flex flex-col items-center justify-center py-16 sm:py-20">
+        <div className="relative">
+          <Loader2 className="w-12 h-12 sm:w-14 sm:h-14 animate-spin text-primary" />
+          <div className="absolute inset-0 w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-primary/10 animate-ping" />
+        </div>
+        <p className="text-sm sm:text-base text-muted-foreground mt-4 font-medium">
           Finding the best clinics for you...
-        </span>
+        </p>
       </div>
     );
   }
 
   if (!clinics || clinics.length === 0) {
     return (
-      <div className="text-center py-12 sm:py-16">
-        <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-          <MapPin className="w-8 h-8 sm:w-10 sm:h-10 text-muted-foreground" />
+      <div className="text-center py-16 sm:py-20">
+        <div className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-5 bg-gradient-to-br from-muted/50 to-muted rounded-2xl flex items-center justify-center">
+          <MapPin className="w-10 h-10 sm:w-12 sm:h-12 text-muted-foreground" />
         </div>
-        <h3 className="text-lg sm:text-xl font-semibold mb-2">
+        <h3 className="text-xl sm:text-2xl font-bold mb-2 text-foreground">
           No Clinics Available
         </h3>
-        <p className="text-sm sm:text-base text-muted-foreground mb-6 max-w-md mx-auto">
+        <p className="text-sm sm:text-base text-muted-foreground mb-6 max-w-md mx-auto px-4">
           No clinics found in your area. Please try again later or adjust your
           search.
         </p>
-        <Button onClick={() => window.location.reload()} variant="outline">
+        <Button
+          onClick={() => window.location.reload()}
+          variant="outline"
+          size={isMobile ? "default" : "lg"}
+        >
+          <RefreshCw className="w-4 h-4 mr-2" />
           Refresh
         </Button>
       </div>
@@ -159,15 +132,17 @@ const ClinicSelectionStep = ({
   }
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4 sm:mb-6">
-        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 dark:bg-blue-950 rounded-full flex items-center justify-center flex-shrink-0">
-          <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 dark:text-blue-400" />
+      <div className="flex items-center gap-3 sm:gap-4">
+        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-primary/20 to-primary/10 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm">
+          <Building2 className="w-6 h-6 sm:w-7 sm:h-7 text-primary" />
         </div>
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-bold">Select a Clinic</h2>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1">
+        <div className="flex-1 min-w-0">
+          <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
+            Select a Clinic
+          </h2>
+          <p className="text-sm sm:text-base text-muted-foreground mt-0.5">
             {clinics.length} clinic{clinics.length !== 1 ? "s" : ""} available
             near you
           </p>
@@ -175,34 +150,38 @@ const ClinicSelectionStep = ({
       </div>
 
       {/* Policy Alerts */}
-      <div className="space-y-3 mb-6">
+      <div className="space-y-3">
         {/* 1 Appointment Per Day Policy */}
-        <Alert className="border-blue-200 dark:border-blue-800 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20">
-          <AlertTriangle className="h-5 w-5 text-blue-600 flex-shrink-0" />
-          <div className="flex-1">
-            <strong className="text-sm sm:text-base text-blue-900 dark:text-blue-100 block mb-1">
-              📅 One Appointment Per Day Policy
-            </strong>
-            <p className="text-xs sm:text-sm text-blue-800 dark:text-blue-200">
-              You can only book <strong>one appointment per day</strong> across
-              all clinics. If you already have an appointment today, closed
-              clinics will be unavailable.
-            </p>
-          </div>
+        <Alert className="border-primary/30 bg-gradient-to-r from-primary/5 to-secondary/5">
+          <CalendarClock className="h-5 w-5 text-primary flex-shrink-0" />
+          <AlertDescription>
+            <div className="space-y-1">
+              <p className="font-semibold text-sm sm:text-base text-foreground">
+                One Appointment Per Day Policy
+              </p>
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                You can only book <strong>one appointment per day</strong>{" "}
+                across all clinics. This will be checked when you select a date.
+              </p>
+            </div>
+          </AlertDescription>
         </Alert>
 
         {/* Operating Hours Info */}
-        <Alert className="border-green-200 dark:border-green-800 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20">
-          <Clock className="h-5 w-5 text-green-600 flex-shrink-0" />
-          <div className="flex-1">
-            <strong className="text-sm sm:text-base text-green-900 dark:text-green-100 block mb-1">
-              🕒 Operating Hours Enforcement
-            </strong>
-            <p className="text-xs sm:text-sm text-green-800 dark:text-green-200">
-              Only open clinics can be selected. Closed clinics are
-              automatically disabled.
-            </p>
-          </div>
+        <Alert className="border-green-200 dark:border-green-800/50 bg-gradient-to-r from-green-50/50 to-emerald-50/50 dark:from-green-950/10 dark:to-emerald-950/10">
+          <Info className="h-5 w-5 text-green-600 dark:text-green-500 flex-shrink-0" />
+          <AlertDescription>
+            <div className="space-y-1">
+              <p className="font-semibold text-sm sm:text-base text-green-900 dark:text-green-100">
+                Flexible Booking Hours
+              </p>
+              <p className="text-xs sm:text-sm text-green-800 dark:text-green-200/90">
+                You can book at any time! Operating hours shown are
+                informational. Available time slots will respect clinic
+                schedules automatically.
+              </p>
+            </div>
+          </AlertDescription>
         </Alert>
       </div>
 
@@ -211,66 +190,61 @@ const ClinicSelectionStep = ({
         {clinics.map((clinic) => {
           const isSelected = selectedClinic?.id === clinic.id;
           const hoursInfo = formatOperatingHours(clinic.operating_hours);
-          const bookingCheck = canBookClinic(clinic, hoursInfo);
-          const isDisabled = !bookingCheck.allowed;
-          const hasImage = clinic.image_url || clinic.image;
+          const isDisabled = false; // Allow selection regardless of hours
+          const isClosed = !hoursInfo.isOpen;
           const imageUrl =
-            clinic.image_url || clinic.image || "/assets/images/dental.png";
+            clinic.image_url || clinic.image || "/api/placeholder/400/300";
 
           return (
             <Card
               key={clinic.id}
               className={cn(
-                "transition-all duration-200 overflow-hidden border-2 touch-manipulation relative",
-                isDisabled
-                  ? "opacity-60 cursor-not-allowed bg-gray-50 dark:bg-gray-900/50"
-                  : "cursor-pointer hover:shadow-lg",
-                isSelected && !isDisabled
-                  ? "ring-2 ring-primary border-primary shadow-md"
-                  : "border-border hover:border-primary/50"
+                "group transition-all duration-300 overflow-hidden border-2 cursor-pointer",
+                isDisabled && "opacity-60 cursor-not-allowed",
+                isSelected
+                  ? "ring-2 ring-primary border-primary shadow-lg bg-primary/[0.02]"
+                  : "border-border hover:border-primary/50 hover:shadow-md",
+                isClosed && !isSelected && "opacity-95"
               )}
-              onClick={() => {
-                if (!isDisabled) {
-                  onClinicSelect(clinic);
-                }
-              }}
+              onClick={() => !isDisabled && onClinicSelect(clinic)}
             >
               <CardContent className="p-0">
                 <div
                   className={cn(
                     "grid gap-0",
-                    isMobile ? "grid-cols-1" : "grid-cols-[180px_1fr]"
+                    isMobile ? "grid-cols-1" : "grid-cols-[200px_1fr]"
                   )}
                 >
                   {/* Clinic Image */}
                   <div
                     className={cn(
-                      "relative overflow-hidden bg-gradient-to-br from-primary/5 to-purple-500/5",
-                      isMobile ? "h-40" : "h-full min-h-[160px]"
+                      "relative overflow-hidden bg-gradient-to-br from-muted/30 to-muted/10",
+                      isMobile ? "h-48" : "h-full min-h-[180px]"
                     )}
                   >
                     <img
                       src={imageUrl}
-                      alt={clinic.name}
+                      alt={`${clinic.name} - Dental Clinic`}
                       className={cn(
-                        "w-full h-full object-cover transition-all",
+                        "w-full h-full object-cover transition-transform duration-300",
+                        !isDisabled && "group-hover:scale-105",
                         isDisabled && "grayscale"
                       )}
                       onError={(e) => {
-                        e.target.src = "/assets/images/dental.png";
+                        e.target.src = "/api/placeholder/400/300";
                       }}
                       loading="lazy"
                     />
 
-                    {/* Status Badge Overlay */}
+                    {/* Status Badges Overlay */}
                     <div className="absolute top-3 left-3 flex flex-col gap-2">
                       <Badge
                         variant={hoursInfo.isOpen ? "default" : "secondary"}
                         className={cn(
-                          "shadow-md backdrop-blur-sm",
+                          "shadow-lg backdrop-blur-md font-medium",
                           hoursInfo.isOpen
-                            ? "bg-green-500/90 hover:bg-green-600/90"
-                            : "bg-gray-500/90"
+                            ? "bg-green-500/95 hover:bg-green-600/95 text-white border-green-400/20"
+                            : "bg-muted/95 text-muted-foreground"
                         )}
                       >
                         <Circle
@@ -285,10 +259,12 @@ const ClinicSelectionStep = ({
                       {clinic.rating > 0 && (
                         <Badge
                           variant="secondary"
-                          className="bg-white/90 backdrop-blur-sm"
+                          className="bg-white/95 dark:bg-card/95 backdrop-blur-md shadow-lg border-border/20"
                         >
                           <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 mr-1" />
-                          {clinic.rating.toFixed(1)}
+                          <span className="font-semibold">
+                            {clinic.rating.toFixed(1)}
+                          </span>
                         </Badge>
                       )}
                     </div>
@@ -297,91 +273,90 @@ const ClinicSelectionStep = ({
                     {clinic.distance_km !== undefined &&
                       clinic.distance_km > 0 && (
                         <div className="absolute bottom-3 right-3">
-                          <Badge className="bg-black/70 hover:bg-black/80 backdrop-blur-sm">
-                            <Navigation className="w-3 h-3 mr-1" />
+                          <Badge className="bg-foreground/90 hover:bg-foreground text-background backdrop-blur-md shadow-lg font-medium">
+                            <Navigation className="w-3 h-3 mr-1.5" />
                             {clinic.distance_km.toFixed(1)} km
                           </Badge>
                         </div>
                       )}
-
-                    {/* ✅ Disabled Overlay */}
-                    {isDisabled && (
-                      <div className="absolute inset-0 bg-black/40 backdrop-blur-[1px] flex items-center justify-center">
-                        <div className="bg-red-500/90 text-white px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2">
-                          <Ban className="w-4 h-4" />
-                          Unavailable
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {/* Clinic Info */}
-                  <div className="p-4 sm:p-5 space-y-3 sm:space-y-4">
+                  <div className="p-5 sm:p-6 space-y-4">
                     {/* Header */}
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <h3
                           className={cn(
-                            "font-bold text-foreground mb-1 truncate",
-                            isMobile ? "text-lg" : "text-xl",
-                            isDisabled && "text-muted-foreground"
+                            "font-bold text-foreground mb-1.5 line-clamp-1",
+                            isMobile ? "text-lg" : "text-xl"
                           )}
                         >
                           {clinic.name}
                         </h3>
 
                         {clinic.total_reviews > 0 && (
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <div className="flex items-center">
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-0.5">
                               {[...Array(5)].map((_, i) => (
                                 <Star
                                   key={i}
                                   className={cn(
-                                    "w-3 h-3",
+                                    "w-3.5 h-3.5",
                                     i < Math.floor(clinic.rating)
                                       ? "text-yellow-500 fill-yellow-500"
-                                      : "text-gray-300"
+                                      : "text-muted/30 fill-muted/30"
                                   )}
                                 />
                               ))}
                             </div>
-                            <span>({clinic.total_reviews} reviews)</span>
+                            <span className="text-sm text-muted-foreground">
+                              ({clinic.total_reviews})
+                            </span>
                           </div>
                         )}
                       </div>
 
-                      {isSelected && !isDisabled && (
-                        <CheckCircle2 className="w-6 h-6 text-primary flex-shrink-0" />
+                      {isSelected && (
+                        <div className="flex-shrink-0">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                            <CheckCircle2 className="w-5 h-5 text-primary" />
+                          </div>
+                        </div>
                       )}
                     </div>
 
                     {/* Details */}
-                    <div className="space-y-2 text-sm">
+                    <div className="space-y-2.5">
                       {/* Address */}
                       {clinic.address && (
-                        <div className="flex items-start gap-2 text-muted-foreground">
-                          <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                          <span className="line-clamp-2">{clinic.address}</span>
+                        <div className="flex items-start gap-2.5">
+                          <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5 text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+                            {clinic.address}
+                          </span>
                         </div>
                       )}
 
                       {/* Phone */}
                       {clinic.phone && (
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Phone className="w-4 h-4 flex-shrink-0" />
-                          <span>{clinic.phone}</span>
+                        <div className="flex items-center gap-2.5">
+                          <Phone className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">
+                            {clinic.phone}
+                          </span>
                         </div>
                       )}
 
                       {/* Operating Hours */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2.5">
                         <Clock className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
                         <div className="flex items-center gap-2">
                           <span
                             className={cn(
-                              "font-medium text-sm",
+                              "text-sm font-medium",
                               hoursInfo.isOpen
-                                ? "text-green-600 dark:text-green-400"
+                                ? "text-green-600 dark:text-green-500"
                                 : "text-muted-foreground"
                             )}
                           >
@@ -390,7 +365,7 @@ const ClinicSelectionStep = ({
                           {hoursInfo.isOpen && (
                             <Badge
                               variant="outline"
-                              className="text-xs border-green-200 text-green-700 dark:border-green-800 dark:text-green-400"
+                              className="text-xs border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 bg-green-50/50 dark:bg-green-950/30"
                             >
                               Open
                             </Badge>
@@ -399,42 +374,24 @@ const ClinicSelectionStep = ({
                       </div>
                     </div>
 
-                    {/* ✅ Blocking Reason */}
-                    {isDisabled && (
-                      <Alert variant="destructive" className="mt-3">
-                        <AlertTriangle className="h-4 w-4" />
-                        <div className="text-xs">
-                          <strong>{bookingCheck.reason}</strong>
-                          <p className="mt-1 text-xs">{bookingCheck.detail}</p>
-                        </div>
-                      </Alert>
-                    )}
-
                     {/* Action Button */}
                     <Button
                       variant={isSelected ? "default" : "outline"}
                       size={isMobile ? "default" : "sm"}
                       className={cn(
-                        "w-full sm:w-auto mt-2",
+                        "w-full sm:w-auto mt-3",
                         isSelected && "shadow-md"
                       )}
                       disabled={isDisabled}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (!isDisabled) {
-                          onClinicSelect(clinic);
-                        }
+                        !isDisabled && onClinicSelect(clinic);
                       }}
                     >
-                      {isSelected && !isDisabled ? (
+                      {isSelected ? (
                         <>
                           <CheckCircle2 className="w-4 h-4 mr-2" />
                           Selected
-                        </>
-                      ) : isDisabled ? (
-                        <>
-                          <Ban className="w-4 h-4 mr-2" />
-                          Unavailable
                         </>
                       ) : (
                         "Select Clinic"

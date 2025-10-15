@@ -16,10 +16,22 @@ import {
   TrendingUp,
   Sparkles,
   AlertCircle,
+  Stethoscope,
+  Package,
+  Heart,
+  Mail,
+  UserCircle2,
+  CalendarDays,
 } from "lucide-react";
-import { Card, CardContent } from "@/core/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/core/components/ui/card";
 import { Badge } from "@/core/components/ui/badge";
 import { Separator } from "@/core/components/ui/separator";
+import { Alert, AlertDescription } from "@/core/components/ui/alert";
 import { useIsMobile } from "@/core/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
@@ -133,53 +145,53 @@ const ConfirmationStep = ({
   }, [services, bookingData.services, consultationFee, isConsultationOnly]);
 
   return (
-    <div className="space-y-4 sm:space-y-6">
+    <div className="space-y-5 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4 sm:mb-6">
-        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-pink-100 dark:bg-pink-950 rounded-full flex items-center justify-center flex-shrink-0">
-          <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-pink-600 dark:text-pink-400" />
+      <div className="flex items-center gap-3 sm:gap-4">
+        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gradient-to-br from-pink-500/20 to-pink-500/10 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-sm">
+          <CheckCircle2 className="w-6 h-6 sm:w-7 sm:h-7 text-pink-600 dark:text-pink-400" />
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <h2 className="text-2xl sm:text-3xl font-bold text-foreground">
             Review & Confirm
           </h2>
-          <p className="text-sm sm:text-base text-muted-foreground mt-1">
+          <p className="text-sm sm:text-base text-muted-foreground mt-0.5">
             Please verify your appointment details
           </p>
         </div>
       </div>
 
-      {/* ✅ Info Cards (Replaced Alerts) */}
-      <div className="space-y-3 sm:space-y-4">
+      {/* Info Cards */}
+      <div className="space-y-3">
         {/* Consultation Only Notice */}
         {isConsultationOnly && (
-          <Card className="border-2 border-blue-200 dark:border-blue-800 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 animate-in slide-in-from-top-2 fade-in-50">
-            <CardContent className="p-4 flex items-start gap-3">
-              <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <strong className="text-sm sm:text-base text-blue-900 dark:text-blue-100">
+          <Alert className="border-primary/30 bg-gradient-to-r from-primary/5 to-secondary/5 animate-in slide-in-from-top-2 fade-in-50">
+            <Info className="w-5 h-5 text-primary flex-shrink-0" />
+            <AlertDescription>
+              <div className="space-y-1">
+                <p className="font-semibold text-sm sm:text-base">
                   Consultation Only Appointment
-                </strong>
-                <p className="text-xs sm:text-sm mt-1 text-blue-800 dark:text-blue-200">
+                </p>
+                <p className="text-xs sm:text-sm text-muted-foreground">
                   You're booking a consultation with the doctor. Treatment
                   options will be discussed during your visit.
                 </p>
               </div>
-            </CardContent>
-          </Card>
+            </AlertDescription>
+          </Alert>
         )}
 
         {/* Treatment Plan Notice */}
         {requiresTreatmentPlan && (
-          <Card className="border-2 border-purple-200 dark:border-purple-800 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 animate-in slide-in-from-top-2 fade-in-50">
-            <CardContent className="p-4 sm:p-5">
-              <div className="flex items-start gap-3 mb-3">
-                <Repeat className="w-5 h-5 text-purple-600 dark:text-purple-400 flex-shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <strong className="text-sm sm:text-base text-purple-900 dark:text-purple-100">
+          <Alert className="border-purple-200 dark:border-purple-800/50 bg-gradient-to-r from-purple-50/50 to-pink-50/50 dark:from-purple-950/10 dark:to-pink-950/10 animate-in slide-in-from-top-2 fade-in-50">
+            <Repeat className="w-5 h-5 text-purple-600 dark:text-purple-500 flex-shrink-0" />
+            <AlertDescription>
+              <div className="space-y-3">
+                <div>
+                  <p className="font-semibold text-sm sm:text-base text-purple-900 dark:text-purple-100">
                     Multi-Visit Service Selected
-                  </strong>
-                  <p className="text-xs sm:text-sm mt-1 text-purple-800 dark:text-purple-200">
+                  </p>
+                  <p className="text-xs sm:text-sm text-purple-800 dark:text-purple-200 mt-1">
                     The service{multiVisitServices.length > 1 ? "s" : ""} you
                     selected ({multiVisitServices.map((s) => s.name).join(", ")}
                     ) typically require
@@ -187,180 +199,179 @@ const ConfirmationStep = ({
                     appointments.
                   </p>
                 </div>
+                <div className="space-y-2">
+                  {[
+                    "This booking is for your initial consultation",
+                    "Your dentist will create a personalized treatment plan",
+                    "Follow-up appointments will be scheduled based on your plan",
+                  ].map((text, idx) => (
+                    <div key={idx} className="flex items-start gap-2.5">
+                      <div className="w-6 h-6 rounded-full bg-purple-600 dark:bg-purple-500 text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+                        {idx + 1}
+                      </div>
+                      <p className="text-xs sm:text-sm text-purple-800 dark:text-purple-200 flex-1">
+                        {text}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="pl-8 space-y-1 text-xs sm:text-sm text-purple-800 dark:text-purple-200">
-                <p className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-purple-600 dark:bg-purple-400 text-white dark:text-purple-900 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                    1
-                  </span>
-                  This booking is for your initial consultation
-                </p>
-                <p className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-purple-600 dark:bg-purple-400 text-white dark:text-purple-900 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                    2
-                  </span>
-                  Your dentist will create a personalized treatment plan
-                </p>
-                <p className="flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-purple-600 dark:bg-purple-400 text-white dark:text-purple-900 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                    3
-                  </span>
-                  Follow-up appointments will be scheduled based on your plan
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+            </AlertDescription>
+          </Alert>
         )}
 
         {/* Booking Limits Info */}
         {bookingLimitsInfo && bookingLimitsInfo.totalPending > 0 && (
-          <Card className="border-2 border-amber-200 dark:border-amber-800 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 animate-in slide-in-from-top-2 fade-in-50">
-            <CardContent className="p-4">
-              <div className="flex items-start gap-3 mb-3">
-                <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                <strong className="text-sm sm:text-base text-amber-900 dark:text-amber-100">
+          <Alert className="border-amber-200 dark:border-amber-800/50 bg-gradient-to-r from-amber-50/50 to-orange-50/50 dark:from-amber-950/10 dark:to-orange-950/10 animate-in slide-in-from-top-2 fade-in-50">
+            <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-500 flex-shrink-0" />
+            <AlertDescription>
+              <div className="space-y-3">
+                <p className="font-semibold text-sm sm:text-base text-amber-900 dark:text-amber-100">
                   Booking Status
-                </strong>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-sm text-amber-800 dark:text-amber-200">
-                <div className="bg-white/50 dark:bg-black/20 rounded-lg p-3">
-                  <p className="text-xs text-amber-700 dark:text-amber-300 mb-1">
-                    Current Pending
-                  </p>
-                  <p className="font-bold text-lg">
-                    {bookingLimitsInfo.totalPending}/
-                    {bookingLimitsInfo.maxTotalPending}
-                  </p>
-                </div>
-                <div className="bg-white/50 dark:bg-black/20 rounded-lg p-3">
-                  <p className="text-xs text-amber-700 dark:text-amber-300 mb-1">
-                    After This
-                  </p>
-                  <p className="font-bold text-lg">
-                    {bookingLimitsInfo.totalPending + 1}/
-                    {bookingLimitsInfo.maxTotalPending}
-                  </p>
-                </div>
-              </div>
-              {bookingLimitsInfo.totalPending + 1 >=
-                bookingLimitsInfo.maxTotalPending && (
-                <p className="text-xs text-amber-800 dark:text-amber-200 mt-3 flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>
-                    You're reaching your pending appointment limit. Wait for
-                    confirmations before booking more.
-                  </span>
                 </p>
-              )}
-            </CardContent>
-          </Card>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-background/50 rounded-lg p-3 border">
+                    <p className="text-xs text-amber-700 dark:text-amber-300 mb-1">
+                      Current Pending
+                    </p>
+                    <p className="font-bold text-lg text-foreground">
+                      {bookingLimitsInfo.totalPending}/
+                      {bookingLimitsInfo.maxTotalPending}
+                    </p>
+                  </div>
+                  <div className="bg-background/50 rounded-lg p-3 border">
+                    <p className="text-xs text-amber-700 dark:text-amber-300 mb-1">
+                      After This
+                    </p>
+                    <p className="font-bold text-lg text-foreground">
+                      {bookingLimitsInfo.totalPending + 1}/
+                      {bookingLimitsInfo.maxTotalPending}
+                    </p>
+                  </div>
+                </div>
+                {bookingLimitsInfo.totalPending + 1 >=
+                  bookingLimitsInfo.maxTotalPending && (
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-amber-100/50 dark:bg-amber-900/20">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-700 dark:text-amber-400" />
+                    <p className="text-xs text-amber-800 dark:text-amber-200">
+                      You're reaching your pending appointment limit. Wait for
+                      confirmations before booking more.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </AlertDescription>
+          </Alert>
         )}
 
         {/* Payment Notice */}
-        <Card className="border-2 border-green-200 dark:border-green-800 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 animate-in slide-in-from-top-2 fade-in-50">
-          <CardContent className="p-4 flex items-start gap-3">
-            <CreditCard className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <strong className="text-sm sm:text-base text-green-900 dark:text-green-100">
+        <Alert className="border-green-200 dark:border-green-800/50 bg-gradient-to-r from-green-50/50 to-emerald-50/50 dark:from-green-950/10 dark:to-emerald-950/10 animate-in slide-in-from-top-2 fade-in-50">
+          <CreditCard className="w-5 h-5 text-green-600 dark:text-green-500 flex-shrink-0" />
+          <AlertDescription>
+            <div className="space-y-1">
+              <p className="font-semibold text-sm sm:text-base text-green-900 dark:text-green-100">
                 Payment Information
-              </strong>
-              <p className="text-xs sm:text-sm mt-1 text-green-800 dark:text-green-200">
+              </p>
+              <p className="text-xs sm:text-sm text-green-800 dark:text-green-200">
                 Payment is due at the time of service. Please prepare cash or
                 inquire about available payment methods.
                 {requiresTreatmentPlan &&
                   " Your dentist may offer payment plans for multi-visit treatments."}
               </p>
             </div>
-          </CardContent>
-        </Card>
+          </AlertDescription>
+        </Alert>
       </div>
 
       {/* Main Content Grid */}
       <div
         className={cn(
-          "grid gap-4 sm:gap-6",
+          "grid gap-5 sm:gap-6",
           isMobile ? "grid-cols-1" : "grid-cols-1 xl:grid-cols-2"
         )}
       >
         {/* Left Column - Appointment Details */}
-        <div className="space-y-4 sm:space-y-6">
+        <div className="space-y-5">
           {/* Clinic & Schedule */}
-          <Card className="border-2 shadow-md hover:shadow-lg transition-shadow duration-200">
-            <CardContent className="p-4 sm:p-6">
-              <h3 className="text-base sm:text-lg font-bold text-foreground mb-4 sm:mb-6 flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-primary" />
+          <Card className="border-2 shadow-md hover:shadow-lg transition-all duration-300">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                <CalendarDays className="w-5 h-5 text-primary" />
                 Appointment Details
-              </h3>
-
-              <div className="space-y-4">
-                {/* Clinic */}
-                <div className="pb-4 border-b">
-                  <span className="text-xs sm:text-sm font-medium text-muted-foreground">
-                    Clinic
-                  </span>
-                  <p className="font-semibold text-foreground text-base sm:text-lg mt-1">
-                    {bookingData.clinic?.name}
-                  </p>
-                  <div className="flex items-start gap-2 mt-2 text-xs sm:text-sm">
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Clinic */}
+              <div className="pb-4 border-b">
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-2">
+                  Clinic
+                </p>
+                <p className="font-bold text-foreground text-base sm:text-lg mb-2">
+                  {bookingData.clinic?.name}
+                </p>
+                <div className="space-y-1.5">
+                  <div className="flex items-start gap-2 text-xs sm:text-sm">
                     <MapPin className="w-4 h-4 flex-shrink-0 mt-0.5 text-muted-foreground" />
                     <span className="text-muted-foreground">
                       {bookingData.clinic?.address}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 mt-1 text-xs sm:text-sm">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm">
                     <Phone className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
                     <span className="text-muted-foreground">
                       {bookingData.clinic?.phone}
                     </span>
                   </div>
                 </div>
+              </div>
 
-                {/* Doctor */}
-                <div className="pb-4 border-b">
-                  <span className="text-xs sm:text-sm font-medium text-muted-foreground">
-                    Doctor
-                  </span>
-                  <p className="font-semibold text-foreground text-base sm:text-lg mt-1">
-                    {bookingData.doctor?.name}
-                  </p>
-                  <p className="text-xs sm:text-sm text-primary font-medium mt-1">
-                    {bookingData.doctor?.specialization}
-                  </p>
-                  {bookingData.doctor?.consultation_fee && (
-                    <div className="mt-2 inline-flex items-center gap-2 bg-primary/10 px-3 py-1 rounded-full">
-                      <span className="text-xs sm:text-sm text-muted-foreground">
-                        Consultation:
-                      </span>
-                      <span className="text-xs sm:text-sm font-semibold text-primary">
-                        ₱
-                        {parseFloat(
-                          bookingData.doctor.consultation_fee
-                        ).toLocaleString()}
-                      </span>
+              {/* Doctor */}
+              <div className="pb-4 border-b">
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-2">
+                  Doctor
+                </p>
+                <p className="font-bold text-foreground text-base sm:text-lg mb-1">
+                  {bookingData.doctor?.name}
+                </p>
+                <p className="text-xs sm:text-sm text-primary font-semibold mb-2">
+                  {bookingData.doctor?.specialization}
+                </p>
+                {bookingData.doctor?.consultation_fee && (
+                  <Badge variant="outline" className="gap-1.5">
+                    <span className="text-xs">Consultation:</span>
+                    <span className="font-semibold">
+                      ₱
+                      {parseFloat(
+                        bookingData.doctor.consultation_fee
+                      ).toLocaleString()}
+                    </span>
+                  </Badge>
+                )}
+              </div>
+
+              {/* Date & Time */}
+              <div>
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-2">
+                  {requiresTreatmentPlan ? "First Appointment" : "Date & Time"}
+                </p>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <Calendar className="w-4 h-4 text-primary" />
                     </div>
-                  )}
-                </div>
-
-                {/* Date & Time */}
-                <div>
-                  <span className="text-xs sm:text-sm font-medium text-muted-foreground">
-                    {requiresTreatmentPlan
-                      ? "First Appointment"
-                      : "Date & Time"}
-                  </span>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Calendar className="w-4 h-4 text-primary flex-shrink-0" />
                     <p className="font-semibold text-foreground text-sm sm:text-base">
                       {new Date(bookingData.date).toLocaleDateString("en-US", {
-                        weekday: "long",
+                        weekday: isMobile ? "short" : "long",
                         year: "numeric",
                         month: "long",
                         day: "numeric",
                       })}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Clock className="w-4 h-4 text-primary flex-shrink-0" />
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                      <Clock className="w-4 h-4 text-primary" />
+                    </div>
                     <p className="font-semibold text-foreground text-sm sm:text-base">
                       {bookingData.time}
                       {isConsultationOnly
@@ -375,142 +386,146 @@ const ConfirmationStep = ({
 
           {/* Services or Consultation Info */}
           {isConsultationOnly ? (
-            <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/10 to-purple-500/10 shadow-md">
-              <CardContent className="p-4 sm:p-6">
-                <h4 className="font-bold text-foreground mb-4 flex items-center gap-2 text-sm sm:text-base">
-                  <FileText className="w-5 h-5 text-primary" />
+            <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/5 via-primary/3 to-purple-500/5 shadow-md">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Stethoscope className="w-5 h-5 text-primary" />
                   Consultation Details
-                </h4>
-                <div className="space-y-3">
-                  <div className="p-3 sm:p-4 bg-background rounded-lg border-2">
-                    <p className="font-medium mb-2 text-sm sm:text-base">
-                      General Consultation
-                    </p>
-                    <p className="text-xs sm:text-sm text-muted-foreground">
-                      The doctor will assess your dental health and recommend
-                      appropriate treatments.
-                    </p>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="p-4 bg-background rounded-xl border-2">
+                  <p className="font-semibold mb-2 text-sm sm:text-base">
+                    General Consultation
+                  </p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">
+                    The doctor will assess your dental health and recommend
+                    appropriate treatments.
+                  </p>
+                </div>
+                <Separator />
+                <div className="space-y-3 pt-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-base sm:text-lg">
+                      Consultation Fee:
+                    </span>
+                    <span className="font-bold text-xl sm:text-2xl text-primary">
+                      ₱
+                      {parseFloat(
+                        bookingData.doctor?.consultation_fee || 0
+                      ).toLocaleString()}
+                    </span>
                   </div>
-                  <Separator />
-                  <div className="space-y-2 pt-2">
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold text-base sm:text-lg">
-                        Consultation Fee:
-                      </span>
-                      <span className="font-bold text-xl sm:text-2xl text-primary">
-                        ₱
-                        {parseFloat(
-                          bookingData.doctor?.consultation_fee || 0
-                        ).toLocaleString()}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      * Treatment costs will be discussed during your visit
-                      based on your needs.
-                    </p>
-                  </div>
+                  <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+                    <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                    Treatment costs will be discussed during your visit based on
+                    your needs.
+                  </p>
                 </div>
               </CardContent>
             </Card>
           ) : (
-            <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/10 to-purple-500/10 shadow-md">
-              <CardContent className="p-4 sm:p-6">
-                <h4 className="font-bold text-foreground mb-4 flex items-center gap-2 text-sm sm:text-base">
-                  <Sparkles className="w-5 h-5 text-primary" />
+            <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/5 via-primary/3 to-purple-500/5 shadow-md">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+                  <Package className="w-5 h-5 text-primary" />
                   Selected Services
-                </h4>
-                <div className="space-y-3">
-                  {selectedServices.map((service) => {
-                    const isMultiVisit = multiVisitServices.find(
-                      (s) => s.id === service.id
-                    );
-                    const servicePrice =
-                      service.treatment_price || service.min_price || 0;
-                    return (
-                      <div
-                        key={service.id}
-                        className="p-3 bg-background rounded-lg border-2 hover:border-primary/50 transition-colors duration-200"
-                      >
-                        <div className="flex justify-between items-start gap-3">
-                          <div className="flex-1">
-                            <span className="font-medium text-sm sm:text-base">
-                              {service.name}
-                            </span>
-                            {isMultiVisit && (
-                              <div className="flex items-center gap-1 mt-1">
-                                <Repeat className="w-3 h-3 text-primary" />
-                                <span className="text-xs text-muted-foreground">
-                                  ~{service.typical_visit_count || 2} visits •
-                                  Treatment plan required
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                          <span className="font-semibold text-primary text-sm sm:text-base flex-shrink-0">
-                            ₱{parseFloat(servicePrice).toLocaleString()}
-                          </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {selectedServices.map((service) => {
+                  const isMultiVisit = multiVisitServices.find(
+                    (s) => s.id === service.id
+                  );
+                  const servicePrice =
+                    service.treatment_price || service.min_price || 0;
+                  return (
+                    <div
+                      key={service.id}
+                      className="p-3 bg-background rounded-xl border-2 hover:border-primary/50 transition-all duration-200"
+                    >
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm sm:text-base line-clamp-1">
+                            {service.name}
+                          </p>
+                          {isMultiVisit && (
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <Repeat className="w-3 h-3 text-primary" />
+                              <span className="text-xs text-muted-foreground">
+                                ~{service.typical_visit_count || 2} visits •
+                                Treatment plan required
+                              </span>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    );
-                  })}
-                  <Separator className="my-3" />
-                  <div className="space-y-2 pt-2">
-                    <div className="flex justify-between items-center text-xs sm:text-sm">
-                      <span className="text-muted-foreground">
-                        Services Total:
-                      </span>
-                      <span className="font-semibold">
-                        ₱{(totalCost - consultationFee).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-xs sm:text-sm">
-                      <span className="text-muted-foreground">
-                        Consultation Fee:
-                      </span>
-                      <div className="text-right">
-                        {skipConsultation &&
-                        consultationCheckResult?.canSkipConsultation ? (
-                          <>
-                            <span className="line-through text-muted-foreground mr-2 text-xs">
-                              ₱
-                              {parseFloat(
-                                bookingData.doctor?.consultation_fee || 0
-                              ).toLocaleString()}
-                            </span>
-                            <span className="font-semibold text-green-600 text-sm">
-                              FREE
-                            </span>
-                          </>
-                        ) : (
-                          <span className="font-semibold">
-                            ₱{parseFloat(consultationFee).toLocaleString()}
-                          </span>
-                        )}
+                        <span className="font-semibold text-primary text-sm sm:text-base flex-shrink-0">
+                          ₱{parseFloat(servicePrice).toLocaleString()}
+                        </span>
                       </div>
                     </div>
-                    {skipConsultation &&
-                      consultationCheckResult?.canSkipConsultation && (
-                        <p className="text-xs text-green-600 flex items-center gap-1">
-                          <Check className="w-3 h-3" />
-                          Consultation fee waived (recent visit found)
-                        </p>
-                      )}
-                    <Separator className="my-2" />
-                    <div className="flex justify-between items-center bg-primary/10 p-3 rounded-lg">
-                      <span className="font-bold text-sm sm:text-base">
-                        Total Estimated Cost:
-                      </span>
-                      <span className="font-bold text-xl sm:text-2xl text-primary">
-                        ₱{totalCost.toLocaleString()}
-                      </span>
-                    </div>
-                    {requiresTreatmentPlan && (
-                      <p className="text-xs text-muted-foreground mt-2">
-                        * Additional costs may apply for subsequent visits. Your
-                        dentist will provide a detailed treatment plan.
-                      </p>
-                    )}
+                  );
+                })}
+                <Separator className="my-3" />
+                <div className="space-y-2 pt-2">
+                  <div className="flex justify-between items-center text-xs sm:text-sm">
+                    <span className="text-muted-foreground">
+                      Services Total:
+                    </span>
+                    <span className="font-semibold">
+                      ₱{(totalCost - consultationFee).toLocaleString()}
+                    </span>
                   </div>
+                  <div className="flex justify-between items-center text-xs sm:text-sm">
+                    <span className="text-muted-foreground">
+                      Consultation Fee:
+                    </span>
+                    <div className="text-right">
+                      {skipConsultation &&
+                      consultationCheckResult?.canSkipConsultation ? (
+                        <div className="space-y-1">
+                          <span className="line-through text-muted-foreground text-xs block">
+                            ₱
+                            {parseFloat(
+                              bookingData.doctor?.consultation_fee || 0
+                            ).toLocaleString()}
+                          </span>
+                          <Badge className="bg-green-600 hover:bg-green-700 font-semibold">
+                            FREE
+                          </Badge>
+                        </div>
+                      ) : (
+                        <span className="font-semibold">
+                          ₱{parseFloat(consultationFee).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {skipConsultation &&
+                    consultationCheckResult?.canSkipConsultation && (
+                      <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-500">
+                        <Check className="w-3.5 h-3.5" />
+                        <span>
+                          Consultation fee waived (recent visit found)
+                        </span>
+                      </div>
+                    )}
+                  <Separator className="my-2" />
+                  <div className="flex justify-between items-center bg-gradient-to-r from-primary/10 to-purple-500/10 p-3 sm:p-4 rounded-xl border border-primary/20">
+                    <span className="font-bold text-sm sm:text-base">
+                      Total Estimated Cost:
+                    </span>
+                    <span className="font-bold text-xl sm:text-2xl text-primary">
+                      ₱{totalCost.toLocaleString()}
+                    </span>
+                  </div>
+                  {requiresTreatmentPlan && (
+                    <p className="text-xs text-muted-foreground mt-2 flex items-start gap-1.5">
+                      <Info className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      Additional costs may apply for subsequent visits. Your
+                      dentist will provide a detailed treatment plan.
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -518,29 +533,29 @@ const ConfirmationStep = ({
 
           {/* Cross-Clinic Coordination */}
           {crossClinicWarnings && crossClinicWarnings.length > 0 && (
-            <Card className="border-2 border-orange-200 dark:border-orange-800 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/20">
-              <CardContent className="p-4 flex items-start gap-3">
-                <Info className="w-5 h-5 text-orange-600 dark:text-orange-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <strong className="text-sm sm:text-base text-orange-900 dark:text-orange-100">
+            <Alert className="border-orange-200 dark:border-orange-800/50 bg-gradient-to-r from-orange-50/50 to-amber-50/50 dark:from-orange-950/10 dark:to-amber-950/10">
+              <Info className="w-5 h-5 text-orange-600 dark:text-orange-500 flex-shrink-0" />
+              <AlertDescription>
+                <div className="space-y-1">
+                  <p className="font-semibold text-sm sm:text-base text-orange-900 dark:text-orange-100">
                     Care Coordination Notice
-                  </strong>
-                  <p className="text-xs sm:text-sm mt-1 text-orange-800 dark:text-orange-200">
+                  </p>
+                  <p className="text-xs sm:text-sm text-orange-800 dark:text-orange-200">
                     You have {crossClinicWarnings.length} appointment(s) at
                     other clinics. Please inform your healthcare providers for
                     better care coordination.
                   </p>
                 </div>
-              </CardContent>
-            </Card>
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Cancellation Policy */}
           {cancellationInfo && (
-            <Card className="border border-info/30 bg-gradient-to-r from-info/5 to-info/10">
+            <Card className="border border-primary/20 bg-primary/5">
               <CardContent className="p-4">
                 <h4 className="font-semibold text-xs sm:text-sm mb-2 flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-info" />
+                  <Clock className="w-4 h-4 text-primary" />
                   Cancellation Policy
                 </h4>
                 <p className="text-xs text-muted-foreground">
@@ -550,7 +565,10 @@ const ConfirmationStep = ({
                   </strong>{" "}
                   at{" "}
                   <strong className="text-foreground">
-                    {cancellationInfo.cancellationDeadline.toLocaleTimeString()}
+                    {cancellationInfo.cancellationDeadline.toLocaleTimeString(
+                      "en-US",
+                      { hour: "2-digit", minute: "2-digit" }
+                    )}
                   </strong>{" "}
                   ({cancellationInfo.policyHours}h notice required)
                 </p>
@@ -566,11 +584,11 @@ const ConfirmationStep = ({
                   <FileText className="w-4 h-4 text-primary" />
                   Your Notes
                 </h4>
-                <p className="text-xs sm:text-sm text-foreground bg-muted p-3 rounded-lg border">
+                <p className="text-xs sm:text-sm text-foreground bg-muted/50 p-3 rounded-lg border">
                   {bookingData.symptoms}
                 </p>
-                <p className="text-xs text-primary mt-2 flex items-center gap-1">
-                  <Check className="w-3 h-3" />
+                <p className="text-xs text-primary mt-2 flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5" />
                   Will be shared with clinic staff
                 </p>
               </CardContent>
@@ -579,64 +597,70 @@ const ConfirmationStep = ({
         </div>
 
         {/* Right Column - Patient Information & Important Notes */}
-        <div className="space-y-4 sm:space-y-6">
+        <div className="space-y-5">
           {/* Patient Info */}
-          <Card className="border-2 shadow-md hover:shadow-lg transition-shadow duration-200">
-            <CardContent className="p-4 sm:p-6">
-              <h3 className="text-base sm:text-lg font-bold text-foreground mb-4 sm:mb-6 flex items-center gap-2">
-                <User className="w-5 h-5 text-primary" />
+          <Card className="border-2 shadow-md hover:shadow-lg transition-all duration-300">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                <UserCircle2 className="w-5 h-5 text-primary" />
                 Patient Information
-              </h3>
-              <div className="space-y-4">
-                <div>
-                  <span className="text-xs sm:text-sm font-medium text-muted-foreground">
-                    Name
-                  </span>
-                  <p className="font-semibold text-foreground text-base sm:text-lg mt-1">
-                    {profile?.profile?.first_name} {profile?.profile?.last_name}
-                  </p>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-1">
+                  Name
+                </p>
+                <p className="font-bold text-foreground text-base sm:text-lg">
+                  {profile?.profile?.first_name} {profile?.profile?.last_name}
+                </p>
+              </div>
+
+              {(profile?.profile?.gender || patientAge !== null) && (
+                <div className="grid grid-cols-2 gap-4">
+                  {profile?.profile?.gender && (
+                    <div>
+                      <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-1">
+                        Gender
+                      </p>
+                      <p className="font-semibold text-foreground text-sm sm:text-base">
+                        {genderDisplay[profile.profile.gender] ||
+                          profile.profile.gender}
+                      </p>
+                    </div>
+                  )}
+                  {patientAge !== null && (
+                    <div>
+                      <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-1">
+                        Age
+                      </p>
+                      <p className="font-semibold text-foreground text-sm sm:text-base">
+                        {patientAge} years old
+                      </p>
+                    </div>
+                  )}
                 </div>
+              )}
 
-                {(profile?.profile?.gender || patientAge !== null) && (
-                  <div className="grid grid-cols-2 gap-4">
-                    {profile?.profile?.gender && (
-                      <div>
-                        <span className="text-xs sm:text-sm font-medium text-muted-foreground">
-                          Gender
-                        </span>
-                        <p className="font-medium text-foreground mt-1 text-sm sm:text-base">
-                          {genderDisplay[profile.profile.gender] ||
-                            profile.profile.gender}
-                        </p>
-                      </div>
-                    )}
-                    {patientAge !== null && (
-                      <div>
-                        <span className="text-xs sm:text-sm font-medium text-muted-foreground">
-                          Age
-                        </span>
-                        <p className="font-medium text-foreground mt-1 text-sm sm:text-base">
-                          {patientAge} years old
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div>
-                  <span className="text-xs sm:text-sm font-medium text-muted-foreground">
-                    Email
-                  </span>
-                  <p className="font-medium text-foreground mt-1 text-sm sm:text-base break-all">
+              <div>
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-1">
+                  Email
+                </p>
+                <div className="flex items-start gap-2">
+                  <Mail className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                  <p className="font-medium text-foreground text-sm sm:text-base break-all">
                     {profile?.email}
                   </p>
                 </div>
+              </div>
 
-                <div>
-                  <span className="text-xs sm:text-sm font-medium text-muted-foreground">
-                    Phone
-                  </span>
-                  <p className="font-medium text-foreground mt-1 text-sm sm:text-base">
+              <div>
+                <p className="text-xs sm:text-sm font-medium text-muted-foreground mb-1">
+                  Phone
+                </p>
+                <div className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <p className="font-medium text-foreground text-sm sm:text-base">
                     {profile?.phone || "Not provided"}
                   </p>
                 </div>
@@ -646,53 +670,59 @@ const ConfirmationStep = ({
 
           {/* Treatment Plan Timeline */}
           {requiresTreatmentPlan && (
-            <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/10 to-purple-500/10 shadow-md">
-              <CardContent className="p-4 sm:p-6">
-                <h4 className="font-bold text-foreground mb-4 flex items-center gap-2 text-sm sm:text-base">
+            <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/5 via-primary/3 to-purple-500/5 shadow-md">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                   <TrendingUp className="w-5 h-5 text-primary" />
                   Your Treatment Journey
-                </h4>
-                <div className="space-y-3 text-xs sm:text-sm">
-                  <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 bg-primary rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
-                      1
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">
-                        Initial Consultation
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {new Date(bookingData.date).toLocaleDateString()} -
-                        Assessment & treatment plan creation
-                      </p>
-                    </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 bg-primary rounded-xl flex items-center justify-center text-xs font-bold text-primary-foreground flex-shrink-0 shadow-sm">
+                    1
                   </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 bg-primary/30 rounded-full flex items-center justify-center text-xs font-bold text-primary flex-shrink-0">
-                      2+
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">
-                        Follow-up Treatments
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        ~{estimatedTotalVisits - 1} additional appointments over{" "}
-                        {estimatedCompletionWeeks} weeks
-                      </p>
-                    </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-foreground text-sm">
+                      Initial Consultation
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {new Date(bookingData.date).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}{" "}
+                      - Assessment & treatment plan creation
+                    </p>
                   </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 bg-success/30 rounded-full flex items-center justify-center text-xs font-bold text-success flex-shrink-0">
-                      ✓
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">
-                        Treatment Complete
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Final assessment & care instructions
-                      </p>
-                    </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 bg-primary/20 rounded-xl flex items-center justify-center text-xs font-bold text-primary flex-shrink-0">
+                    2+
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-foreground text-sm">
+                      Follow-up Treatments
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      ~{estimatedTotalVisits - 1} additional appointments over{" "}
+                      {estimatedCompletionWeeks} weeks
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 bg-green-600/20 dark:bg-green-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Check className="w-5 h-5 text-green-600 dark:text-green-500" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-semibold text-foreground text-sm">
+                      Treatment Complete
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Final assessment & care instructions
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -700,41 +730,36 @@ const ConfirmationStep = ({
           )}
 
           {/* Important Notes */}
-          <Card className="border-2 border-info/30 bg-gradient-to-r from-info/5 to-info/10 shadow-md">
-            <CardContent className="p-4 sm:p-6">
-              <h4 className="font-semibold text-info mb-3 flex items-center gap-2 text-sm sm:text-base">
-                <Info className="w-4 h-4" />
+          <Card className="border-2 border-primary/30 bg-gradient-to-r from-primary/5 to-secondary/5 shadow-md">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg text-primary">
+                <Info className="w-5 h-5" />
                 Important Reminders
-              </h4>
-              <ul className="text-xs sm:text-sm text-info-foreground space-y-2">
-                <li className="flex items-start gap-2">
-                  <Check className="w-4 h-4 mt-0.5 flex-shrink-0 text-success" />
-                  <span>Arrive 15 minutes early for registration</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="w-4 h-4 mt-0.5 flex-shrink-0 text-success" />
-                  <span>Bring valid ID and insurance card (if applicable)</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="w-4 h-4 mt-0.5 flex-shrink-0 text-success" />
-                  <span>Payment is due at time of service</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="w-4 h-4 mt-0.5 flex-shrink-0 text-success" />
-                  <span>
-                    Cancel {cancellationInfo?.policyHours || 24}+ hours in
-                    advance to avoid charges
-                  </span>
-                </li>
-                {requiresTreatmentPlan && (
-                  <li className="flex items-start gap-2">
-                    <Check className="w-4 h-4 mt-0.5 flex-shrink-0 text-success" />
-                    <span>
-                      Your dentist will discuss treatment plan and costs during
-                      first visit
-                    </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-2.5">
+                {[
+                  "Arrive 15 minutes early for registration",
+                  "Bring valid ID and insurance card (if applicable)",
+                  "Payment is due at time of service",
+                  `Cancel ${
+                    cancellationInfo?.policyHours || 24
+                  }+ hours in advance to avoid charges`,
+                  ...(requiresTreatmentPlan
+                    ? [
+                        "Your dentist will discuss treatment plan and costs during first visit",
+                      ]
+                    : []),
+                ].map((text, idx) => (
+                  <li
+                    key={idx}
+                    className="flex items-start gap-2.5 text-xs sm:text-sm"
+                  >
+                    <Check className="w-4 h-4 flex-shrink-0 mt-0.5 text-green-600 dark:text-green-500" />
+                    <span className="text-foreground">{text}</span>
                   </li>
-                )}
+                ))}
               </ul>
             </CardContent>
           </Card>
@@ -742,21 +767,21 @@ const ConfirmationStep = ({
           {/* Attendance Reminder */}
           {patientReliability &&
             patientReliability.risk_level !== "low_risk" && (
-              <Card className="border-2 border-amber-200 dark:border-amber-800 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20">
-                <CardContent className="p-4 flex items-start gap-3">
-                  <Shield className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                  <div className="text-xs sm:text-sm">
-                    <strong className="text-amber-900 dark:text-amber-100">
+              <Alert className="border-amber-200 dark:border-amber-800/50 bg-gradient-to-r from-amber-50/50 to-orange-50/50 dark:from-amber-950/10 dark:to-orange-950/10">
+                <Shield className="w-5 h-5 text-amber-600 dark:text-amber-500 flex-shrink-0" />
+                <AlertDescription>
+                  <div className="space-y-1">
+                    <p className="font-semibold text-sm text-amber-900 dark:text-amber-100">
                       Attendance Commitment
-                    </strong>
-                    <p className="mt-1 text-amber-800 dark:text-amber-200">
+                    </p>
+                    <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-200">
                       {patientReliability.risk_level === "high_risk"
                         ? "Please ensure you attend. Multiple no-shows may restrict future bookings."
                         : "Please attend or cancel with adequate notice."}
                     </p>
                   </div>
-                </CardContent>
-              </Card>
+                </AlertDescription>
+              </Alert>
             )}
         </div>
       </div>

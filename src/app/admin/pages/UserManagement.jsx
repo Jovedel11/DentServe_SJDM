@@ -19,11 +19,13 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCcw,
+  Key,
 } from "lucide-react";
 import { useUserManagement } from "@/hooks/admin/useUserManagement";
 import { useIsMobile } from "@/core/hooks/use-mobile";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/auth/context/AuthProvider";
+import { authService } from "@/auth/hooks/authService";
 
 const UserManagement = () => {
   const [activeTab, setActiveTab] = useState("patients");
@@ -113,6 +115,16 @@ const UserManagement = () => {
           break;
         case "notify":
           await sendNotification(selectedUser.id);
+          break;
+        case "changePassword":
+          const result = await authService.adminChangeUserPassword(
+            selectedUser.id,
+            notificationMessage // ✅ Use the password from modal, not hardcoded
+          );
+          if (!result.success) {
+            throw new Error(result.error);
+          }
+          alert(`Password changed successfully for ${result.userEmail}`);
           break;
       }
 
@@ -532,6 +544,13 @@ const PatientRow = ({ user, index, onAction, formatDate }) => {
                 >
                   <Send size={16} />
                 </button>
+                <button
+                  onClick={() => onAction(user, "changePassword")}
+                  className="p-2 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded transition-colors"
+                  title="Change Password"
+                >
+                  <Key size={16} />
+                </button>
               </>
             ) : (
               <button
@@ -771,6 +790,13 @@ const StaffRow = ({ user, index, onAction, formatDate }) => {
                 >
                   <Send size={16} />
                 </button>
+                <button
+                  onClick={() => onAction(user, "changePassword")}
+                  className="p-2 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded transition-colors"
+                  title="Change Password"
+                >
+                  <Key size={16} />
+                </button>
               </>
             ) : (
               <button
@@ -905,6 +931,13 @@ const PatientCard = ({ user, onAction, formatDate }) => {
             >
               <Send size={14} />
             </button>
+            <button
+              onClick={() => onAction(user, "changePassword")}
+              className="px-3 py-2 text-xs bg-purple-50 text-purple-700 rounded"
+              title="Change Password"
+            >
+              <Key size={14} />
+            </button>
           </>
         ) : (
           <button
@@ -1038,6 +1071,13 @@ const StaffCard = ({ user, onAction, formatDate }) => {
             >
               <Send size={14} />
             </button>
+            <button
+              onClick={() => onAction(user, "changePassword")}
+              className="px-3 py-2 text-xs bg-purple-50 text-purple-700 rounded"
+              title="Change Password"
+            >
+              <Key size={14} />
+            </button>
           </>
         ) : (
           <button
@@ -1091,6 +1131,14 @@ const ActionModal = ({
       color: "blue",
       message: "Send a notification message to this user.",
     },
+    // ADD THIS
+    changePassword: {
+      title: "Change User Password",
+      icon: Key,
+      color: "purple",
+      message:
+        "Set a new password for this user. They will need to use this new password to sign in.",
+    },
   }[actionType];
 
   const Icon = config.icon;
@@ -1141,6 +1189,28 @@ const ActionModal = ({
             </div>
           )}
 
+          {/* ADD THIS SECTION */}
+          {actionType === "changePassword" && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">
+                New Password *
+              </label>
+              <input
+                type="password"
+                value={notificationMessage}
+                onChange={(e) => setNotificationMessage(e.target.value)}
+                className="w-full px-3 py-2 bg-background border rounded-lg text-sm"
+                placeholder="Enter new password (min 8 characters)"
+                required
+                minLength={8}
+              />
+              <p className="text-xs text-muted-foreground mt-2">
+                Password must contain: 8+ characters, uppercase, lowercase,
+                number, and special character
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button
               onClick={onClose}
@@ -1153,7 +1223,9 @@ const ActionModal = ({
               onClick={onConfirm}
               disabled={
                 performing ||
-                (actionType === "notify" && !notificationMessage.trim())
+                (actionType === "notify" && !notificationMessage.trim()) ||
+                (actionType === "changePassword" &&
+                  notificationMessage.length < 8) // ADD THIS
               }
               className={`flex-1 px-4 py-2 text-sm text-white rounded-lg bg-${config.color}-600 hover:bg-${config.color}-700 disabled:opacity-50`}
             >

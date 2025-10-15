@@ -31,7 +31,6 @@ const navigationData = {
       title: "Dashboard",
       url: "/patient/dashboard",
       icon: Home,
-      isActive: true,
     },
     {
       title: "Appointments",
@@ -42,21 +41,25 @@ const navigationData = {
           title: "Book Appointment",
           url: "/patient/appointments/book",
         },
-        { title: "Upcoming", url: "/patient/appointments/upcoming" },
-        { title: "History", url: "/patient/appointments/history" },
+        {
+          title: "Upcoming",
+          url: "/patient/appointments/upcoming",
+        },
+        {
+          title: "History",
+          url: "/patient/appointments/history",
+        },
       ],
     },
     {
       title: "Clinics Near Me",
       url: "/patient/clinics/map",
       icon: MapPinned,
-      isActive: true,
     },
     {
       title: "Dentists",
       url: "/patient/dentists",
       icon: UserSearch,
-      isActive: true,
     },
   ],
   projects: [
@@ -101,7 +104,7 @@ export function AppSidebar({ ...props }) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 cursor-pointer">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                   <Logo to="/patient/dashboard" />
                 </div>

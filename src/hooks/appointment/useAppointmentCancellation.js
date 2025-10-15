@@ -172,7 +172,10 @@ export const useAppointmentCancellation = () => {
       return {
         success: true,
         data: data.data,
-        message: data.message || 'Appointment cancelled successfully'
+        message: data.data?.treatment_plan_cleaned 
+          ? 'Appointment cancelled and treatment plan updated successfully'
+          : data.message || 'Appointment cancelled successfully',
+        treatmentPlanCleaned: data.data?.treatment_plan_cleaned || false
       };
   
     } catch (err) {

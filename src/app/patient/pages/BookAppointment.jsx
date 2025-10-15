@@ -16,6 +16,10 @@ import {
   AlertTriangle,
   Info,
   Clock,
+  Stethoscope,
+  MapPin,
+  Loader2,
+  CalendarDays,
 } from "lucide-react";
 
 import { Card, CardContent } from "@/core/components/ui/card";
@@ -45,29 +49,43 @@ import { useTreatmentPlans } from "@/hooks/appointment/useTreatmentPlans";
 
 import { useBookingFlow } from "../hook/useBookingFlow";
 import { useIsMobile } from "@/core/hooks/use-mobile";
-import { FaTeeth } from "react-icons/fa";
 import { cn } from "@/lib/utils";
 
 const BOOKING_STEPS = [
-  { key: "clinic", label: "Clinic", icon: Hospital, color: "text-blue-600" },
+  {
+    key: "clinic",
+    label: "Clinic",
+    icon: Hospital,
+    color: "text-blue-600 dark:text-blue-400",
+    bgColor: "from-blue-500/20 to-blue-500/10",
+  },
   {
     key: "services",
     label: "Services",
-    icon: FaTeeth,
-    color: "text-purple-600",
+    icon: Stethoscope,
+    color: "text-purple-600 dark:text-purple-400",
+    bgColor: "from-purple-500/20 to-purple-500/10",
   },
-  { key: "doctor", label: "Doctor", icon: Users, color: "text-green-600" },
+  {
+    key: "doctor",
+    label: "Doctor",
+    icon: Users,
+    color: "text-green-600 dark:text-green-400",
+    bgColor: "from-green-500/20 to-green-500/10",
+  },
   {
     key: "datetime",
     label: "Date & Time",
     icon: CalendarClock,
-    color: "text-orange-600",
+    color: "text-orange-600 dark:text-orange-400",
+    bgColor: "from-orange-500/20 to-orange-500/10",
   },
   {
     key: "confirm",
     label: "Confirm",
     icon: CalendarCheck,
-    color: "text-pink-600",
+    color: "text-pink-600 dark:text-pink-400",
+    bgColor: "from-pink-500/20 to-pink-500/10",
   },
 ];
 
@@ -214,26 +232,28 @@ const BookAppointment = () => {
   const currentStep = BOOKING_STEPS[currentStepIndex] || BOOKING_STEPS[0];
   const StepIcon = currentStep.icon;
 
-  // Access control
+  // ==================== ACCESS DENIED STATE ====================
   if (!isPatient) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-md mx-auto shadow-xl">
-          <CardContent className="text-center p-6 sm:p-8">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 sm:mb-6 bg-destructive/10 rounded-full flex items-center justify-center">
-              <AlertCircle className="w-8 h-8 sm:w-10 sm:h-10 text-destructive" />
+      <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 flex items-center justify-center p-4">
+        <Card className="max-w-md mx-auto shadow-2xl border-2 animate-in zoom-in-95 fade-in-0 duration-500">
+          <CardContent className="text-center p-8 sm:p-10">
+            <div className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-6 bg-gradient-to-br from-destructive/20 to-destructive/10 rounded-2xl flex items-center justify-center shadow-lg">
+              <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12 text-destructive" />
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-4 text-foreground">
               Access Denied
             </h1>
-            <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6">
+            <p className="text-sm sm:text-base text-muted-foreground mb-6 leading-relaxed">
               Only patients can book appointments. Please log in with a patient
-              account.
+              account to continue.
             </p>
             <Button
               onClick={() => window.history.back()}
-              className="w-full sm:w-auto"
+              size="lg"
+              className="w-full sm:w-auto min-h-[48px] touch-manipulation font-semibold"
             >
+              <ChevronLeft className="w-4 h-4 mr-2" />
               Go Back
             </Button>
           </CardContent>
@@ -242,51 +262,71 @@ const BookAppointment = () => {
     );
   }
 
-  // Success state
+  // ==================== SUCCESS STATE ====================
   if (bookingSuccess) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center p-4">
-        <Card className="max-w-lg mx-auto shadow-2xl animate-in zoom-in-95 fade-in-0 duration-500">
-          <CardContent className="text-center p-6 sm:p-8">
-            <div className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4 sm:mb-6 bg-success/10 rounded-full flex items-center justify-center animate-in zoom-in-50 duration-700">
-              <CheckCircle2 className="w-10 h-10 sm:w-12 sm:h-12 text-success animate-in zoom-in-50 duration-1000" />
+      <div className="min-h-screen bg-gradient-to-b from-background via-primary/5 to-secondary/10 flex items-center justify-center p-4">
+        <Card className="max-w-lg mx-auto shadow-2xl border-2 animate-in zoom-in-95 fade-in-0 duration-500">
+          <CardContent className="text-center p-8 sm:p-10">
+            {/* Success Icon */}
+            <div className="w-24 h-24 sm:w-28 sm:h-28 mx-auto mb-6 bg-gradient-to-br from-green-500/20 to-green-500/10 rounded-full flex items-center justify-center animate-in zoom-in-50 duration-700 shadow-lg">
+              <CheckCircle2 className="w-12 h-12 sm:w-14 sm:h-14 text-green-600 dark:text-green-500 animate-in zoom-in-50 duration-1000" />
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold mb-3 sm:mb-4 bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+
+            {/* Success Title */}
+            <h1 className="text-3xl sm:text-4xl font-bold mb-4 bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">
               {isConsultationOnly
-                ? "Consultation Booked Successfully!"
-                : "Appointment Booked Successfully!"}
+                ? "Consultation Booked!"
+                : "Appointment Booked!"}
             </h1>
 
+            <p className="text-sm sm:text-base text-muted-foreground mb-6">
+              Your appointment has been successfully scheduled
+            </p>
+
+            {/* Appointment Details */}
             <div className="space-y-4 text-left animate-in slide-in-from-bottom-4 fade-in-0 duration-700">
-              <div className="bg-gradient-to-br from-card to-muted/50 border rounded-xl p-4 sm:p-5">
-                <h3 className="font-semibold mb-3 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-primary" />
+              <div className="bg-gradient-to-br from-card to-muted/50 border-2 rounded-xl p-5 sm:p-6">
+                <h3 className="font-bold mb-4 flex items-center gap-2 text-base sm:text-lg">
+                  <Sparkles className="w-5 h-5 text-primary" />
                   Appointment Details
                 </h3>
-                <div className="space-y-2 text-sm">
+                <div className="space-y-3 text-sm sm:text-base">
                   <div className="flex justify-between items-start gap-4">
                     <span className="text-muted-foreground">Type:</span>
-                    <Badge variant="outline" className="capitalize text-xs">
+                    <Badge
+                      variant="outline"
+                      className="capitalize font-semibold"
+                    >
                       {bookingType?.replace(/_/g, " ")}
                     </Badge>
                   </div>
                   <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Clinic:</span>
-                    <span className="font-medium text-right">
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <Hospital className="w-4 h-4" />
+                      Clinic:
+                    </span>
+                    <span className="font-semibold text-right line-clamp-2">
                       {bookingData.clinic?.name}
                     </span>
                   </div>
                   <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Doctor:</span>
-                    <span className="font-medium text-right">
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <Users className="w-4 h-4" />
+                      Doctor:
+                    </span>
+                    <span className="font-semibold text-right">
                       {bookingData.doctor?.name}
                     </span>
                   </div>
                   <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Date:</span>
-                    <span className="font-medium text-right">
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <CalendarDays className="w-4 h-4" />
+                      Date:
+                    </span>
+                    <span className="font-semibold text-right">
                       {new Date(bookingData.date).toLocaleDateString("en-US", {
-                        weekday: "short",
+                        weekday: isMobile ? "short" : "long",
                         month: "short",
                         day: "numeric",
                         year: "numeric",
@@ -294,23 +334,28 @@ const BookAppointment = () => {
                     </span>
                   </div>
                   <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">Time:</span>
-                    <span className="font-medium">{bookingData.time}</span>
+                    <span className="text-muted-foreground flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      Time:
+                    </span>
+                    <span className="font-semibold">{bookingData.time}</span>
                   </div>
                 </div>
               </div>
 
+              {/* Treatment Linked Badge */}
               {isLinkedToTreatment && selectedTreatment && (
-                <div className="bg-purple-50 dark:bg-purple-950/20 border-2 border-purple-200 dark:border-purple-800 rounded-xl p-4">
+                <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border-2 border-purple-200 dark:border-purple-800 rounded-xl p-4">
                   <div className="flex items-start gap-3">
-                    <CheckCircle2 className="h-5 w-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                    <CheckCircle2 className="h-5 w-5 text-purple-600 dark:text-purple-500 flex-shrink-0 mt-0.5" />
                     <div className="text-sm">
-                      <strong className="text-purple-900 dark:text-purple-100">
+                      <strong className="text-purple-900 dark:text-purple-100 block mb-1">
                         Linked to Treatment:
-                      </strong>{" "}
-                      {selectedTreatment.treatment_name}
-                      <br />
-                      <span className="text-xs text-purple-700 dark:text-purple-300">
+                      </strong>
+                      <p className="text-purple-800 dark:text-purple-200">
+                        {selectedTreatment.treatment_name}
+                      </p>
+                      <span className="text-xs text-purple-700 dark:text-purple-300 block mt-1">
                         Visit #{selectedTreatment.visits_completed + 1}
                       </span>
                     </div>
@@ -318,23 +363,25 @@ const BookAppointment = () => {
                 </div>
               )}
 
+              {/* Consultation Only Info */}
               {isConsultationOnly && (
-                <div className="bg-blue-50 dark:bg-blue-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-xl p-4">
+                <div className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-xl p-4">
                   <div className="flex items-start gap-3">
-                    <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <Info className="h-5 w-5 text-blue-600 dark:text-blue-500 flex-shrink-0 mt-0.5" />
                     <div className="text-xs sm:text-sm text-blue-800 dark:text-blue-200">
-                      <strong>Consultation Only:</strong> Your doctor will
-                      assess your needs and recommend treatments during your
-                      visit.
+                      <strong className="block mb-1">Consultation Only:</strong>
+                      Your doctor will assess your needs and recommend
+                      treatments during your visit.
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="mt-6 pt-6 border-t">
-              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent" />
+            {/* Redirect Notice */}
+            <div className="mt-8 pt-6 border-t">
+              <div className="flex items-center justify-center gap-2.5 text-sm text-muted-foreground">
+                <Loader2 className="animate-spin h-4 w-4 text-primary" />
                 <span>Redirecting to your appointments...</span>
               </div>
             </div>
@@ -344,6 +391,7 @@ const BookAppointment = () => {
     );
   }
 
+  // ==================== MAIN BOOKING FLOW ====================
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
       {/* Toast Notification */}
@@ -365,138 +413,156 @@ const BookAppointment = () => {
           }
         }}
       >
-        <AlertDialogContent className="sm:max-w-md">
+        <AlertDialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <AlertDialogHeader>
-            <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center gap-3 mb-3">
+              {/* Icon Badge */}
               {(blockerDetails?.icon || bookingError) && (
                 <div
                   className={cn(
-                    "w-12 h-12 rounded-full flex items-center justify-center",
+                    "w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shadow-sm",
                     bookingError?.type === "limit_reached"
-                      ? "bg-amber-100 dark:bg-amber-950"
+                      ? "bg-gradient-to-br from-amber-100 to-amber-50 dark:from-amber-950 dark:to-amber-900"
                       : bookingError?.type === "same_day_conflict"
-                      ? "bg-orange-100 dark:bg-orange-950"
+                      ? "bg-gradient-to-br from-orange-100 to-orange-50 dark:from-orange-950 dark:to-orange-900"
                       : bookingError?.type === "clinic_closed"
-                      ? "bg-blue-100 dark:bg-blue-950"
+                      ? "bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-950 dark:to-blue-900"
                       : bookingError?.type === "before_opening" ||
                         bookingError?.type === "after_closing"
-                      ? "bg-yellow-100 dark:bg-yellow-950"
+                      ? "bg-gradient-to-br from-yellow-100 to-yellow-50 dark:from-yellow-950 dark:to-yellow-900"
                       : bookingError?.type === "doctor_unavailable" ||
                         bookingError?.type === "doctor_not_at_clinic"
-                      ? "bg-red-100 dark:bg-red-950"
-                      : "bg-destructive/10"
+                      ? "bg-gradient-to-br from-red-100 to-red-50 dark:from-red-950 dark:to-red-900"
+                      : "bg-gradient-to-br from-destructive/20 to-destructive/10"
                   )}
                 >
                   {blockerDetails?.icon ? (
                     <blockerDetails.icon
                       className={cn(
-                        "w-6 h-6",
+                        "w-6 h-6 sm:w-7 sm:h-7",
                         bookingError?.type === "limit_reached"
-                          ? "text-amber-600"
+                          ? "text-amber-600 dark:text-amber-400"
                           : bookingError?.type === "same_day_conflict"
-                          ? "text-orange-600"
+                          ? "text-orange-600 dark:text-orange-400"
+                          : bookingError?.type === "clinic_closed"
+                          ? "text-blue-600 dark:text-blue-400"
+                          : bookingError?.type === "before_opening" ||
+                            bookingError?.type === "after_closing"
+                          ? "text-yellow-600 dark:text-yellow-400"
+                          : bookingError?.type === "doctor_unavailable" ||
+                            bookingError?.type === "doctor_not_at_clinic"
+                          ? "text-red-600 dark:text-red-400"
                           : "text-destructive"
                       )}
                     />
                   ) : (
                     <AlertTriangle
                       className={cn(
-                        "w-6 h-6",
+                        "w-6 h-6 sm:w-7 sm:h-7",
                         bookingError?.type === "limit_reached"
-                          ? "text-amber-600"
+                          ? "text-amber-600 dark:text-amber-400"
                           : bookingError?.type === "same_day_conflict"
-                          ? "text-orange-600"
+                          ? "text-orange-600 dark:text-orange-400"
                           : bookingError?.type === "clinic_closed"
-                          ? "text-blue-600"
+                          ? "text-blue-600 dark:text-blue-400"
                           : bookingError?.type === "before_opening" ||
                             bookingError?.type === "after_closing"
-                          ? "text-yellow-600"
+                          ? "text-yellow-600 dark:text-yellow-400"
                           : bookingError?.type === "doctor_unavailable" ||
                             bookingError?.type === "doctor_not_at_clinic"
-                          ? "text-red-600"
+                          ? "text-red-600 dark:text-red-400"
                           : "text-destructive"
                       )}
                     />
                   )}
                 </div>
               )}
-              <AlertDialogTitle className="text-lg">
+              <AlertDialogTitle className="text-lg sm:text-xl font-bold">
                 {bookingError?.title || blockerDetails?.title}
               </AlertDialogTitle>
             </div>
-            <AlertDialogDescription className="text-base">
+            <AlertDialogDescription className="text-base leading-relaxed">
               {bookingError?.message || blockerDetails?.message}
             </AlertDialogDescription>
 
+            {/* Suggestion */}
             {(bookingError?.suggestion || blockerDetails?.action) && (
-              <div className="mt-3 p-3 bg-muted rounded-lg">
-                <p className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Info className="w-4 h-4" />
-                  {bookingError?.suggestion || "Action available"}
+              <div className="mt-3 p-3 sm:p-4 bg-muted rounded-lg border">
+                <p className="text-sm text-muted-foreground flex items-start gap-2">
+                  <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>{bookingError?.suggestion || "Action available"}</span>
                 </p>
               </div>
             )}
 
-            {/* Conflict details */}
+            {/* Same-day Conflict Details */}
             {bookingError?.type === "same_day_conflict" &&
               bookingError?.data && (
-                <div className="mt-3 p-4 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-lg">
-                  <h4 className="font-semibold text-sm mb-2">
-                    Existing Appointment:
+                <div className="mt-4 p-4 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/20 border-2 border-orange-200 dark:border-orange-800 rounded-xl">
+                  <h4 className="font-bold text-sm mb-3 flex items-center gap-2">
+                    <CalendarDays className="w-4 h-4" />
+                    Existing Appointment
                   </h4>
-                  <div className="space-y-1 text-sm">
-                    <p className="flex items-center gap-2">
-                      <Hospital className="w-4 h-4 text-muted-foreground" />
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Hospital className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-muted-foreground">Clinic:</span>
-                      <strong>{bookingError.data.clinicName}</strong>
-                    </p>
-                    <p className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-muted-foreground" />
+                      <strong className="flex-1 text-right line-clamp-1">
+                        {bookingError.data.clinicName}
+                      </strong>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-muted-foreground">Doctor:</span>
-                      {bookingError.data.doctorName}
-                    </p>
-                    <p className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-muted-foreground" />
+                      <strong className="flex-1 text-right">
+                        {bookingError.data.doctorName}
+                      </strong>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-muted-foreground">Time:</span>
-                      {bookingError.data.time}
-                    </p>
+                      <strong>{bookingError.data.time}</strong>
+                    </div>
                   </div>
                 </div>
               )}
 
-            {/* Clinic hours info */}
+            {/* Clinic Hours Info */}
             {(bookingError?.type === "clinic_closed" ||
               bookingError?.type === "before_opening" ||
               bookingError?.type === "after_closing") &&
               bookingError?.data && (
-                <div className="mt-3 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                  <h4 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 border-2 border-blue-200 dark:border-blue-800 rounded-xl">
+                  <h4 className="font-bold text-sm mb-3 flex items-center gap-2">
                     <Clock className="w-4 h-4" />
-                    Clinic Hours:
+                    Clinic Hours
                   </h4>
-                  <div className="text-sm space-y-1">
+                  <div className="text-sm space-y-1.5">
                     {bookingError.data.clinic_opens_at && (
-                      <p>
-                        Opens:{" "}
+                      <p className="flex justify-between">
+                        <span className="text-muted-foreground">Opens:</span>
                         <strong>{bookingError.data.clinic_opens_at}</strong>
                       </p>
                     )}
                     {bookingError.data.clinic_closes_at && (
-                      <p>
-                        Closes:{" "}
+                      <p className="flex justify-between">
+                        <span className="text-muted-foreground">Closes:</span>
                         <strong>{bookingError.data.clinic_closes_at}</strong>
                       </p>
                     )}
                     {bookingError.data.day && (
-                      <p className="text-muted-foreground capitalize">
-                        Day: {bookingError.data.day}
+                      <p className="text-muted-foreground capitalize mt-2">
+                        Day:{" "}
+                        <strong className="text-foreground">
+                          {bookingError.data.day}
+                        </strong>
                       </p>
                     )}
                   </div>
                 </div>
               )}
           </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-3">
             {(blockerDetails?.action ||
               bookingError?.type === "same_day_conflict") && (
               <AlertDialogAction
@@ -507,12 +573,12 @@ const BookAppointment = () => {
                     window.location.href = "/patient/appointments/upcoming";
                   }
                 }}
-                className="w-full sm:w-auto"
+                className="w-full sm:w-auto min-h-[44px] touch-manipulation"
               >
                 {blockerDetails?.action?.label || "View Appointments"}
               </AlertDialogAction>
             )}
-            <AlertDialogCancel className="w-full sm:w-auto">
+            <AlertDialogCancel className="w-full sm:w-auto min-h-[44px] touch-manipulation">
               {bookingError?.type === "same_day_conflict"
                 ? "Choose Another Date"
                 : bookingError?.type === "clinic_closed"
@@ -530,24 +596,24 @@ const BookAppointment = () => {
       </AlertDialog>
 
       {/* Enhanced Header */}
-      <div className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-20 shadow-sm">
+      <div className="border-b bg-card/95 backdrop-blur-md sticky top-0 z-20 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 py-4 sm:py-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
             <div className="flex items-center gap-3 sm:gap-4">
               <div
                 className={cn(
-                  "w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center transition-all duration-300",
-                  "bg-gradient-to-br from-primary/20 to-purple-500/20",
+                  "w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center transition-all duration-300 shadow-sm",
+                  `bg-gradient-to-br ${currentStep.bgColor}`,
                   currentStep.color
                 )}
               >
-                <StepIcon className="w-5 h-5 sm:w-6 sm:h-6" />
+                <StepIcon className="w-6 h-6 sm:w-7 sm:h-7" />
               </div>
-              <div>
-                <h1 className="text-xl sm:text-2xl font-bold">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-xl sm:text-2xl font-bold text-foreground">
                   Book Appointment
                 </h1>
-                <p className="text-xs sm:text-sm text-muted-foreground">
+                <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
                   Step {currentStepIndex + 1} of {totalSteps}:{" "}
                   {currentStep.label}
                 </p>
@@ -555,11 +621,11 @@ const BookAppointment = () => {
             </div>
             <div className="flex items-center gap-3 w-full sm:w-auto">
               {isMobile && (
-                <Badge variant="outline" className="text-xs">
+                <Badge variant="outline" className="text-xs font-semibold">
                   {Math.round(stepProgress)}%
                 </Badge>
               )}
-              <Progress value={stepProgress} className="w-full sm:w-32 h-2" />
+              <Progress value={stepProgress} className="w-full sm:w-32 h-2.5" />
             </div>
           </div>
         </div>
@@ -577,18 +643,18 @@ const BookAppointment = () => {
         </div>
 
         {/* Contextual Alerts */}
-        <div className="space-y-3 sm:space-y-4 mb-6 sm:mb-8">
+        <div className="space-y-3 mb-6 sm:mb-8">
           {/* High Risk Warning */}
           {bookingStep === "confirm" &&
             patientReliability?.risk_level === "high_risk" && (
-              <Card className="border-2 border-amber-200 dark:border-amber-800 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20">
+              <Card className="border-2 border-amber-200 dark:border-amber-800/50 bg-gradient-to-r from-amber-50/50 to-orange-50/50 dark:from-amber-950/10 dark:to-orange-950/10 animate-in slide-in-from-top-2 fade-in-50">
                 <CardContent className="p-4 flex items-start gap-3">
-                  <Shield className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <Shield className="w-5 h-5 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <strong className="text-sm sm:text-base text-amber-900 dark:text-amber-100">
+                    <strong className="text-sm sm:text-base text-amber-900 dark:text-amber-100 block mb-1">
                       Attendance Reminder
                     </strong>
-                    <p className="text-xs sm:text-sm mt-1 text-amber-800 dark:text-amber-200">
+                    <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-200">
                       Please ensure you attend this appointment. Multiple
                       no-shows may restrict future bookings.
                     </p>
@@ -601,27 +667,28 @@ const BookAppointment = () => {
           {isLinkedToTreatment &&
             selectedTreatment &&
             bookingStep !== "clinic" && (
-              <Card className="border-2 border-purple-200 dark:border-purple-800 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 animate-in slide-in-from-top-2 fade-in-50">
+              <Card className="border-2 border-purple-200 dark:border-purple-800/50 bg-gradient-to-r from-purple-50/50 to-pink-50/50 dark:from-purple-950/10 dark:to-pink-950/10 animate-in slide-in-from-top-2 fade-in-50">
                 <CardContent className="p-4 flex items-start gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                  <CheckCircle2 className="w-5 h-5 text-purple-600 dark:text-purple-500 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <h4 className="font-semibold text-purple-900 dark:text-purple-100 text-sm sm:text-base">
+                    <h4 className="font-bold text-purple-900 dark:text-purple-100 text-sm sm:text-base mb-1">
                       Treatment Plan Linked
                     </h4>
-                    <p className="text-xs sm:text-sm text-purple-800 dark:text-purple-200 mt-1">
+                    <p className="text-xs sm:text-sm text-purple-800 dark:text-purple-200">
                       Linked to:{" "}
                       <strong>{selectedTreatment.treatment_name}</strong>
-                      <span className="text-xs block mt-1">
-                        Visit #{selectedTreatment.visits_completed + 1} of{" "}
-                        {selectedTreatment.total_visits_planned || "?"}
-                      </span>
+                    </p>
+                    <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
+                      Visit #{selectedTreatment.visits_completed + 1} of{" "}
+                      {selectedTreatment.total_visits_planned || "?"}
                     </p>
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={clearTreatmentPlanLink}
-                      className="mt-2 text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-purple-100 h-8"
+                      className="mt-2 text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-purple-100 h-8 px-3"
                     >
+                      <X className="w-3.5 h-3.5 mr-1.5" />
                       Unlink
                     </Button>
                   </div>
@@ -634,14 +701,14 @@ const BookAppointment = () => {
             (bookingStep === "doctor" ||
               bookingStep === "datetime" ||
               bookingStep === "confirm") && (
-              <Card className="border-2 border-blue-200 dark:border-blue-800 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20 animate-in slide-in-from-top-2 fade-in-50">
+              <Card className="border-2 border-primary/30 bg-gradient-to-r from-primary/5 to-secondary/5 animate-in slide-in-from-top-2 fade-in-50">
                 <CardContent className="p-4 flex items-start gap-3">
-                  <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="text-sm sm:text-base text-blue-900 dark:text-blue-100">
+                  <Info className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <strong className="text-sm sm:text-base text-foreground block mb-1">
                       Consultation Only Booking
                     </strong>
-                    <p className="text-xs sm:text-sm mt-1 text-blue-800 dark:text-blue-200">
+                    <p className="text-xs sm:text-sm text-muted-foreground">
                       You're booking a consultation without services. The doctor
                       will assess your needs and recommend treatments.
                     </p>
@@ -661,7 +728,7 @@ const BookAppointment = () => {
                   clinicsLoading={clinicsLoading}
                   selectedClinic={bookingData.clinic}
                   onClinicSelect={handleClinicSelect}
-                  profile={profile} // ✅ Pass profile for same-day check
+                  profile={profile}
                 />
               )}
 
@@ -681,7 +748,6 @@ const BookAppointment = () => {
                 show={showTreatmentLinkPrompt}
                 treatments={ongoingTreatments}
                 onSelectTreatment={async (treatmentId) => {
-                  // Option A: Full Pre-fill Mode - Navigate to follow-up booking page
                   navigate(
                     `/patient/appointments/book-follow-up/${treatmentId}`
                   );
@@ -700,7 +766,7 @@ const BookAppointment = () => {
                   consultationCheckResult={consultationCheckResult}
                   skipConsultation={skipConsultation}
                   setSkipConsultation={setSkipConsultation}
-                  selectedTreatment={selectedTreatment} // ✅ Pass treatment
+                  selectedTreatment={selectedTreatment}
                 />
               )}
 
@@ -715,8 +781,8 @@ const BookAppointment = () => {
                   sameDayConflict={sameDayConflict}
                   sameDayConflictDetails={sameDayConflictDetails}
                   bookingLimitsInfo={bookingLimitsInfo}
-                  appointmentLimitCheck={appointmentLimitCheck} // ✅ Pass limit check
-                  selectedTreatment={selectedTreatment} // ✅ Pass treatment
+                  appointmentLimitCheck={appointmentLimitCheck}
+                  selectedTreatment={selectedTreatment}
                 />
               )}
 
@@ -740,13 +806,13 @@ const BookAppointment = () => {
         </Card>
 
         {/* Navigation */}
-        <div className="flex flex-col-reverse sm:flex-row justify-between gap-3 sm:gap-4 sticky bottom-4 sm:static bg-background sm:bg-transparent p-4 sm:p-0 rounded-xl sm:rounded-none shadow-lg sm:shadow-none border sm:border-0">
+        <div className="flex flex-col-reverse sm:flex-row justify-between gap-3 sm:gap-4 sticky bottom-0 sm:static bg-card/95 sm:bg-transparent backdrop-blur-md sm:backdrop-blur-none p-4 sm:p-0 rounded-t-2xl sm:rounded-none shadow-2xl sm:shadow-none border-t sm:border-0 z-10">
           <Button
             variant="outline"
             onClick={previousStep}
             disabled={currentStepIndex === 0 || loading}
             size={isMobile ? "default" : "lg"}
-            className="w-full sm:w-auto min-h-[44px] touch-manipulation"
+            className="w-full sm:w-auto min-h-[48px] touch-manipulation font-semibold"
           >
             <ChevronLeft className="w-4 h-4 mr-2" />
             Previous
@@ -762,11 +828,11 @@ const BookAppointment = () => {
                 Boolean(bookingError)
               }
               size={isMobile ? "default" : "lg"}
-              className="w-full sm:w-auto min-h-[44px] touch-manipulation shadow-lg hover:shadow-xl transition-all duration-200"
+              className="w-full sm:w-auto min-h-[48px] touch-manipulation shadow-lg hover:shadow-xl transition-all duration-200 font-semibold"
             >
               {loading ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
                   Booking...
                 </>
               ) : (
@@ -786,11 +852,11 @@ const BookAppointment = () => {
                 Boolean(bookingError)
               }
               size={isMobile ? "default" : "lg"}
-              className="w-full sm:w-auto min-h-[44px] touch-manipulation"
+              className="w-full sm:w-auto min-h-[48px] touch-manipulation font-semibold"
             >
               {validationLoading ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent mr-2" />
+                  <Loader2 className="animate-spin h-4 w-4 mr-2" />
                   Validating...
                 </>
               ) : (

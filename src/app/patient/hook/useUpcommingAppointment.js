@@ -70,29 +70,52 @@ export const useAppointmentManagement = () => {
 
   // ✅ NOW: Real-time updates can reference fetchOngoingTreatments
   const { enableRealtimeUpdates, disableRealtimeUpdates, isConnected } =
-    useAppointmentRealtime({
-      onAppointmentUpdate: useCallback(
-        (update) => {
-          console.log("Real-time appointment update:", update);
-          appointmentHook.refresh();
-          fetchOngoingTreatments();
-        },
-        [appointmentHook, fetchOngoingTreatments] 
-      ),
-      onAppointmentStatusChange: useCallback(
-        (statusUpdate) => {
-          console.log("Appointment status changed:", statusUpdate);
-          showToast(
-            `Appointment status changed to ${statusUpdate.newStatus}`,
-            "info"
-          );
-          appointmentHook.refresh();
-        },
-        [appointmentHook, showToast]
-      ),
-      enableAppointments: true,
-      enableNotifications: true,
-    });
+  useAppointmentRealtime({
+    onAppointmentUpdate: useCallback(
+      (update) => {
+        console.log("Real-time appointment update:", update);
+        
+        // ✅ ENHANCED: Check if the update affects ongoing treatments
+        const affectsOngoingTreatments = 
+          update.new?.status !== update.old?.status || // Status changed
+          update.new?.treatment_plan_id != null;        // Has treatment plan
+        
+        if (affectsOngoingTreatments) {
+          console.log("🔄 Treatment-related update detected, refreshing...");
+          fetchOngoingTreatments(); // ✅ Refresh treatments
+        }
+        
+        appointmentHook.refresh(); // ✅ Always refresh appointments
+      },
+      [appointmentHook, fetchOngoingTreatments]
+    ),
+    onAppointmentStatusChange: useCallback(
+      (statusUpdate) => {
+        console.log("Appointment status changed:", statusUpdate);
+        
+        // ✅ ENHANCED: Show appropriate message
+        const messageMap = {
+          pending: "Your appointment is pending approval",
+          confirmed: "Your appointment has been confirmed!",
+          cancelled: "Your appointment has been cancelled",
+          completed: "Your appointment has been completed"
+        };
+        
+        showToast(
+          messageMap[statusUpdate.newStatus] || `Appointment status: ${statusUpdate.newStatus}`,
+          statusUpdate.newStatus === 'confirmed' ? "success" : 
+          statusUpdate.newStatus === 'cancelled' ? "warning" : "info"
+        );
+        
+        // ✅ Refresh both appointments and treatments
+        appointmentHook.refresh();
+        fetchOngoingTreatments();
+      },
+      [appointmentHook, showToast, fetchOngoingTreatments]
+    ),
+    enableAppointments: true,
+    enableNotifications: true,
+  });
 
   // Fetch detailed treatment plan
   const fetchTreatmentDetails = useCallback(async (treatmentId) => {
@@ -100,9 +123,20 @@ export const useAppointmentManagement = () => {
       const { data, error } = await supabase.rpc('get_treatment_plan_details', {
         p_treatment_plan_id: treatmentId
       });
-
+  
       if (error) throw error;
-      return { success: true, data };
+      
+      // ✅ FIX: Extract actual data from nested response
+      if (data?.success && data?.data) {
+        return { success: true, data: data.data };
+      }
+      
+      // ✅ Handle case where data is already unwrapped
+      if (data && !data.success && !data.error) {
+        return { success: true, data };
+      }
+      
+      return { success: false, error: data?.error || 'Invalid response format' };
     } catch (err) {
       console.error('Error fetching treatment details:', err);
       return { success: false, error: err.message };
@@ -201,8 +235,19 @@ export const useAppointmentManagement = () => {
     ).length;
 
     const overduetreatments = ongoingTreatments.filter(t => {
-      if (!t.next_visit_date) return false;
-      return new Date(t.next_visit_date) < new Date();
+      // Use timeline.is_overdue from database
+      if (t.timeline?.is_overdue) return true;
+      
+      // Fallback: Check if next_visit_date is in the past
+      if (t.next_visit_date) {
+        return new Date(t.next_visit_date) < new Date();
+      }
+
+      const hasActiveNextAppointment = t.next_appointment && 
+      ['pending', 'confirmed'].includes(t.next_appointment.status);
+      
+      // Check if no next appointment and requires scheduling
+      return t.requires_scheduling && !hasActiveNextAppointment;
     }).length;
 
     const result = {
@@ -366,6 +411,40 @@ export const useAppointmentManagement = () => {
     enableRealtimeUpdates,
     disableRealtimeUpdates,
   ]);
+
+  useEffect(() => {
+    let refreshTimeout = null;
+    
+    const handleVisibilityChange = () => {
+      if (!document.hidden && isPatient) {
+        // Debounce rapid fires
+        if (refreshTimeout) clearTimeout(refreshTimeout);
+        refreshTimeout = setTimeout(() => {
+          fetchOngoingTreatments();
+          appointmentHook.refresh();
+        }, 300);
+      }
+    };
+  
+    const handleFocus = () => {
+      if (isPatient) {
+        if (refreshTimeout) clearTimeout(refreshTimeout);
+        refreshTimeout = setTimeout(() => {
+          fetchOngoingTreatments();
+          appointmentHook.refresh();
+        }, 300);
+      }
+    };
+  
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+  
+    return () => {
+      if (refreshTimeout) clearTimeout(refreshTimeout);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [isPatient, fetchOngoingTreatments, appointmentHook]);
 
   return {
     // Auth

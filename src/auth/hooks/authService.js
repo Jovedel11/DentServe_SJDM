@@ -306,6 +306,57 @@ export const authService = {
     }
   },
 
+    async adminChangeUserPassword(userId, newPassword) {
+    try {
+      console.log('🔐 Admin changing user password...', { userId });
+
+      // Validate password on client side first
+      const validation = validatePassword(newPassword);
+      if (!validation.isValid) {
+        throw new Error(validation.error);
+      }
+
+      // Get current admin's session token
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('Not authenticated');
+      }
+
+      // Call backend endpoint
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'}/api/admin/change-user-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          newPassword,
+          adminToken: session.access_token
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to change password');
+      }
+
+      console.log('✅ Admin password change successful');
+
+      return {
+        success: true,
+        message: result.message,
+        userEmail: result.userEmail
+      };
+
+    } catch (error) {
+      console.error('❌ Admin password change error:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to change user password'
+      };
+    }
+  },
   // get auth status
   async getAuthStatus (authUserId = null) {
     try {
@@ -562,6 +613,124 @@ export const authService = {
     } catch (error) {
       console.error('Update admin profile error:', error);
       return { success: false, error: error.message || 'Failed to update profile' };
+    }
+  },
+
+  async changePassword(currentPassword, newPassword) {
+    try {
+      console.log('🔄 Changing password with verification...');
+      
+      // Validate new password
+      const validation = validatePassword(newPassword);
+      if (!validation.isValid) {
+        throw new Error(validation.error);
+      }
+
+      // First, verify current password by attempting to sign in
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+      });
+
+      if (signInError) {
+        throw new Error('Current password is incorrect');
+      }
+
+      // If current password is correct, update to new password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (updateError) {
+        throw new Error(updateError.message || 'Failed to update password');
+      }
+
+      // Log the password change
+      await supabase.rpc('verify_and_change_password', {
+        p_current_password: '***', // Don't log actual passwords
+        p_new_password: '***'
+      });
+
+      console.log('✅ Password changed successfully');
+
+      return {
+        success: true,
+        message: 'Password changed successfully. Please sign in with your new password.'
+      };
+
+    } catch (error) {
+      console.error('❌ Password change error:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Failed to change password' 
+      };
+    }
+  },
+
+  // Deactivate or delete account
+  async deactivateAccount(password, reason = null, permanentDelete = false) {
+    try {
+      console.log('🗑️ Deactivating account...', { permanentDelete });
+
+      // Verify password first
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: password,
+      });
+
+      if (signInError) {
+        throw new Error('Password is incorrect. Please verify your password.');
+      }
+
+      // Call the deactivation function
+      const { data, error } = await supabase.rpc('deactivate_account', {
+        p_password: '***',
+        p_reason: reason,
+        p_permanent_delete: permanentDelete
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to deactivate account');
+      }
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to deactivate account');
+      }
+
+      // If permanent delete, also delete from auth
+      if (permanentDelete) {
+        // Note: This requires admin privileges, so it might not work
+        // In production, you'd want a backend admin endpoint for this
+        try {
+          await supabase.auth.admin.deleteUser(user.id);
+        } catch (adminError) {
+          console.warn('Could not delete auth user, but database cleanup succeeded');
+        }
+      }
+
+      // Sign out the user
+      await supabase.auth.signOut();
+
+      console.log('✅ Account deactivated successfully');
+
+      return {
+        success: true,
+        message: data.message,
+        permanent: data.permanent
+      };
+
+    } catch (error) {
+      console.error('❌ Account deactivation error:', error);
+      return { 
+        success: false, 
+        error: error.message || 'Failed to deactivate account' 
+      };
     }
   },
 

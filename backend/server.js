@@ -7,6 +7,7 @@ import recaptchaRoutes from "./routes/recaptcha.js"
 import multer from 'multer';
 import uploadRoutes from "./routes/cloudImage.js"
 import emailRoutes from "./routes/email.js"
+import adminRoutes from "./routes/adminAuth.js"
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -71,6 +72,7 @@ app.get('/health', (_req, res) => {
 app.use('/api/recaptcha', recaptchaRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/email', emailRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.listen(PORT, () =>  console.log(`Custom Server is running on http://localhost:${PORT}`));
 
