@@ -989,20 +989,6 @@ const Dentist = () => {
                         {doctor.bio.length > 100 && "..."}
                       </div>
                     )}
-
-                    {/* Action Buttons */}
-                    <div className="flex gap-3 pt-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          bookAppointment(doctor);
-                        }}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-colors font-medium"
-                      >
-                        <Calendar className="w-4 h-4" />
-                        Book Now
-                      </button>
-                    </div>
                   </div>
                 </motion.div>
               ))}
