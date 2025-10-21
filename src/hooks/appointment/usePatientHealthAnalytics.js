@@ -2,11 +2,6 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 
-/**
- * Patient Health Analytics Hook
- * Provides health metrics, appointment statistics, and care insights
- * Aligned with: get_patient_health_analytics, get_patient_analytics
- */
 export const usePatientHealthAnalytics = () => {
   const { user, profile, isPatient } = useAuth();
 
@@ -18,9 +13,6 @@ export const usePatientHealthAnalytics = () => {
     reliabilityScore: null
   });
 
-  // =====================================================
-  // Get Comprehensive Health Analytics
-  // =====================================================
   const getHealthAnalytics = useCallback(async (patientId = null) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
@@ -41,7 +33,7 @@ export const usePatientHealthAnalytics = () => {
         }),
         supabase.rpc('check_patient_reliability', {
           p_patient_id: targetPatientId,
-          p_clinic_id: null // Check across all clinics
+          p_clinic_id: null
         })
       ]);
 
@@ -82,9 +74,6 @@ export const usePatientHealthAnalytics = () => {
     }
   }, [isPatient, profile?.user_id]);
 
-  // =====================================================
-  // Get Appointment History Summary
-  // =====================================================
   const getAppointmentHistorySummary = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -114,9 +103,6 @@ export const usePatientHealthAnalytics = () => {
     }
   }, [profile?.user_id]);
 
-  // =====================================================
-  // Computed Analytics Insights
-  // =====================================================
   const insights = useMemo(() => {
     if (!state.healthAnalytics && !state.patientAnalytics) {
       return null;
@@ -162,14 +148,11 @@ export const usePatientHealthAnalytics = () => {
     };
   }, [state.healthAnalytics, state.patientAnalytics, state.reliabilityScore]);
 
-  // =====================================================
-  // Auto-fetch on mount for patients
-  // =====================================================
   useEffect(() => {
     if (user && isPatient && profile?.user_id) {
       getHealthAnalytics();
     }
-  }, [user, isPatient, profile?.user_id, getHealthAnalytics]);
+  }, [user, isPatient, profile?.user_id]);
 
   return {
     // State

@@ -329,7 +329,7 @@ export const useBookingFlow = () => {
 
     try {
       // ✅ FIXED: Pass skipConsultation flag to booking function
-      const result = await bookAppointment(skipConsultation);  // ✅ PASS THE FLAG
+      const result = await bookAppointment(skipConsultation); 
 
       if (result.success) {
         setBookingSuccess(true);

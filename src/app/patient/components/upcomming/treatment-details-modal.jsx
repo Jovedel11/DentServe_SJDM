@@ -26,12 +26,13 @@ const TreatmentDetailsModal = ({
 
   if (!treatment) return null;
 
-  // ✅ Use treatment directly (after hook fix extracts data properly)
   const progressPercentage = treatment.progress_percentage || 0;
   const visitsCompleted = treatment.visits_completed || 0;
   const totalVisits = treatment.total_visits_planned; // Can be null
-  const visits =
-    treatment.visits || treatment.treatment_plan_appointments || [];
+  const visits = treatment.recent_visits || [];
+
+  const timeline = treatment.timeline || {};
+  const clinic = treatment.clinic || {};
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -106,26 +107,26 @@ const TreatmentDetailsModal = ({
                     Clinic Name:
                   </span>
                   <p className="font-medium text-foreground">
-                    {treatment.clinic?.name || "N/A"}
+                    {clinic.name || "N/A"}
                   </p>
                 </div>
-                {treatment.clinic?.address && (
+                {clinic.address && (
                   <div>
                     <span className="text-sm text-muted-foreground">
                       Address:
                     </span>
                     <p className="font-medium text-foreground">
-                      {treatment.clinic.address}
+                      {clinic.address}
                     </p>
                   </div>
                 )}
-                {treatment.clinic?.phone && (
+                {clinic.phone && (
                   <div>
                     <span className="text-sm text-muted-foreground">
                       Phone:
                     </span>
                     <p className="font-medium text-foreground">
-                      {treatment.clinic.phone}
+                      {clinic.phone}
                     </p>
                   </div>
                 )}
@@ -139,44 +140,47 @@ const TreatmentDetailsModal = ({
                 Timeline
               </h4>
               <div className="space-y-3">
-                {treatment.start_date && (
+                {/* ✅ FIXED: Use timeline.start_date */}
+                {timeline.start_date && (
                   <div>
                     <span className="text-sm text-muted-foreground">
                       Started:
                     </span>
                     <p className="font-medium text-foreground">
-                      {formatDate(treatment.start_date)}
+                      {formatDate(timeline.start_date)}
                     </p>
                   </div>
                 )}
-                {/* ✅ NEW: Show last visit date */}
-                {treatment.last_visit_date && (
+                {/* ✅ FIXED: Use timeline.last_visit_date */}
+                {timeline.last_visit_date && (
                   <div>
                     <span className="text-sm text-muted-foreground">
                       Last Visit:
                     </span>
                     <p className="font-medium text-foreground">
-                      {formatDate(formatDate.last_visit_date)}
+                      {formatDate(timeline.last_visit_date)}
                     </p>
                   </div>
                 )}
-                {formatDate.expected_end_date && (
+                {/* ✅ FIXED: Use timeline.expected_end_date */}
+                {timeline.expected_end_date && (
                   <div>
                     <span className="text-sm text-muted-foreground">
                       Expected End:
                     </span>
                     <p className="font-medium text-foreground">
-                      {formatDate(formatDate.expected_end_date)}
+                      {formatDate(timeline.expected_end_date)}
                     </p>
                   </div>
                 )}
-                {formatDate.follow_up_interval_days && (
+                {/* ✅ FIXED: Use treatment.follow_up_interval_days */}
+                {treatment.follow_up_interval_days && (
                   <div>
                     <span className="text-sm text-muted-foreground">
                       Follow-up Interval:
                     </span>
                     <p className="font-medium text-foreground">
-                      Every {formatDate.follow_up_interval_days} days
+                      Every {treatment.follow_up_interval_days} days
                     </p>
                   </div>
                 )}
@@ -184,64 +188,42 @@ const TreatmentDetailsModal = ({
             </div>
           </div>
 
-          {formatDate.cancelled_attempts &&
-            formatDate.cancelled_attempts.length > 0 && (
-              <div className="mt-8">
-                <h4 className="font-bold text-foreground mb-4 flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-muted-foreground" />
-                  Cancellation History
-                </h4>
-                <div className="space-y-2">
-                  {formatDate.cancelled_attempts.map((cancellation, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-muted/30 rounded-lg p-4 border border-muted"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">
-                            {cancellation.cancellation_type === "patient_cancel"
-                              ? "You cancelled this appointment"
-                              : "Appointment was rejected"}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {formatDate(cancellation.booking_date)}
-                          </p>
-                        </div>
-                        <Badge variant="outline" className="text-xs">
-                          Not counted as visit
-                        </Badge>
-                      </div>
-                      {cancellation.cancellation_reason && (
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Reason: {cancellation.cancellation_reason}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+          {/* ✅ FIXED: Cancellation History - Use total_cancelled_attempts */}
+          {treatment.total_cancelled_attempts > 0 && (
+            <div className="mt-8 mb-8 p-6 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <h4 className="font-bold text-yellow-900 mb-2 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-yellow-600" />
+                Cancellation History
+              </h4>
+              <p className="text-sm text-yellow-800">
+                This treatment has {treatment.total_cancelled_attempts}{" "}
+                cancelled booking attempt
+                {treatment.total_cancelled_attempts > 1 ? "s" : ""}. These
+                appointments were not completed and do not count toward your
+                treatment progress.
+              </p>
+            </div>
+          )}
 
-          {/* Description */}
-          {formatDate.description && (
+          {/* ✅ FIXED: Description - Use treatment.description */}
+          {treatment.description && (
             <div className="mb-8 p-6 bg-muted/30 rounded-lg border">
               <h4 className="font-bold text-foreground mb-3 flex items-center gap-2">
                 <FileText className="w-5 h-5 text-primary" />
                 Treatment Description
               </h4>
-              <p className="text-foreground">{formatDate.description}</p>
+              <p className="text-foreground">{treatment.description}</p>
             </div>
           )}
 
-          {/* Diagnosis */}
-          {formatDate.diagnosis && (
+          {/* ✅ FIXED: Diagnosis - Use treatment.diagnosis */}
+          {treatment.diagnosis && (
             <div className="mb-8 p-6 bg-blue-50 rounded-lg border border-blue-200">
               <h4 className="font-bold text-blue-900 mb-3 flex items-center gap-2">
                 <Stethoscope className="w-5 h-5 text-blue-600" />
                 Diagnosis
               </h4>
-              <p className="text-blue-800">{formatDate.diagnosis}</p>
+              <p className="text-blue-800">{treatment.diagnosis}</p>
             </div>
           )}
 
@@ -255,7 +237,7 @@ const TreatmentDetailsModal = ({
               <div className="space-y-3">
                 {visits.map((visit, idx) => (
                   <div
-                    key={visit.id || idx}
+                    key={visit.appointment_id || idx}
                     className={`p-4 rounded-lg border ${
                       visit.is_completed
                         ? "bg-success/10 border-success/30"
@@ -276,7 +258,9 @@ const TreatmentDetailsModal = ({
                       <Badge
                         variant={visit.is_completed ? "default" : "outline"}
                       >
-                        {visit.is_completed ? "Completed" : "Pending"}
+                        {visit.is_completed
+                          ? "Completed"
+                          : visit.appointment_status || "Pending"}
                       </Badge>
                     </div>
                     {visit.visit_purpose && (
@@ -284,21 +268,17 @@ const TreatmentDetailsModal = ({
                         {visit.visit_purpose}
                       </p>
                     )}
-                    {visit.appointment && (
+                    {/* ✅ FIXED: Use visit.appointment_date from database */}
+                    {visit.appointment_date && (
                       <div className="flex items-center gap-4 text-sm text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-4 h-4" />
-                          {formatDate(visit.appointment.appointment_date)}
+                          {formatDate(visit.appointment_date)}
                         </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          {formatTime(visit.appointment.appointment_time)}
-                        </span>
-                        {visit.appointment.doctor && (
+                        {visit.appointment_time && (
                           <span className="flex items-center gap-1">
-                            <Stethoscope className="w-4 h-4" />
-                            Dr. {visit.appointment.doctor.first_name}{" "}
-                            {visit.appointment.doctor.last_name}
+                            <Clock className="w-4 h-4" />
+                            {formatTime(visit.appointment_time)}
                           </span>
                         )}
                       </div>
@@ -308,32 +288,27 @@ const TreatmentDetailsModal = ({
                         {visit.completion_notes}
                       </p>
                     )}
-                    {/* ✅ NEW: Show completed date */}
-                    {visit.completed_at && visit.is_completed && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Completed: {formatDate(visit.completed_at)}
-                      </p>
-                    )}
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Completed Treatment */}
-          {formatDate.status === "completed" && (
+          {/* ✅ FIXED: Completed Treatment - Use treatment.status */}
+          {treatment.status === "completed" && (
             <div className="p-6 bg-green-50 border border-green-200 rounded-lg text-center">
               <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-3" />
               <h4 className="font-bold text-green-900 mb-2">
                 Treatment Completed!
               </h4>
               <p className="text-sm text-green-800">
-                You have successfully completed all {totalVisits} visits for
-                this treatment.
+                You have successfully completed all{" "}
+                {totalVisits || visitsCompleted} visits for this treatment.
               </p>
-              {formatDate.actual_end_date && (
+              {/* ✅ FIXED: Use treatment.actual_end_date or timeline.actual_end_date */}
+              {treatment.actual_end_date && (
                 <p className="text-xs text-green-700 mt-2">
-                  Completed on {formatDate(formatDate.actual_end_date)}
+                  Completed on {formatDate(treatment.actual_end_date)}
                 </p>
               )}
             </div>

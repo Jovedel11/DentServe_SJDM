@@ -16,6 +16,11 @@ import {
 } from "lucide-react";
 
 import { authService } from "@/auth/hooks/authService";
+import {
+  notifyPartnershipApproved,
+  notifyPartnershipRejected,
+  staffInvitation,
+} from "@/services/emailService";
 
 const PartnershipRequestManager = () => {
   const [requests, setRequests] = useState([]);
@@ -105,39 +110,27 @@ const PartnershipRequestManager = () => {
 
       if (emailData) {
         try {
-          const emailResponse = await fetch(
-            `${import.meta.env.VITE_API_URL}/api/email/partnership-approved`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                clinic_name: emailData.clinic_name,
-                email: emailData.email,
-                staff_name:
-                  emailData.first_name && emailData.last_name
-                    ? `${emailData.first_name} ${emailData.last_name}`
-                    : emailData.first_name || "there",
-                position: emailData.position,
-                invitation_id: emailData.invitation_id,
-                invitation_token: emailData.invitation_token,
-              }),
-            }
-          );
+          console.log("📧 Sending partnership approval email...", emailData);
 
-          const emailResult = await emailResponse.json();
+          const emailResult = await notifyPartnershipApproved({
+            clinic_name: emailData.clinic_name,
+            email: emailData.email,
+            staff_name: emailData.staff_name || emailData.first_name || "there",
+            position: emailData.position || "Clinic Manager",
+            invitation_id: emailData.invitation_id,
+            invitation_token: emailData.invitation_token,
+          });
 
-          if (!emailResponse.ok || !emailResult.success) {
+          if (!emailResult.success) {
             throw new Error(emailResult.error || "Failed to send email");
           }
 
-          console.log("Approval email sent successfully:", emailResult);
+          console.log("✅ Approval email sent successfully:", emailResult);
           toast.success(
             "Partnership approved! Welcome email sent successfully."
           );
         } catch (emailError) {
-          console.error("Email sending failed:", emailError);
+          console.error("❌ Email sending failed:", emailError);
 
           // Fallback: Show link manually
           const invitationUrl = `${window.location.origin}/auth/staff-signup?invitation=${emailData.invitation_id}&token=${emailData.invitation_token}`;
@@ -157,13 +150,14 @@ const PartnershipRequestManager = () => {
 
       fetchRequests();
     } catch (err) {
-      console.error("Approval error:", err);
+      console.error("❌ Approval error:", err);
       toast.error(err.message || "Failed to approve request");
     } finally {
       setActionLoading(false);
     }
   };
 
+  // Handle reject request
   // Handle reject request
   const handleReject = async (requestId) => {
     try {
@@ -182,26 +176,18 @@ const PartnershipRequestManager = () => {
 
         if (emailData) {
           try {
-            const emailResponse = await fetch(
-              `${import.meta.env.VITE_API_URL}/api/email/partnership-rejected`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  clinic_name: emailData.clinic_name,
-                  email: emailData.email,
-                  staff_name: emailData.staff_name,
-                  admin_notes: emailData.admin_notes,
-                  rejected_at: emailData.rejected_at,
-                }),
-              }
-            );
+            // ✅ FIXED: Use emailService helper instead of raw fetch
+            console.log("📧 Sending partnership rejection email...", emailData);
 
-            const emailResult = await emailResponse.json();
+            const emailResult = await notifyPartnershipRejected({
+              clinic_name: emailData.clinic_name,
+              email: emailData.email,
+              staff_name: emailData.staff_name,
+              admin_notes: emailData.admin_notes,
+              rejected_at: emailData.rejected_at,
+            });
 
-            if (emailResponse.ok && emailResult.success) {
+            if (emailResult.success) {
               toast.success(
                 "Partnership request rejected and notification sent"
               );
@@ -226,13 +212,14 @@ const PartnershipRequestManager = () => {
         throw new Error(data?.error || "Failed to reject request");
       }
     } catch (error) {
-      console.error("Error rejecting request:", error);
+      console.error("❌ Error rejecting request:", error);
       toast.error(error.message || "Failed to reject request");
     } finally {
       setActionLoading(false);
     }
   };
 
+  // Handle direct staff invitation
   // Handle direct staff invitation
   const handleDirectInvite = async (e) => {
     e.preventDefault();
@@ -259,28 +246,20 @@ const PartnershipRequestManager = () => {
 
       if (emailData) {
         try {
-          const emailResponse = await fetch(
-            `${import.meta.env.VITE_API_URL}/api/email/send-staff-invitation`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                to_email: emailData.email,
-                clinic_name: emailData.clinic_name,
-                position: emailData.position,
-                first_name: emailData.first_name || "Staff",
-                last_name: emailData.last_name || "Member",
-                invitation_id: emailData.invitation_id,
-                invitation_token: emailData.invitation_token,
-              }),
-            }
-          );
+          // ✅ FIXED: Use emailService helper
+          console.log("📧 Sending direct staff invitation email...", emailData);
 
-          const emailResult = await emailResponse.json();
+          const emailResult = await staffInvitation({
+            to_email: emailData.email,
+            clinic_name: emailData.clinic_name,
+            position: emailData.position,
+            first_name: emailData.first_name || "Staff",
+            last_name: emailData.last_name || "Member",
+            invitation_id: emailData.invitation_id,
+            invitation_token: emailData.invitation_token,
+          });
 
-          if (!emailResponse.ok || !emailResult.success) {
+          if (!emailResult.success) {
             throw new Error(emailResult.error || "Failed to send email");
           }
 
@@ -305,7 +284,7 @@ const PartnershipRequestManager = () => {
       setShowDirectInviteModal(false);
       setDirectInviteForm({ email: "" });
     } catch (error) {
-      console.error("Error sending direct invitation:", error);
+      console.error("❌ Error sending direct invitation:", error);
       toast.error(error.message || "Failed to send invitation");
     } finally {
       setActionLoading(false);

@@ -123,7 +123,7 @@ const ManageAppointments = () => {
     sendRescheduleReminder: false,
     followUpRequired: false,
     followUpNotes: "",
-    // NEW: Treatment plan fields
+    // Treatment plan fields
     requiresTreatmentPlan: false,
     treatmentPlanNotes: "",
     diagnosisSummary: "",
@@ -154,7 +154,6 @@ const ManageAppointments = () => {
       sendRescheduleReminder: false,
       followUpRequired: false,
       followUpNotes: "",
-      // Reset treatment fields
       requiresTreatmentPlan: false,
       treatmentPlanNotes: "",
       diagnosisSummary: "",
@@ -186,7 +185,7 @@ const ManageAppointments = () => {
     }
   };
 
-  //  REJECT
+  // REJECT
   const handleReject = async () => {
     if (!actionModal.appointment || !actionForm.reason) {
       showToast("Please provide a rejection reason", "error");
@@ -234,36 +233,88 @@ const ManageAppointments = () => {
   const handleComplete = async () => {
     if (!actionModal.appointment) return;
 
+    const isPartOfTreatmentPlan = !!actionModal.appointment?.treatment_plan;
+
+    // ✅ Validate treatment plan fields if flagged (and NOT already part of treatment)
+    if (actionForm.requiresTreatmentPlan && !isPartOfTreatmentPlan) {
+      if (!actionForm.recommendedTreatmentName?.trim()) {
+        showToast(
+          "Treatment name is required when creating a treatment plan",
+          "error"
+        );
+        return;
+      }
+      if (!actionForm.diagnosisSummary?.trim()) {
+        showToast(
+          "Diagnosis summary is required when creating a treatment plan",
+          "error"
+        );
+        return;
+      }
+    }
+
     const result = await appointmentManager.completeAppointment(
       actionModal.appointment.id,
       {
         notes: actionForm.notes,
         followUpRequired: actionForm.followUpRequired,
         followUpNotes: actionForm.followUpNotes,
-        // NEW: Treatment plan parameters
-        requiresTreatmentPlan: actionForm.requiresTreatmentPlan,
-        treatmentPlanNotes: actionForm.treatmentPlanNotes,
-        diagnosisSummary: actionForm.diagnosisSummary,
-        recommendedTreatmentName: actionForm.recommendedTreatmentName,
-        recommendedVisits: actionForm.recommendedVisits
-          ? parseInt(actionForm.recommendedVisits)
-          : null,
+        // ✅ FIXED: Don't send treatment plan data if already part of one
+        requiresTreatmentPlan: isPartOfTreatmentPlan
+          ? false // Don't create new plan if already part of one
+          : actionForm.requiresTreatmentPlan,
+        treatmentPlanNotes: isPartOfTreatmentPlan
+          ? null
+          : actionForm.treatmentPlanNotes,
+        diagnosisSummary: isPartOfTreatmentPlan
+          ? null
+          : actionForm.diagnosisSummary,
+        recommendedTreatmentName: isPartOfTreatmentPlan
+          ? null
+          : actionForm.recommendedTreatmentName,
+        recommendedVisits:
+          isPartOfTreatmentPlan || !actionForm.recommendedVisits
+            ? null
+            : parseInt(actionForm.recommendedVisits),
       }
     );
 
     if (result.success) {
-      showToast("✅ Appointment completed successfully!", "success");
+      // ✅ Show different message for treatment plan visits
+      if (isPartOfTreatmentPlan) {
+        const treatmentPlan = actionModal.appointment.treatment_plan;
+        const currentProgress = treatmentPlan.progress_percentage || 0;
+        const totalVisits = treatmentPlan.total_visits_planned;
+        const completedVisits = (treatmentPlan.visits_completed || 0) + 1;
+
+        let newProgress = currentProgress;
+        if (totalVisits && totalVisits > 0) {
+          newProgress = Math.min(
+            Math.round((completedVisits / totalVisits) * 100),
+            100
+          );
+        }
+
+        showToast(
+          `✅ Visit #${completedVisits} completed! ${treatmentPlan.treatment_name} progress: ${newProgress}%`,
+          "success"
+        );
+      } else {
+        showToast("✅ Appointment completed successfully!", "success");
+      }
 
       console.log("Appointment completed:", {
         appointmentId: actionModal.appointment.id,
         requiresTreatmentPlan: result.data?.requires_treatment_plan,
         medicalHistoryId: result.data?.medical_history_id,
+        isTreatmentPlanVisit: isPartOfTreatmentPlan,
       });
 
       closeModal();
       appointmentManager.refreshData();
 
-      if (result.data?.requires_treatment_plan) {
+      // ✅ FIXED: Only redirect if NEW treatment plan needs to be created
+      if (result.data?.requires_treatment_plan && !isPartOfTreatmentPlan) {
         setTimeout(() => {
           showToast(
             "Treatment plan flagged! Redirecting to create it...",
@@ -787,7 +838,6 @@ const ManageAppointments = () => {
 
     const showCompletionButtons = isConfirmed && isPast;
 
-    // ✅ Check if services require multiple visits (suggest treatment plan)
     const hasMultiVisitServices = appointment.services?.some(
       (s) => s.requires_multiple_visits
     );
@@ -826,7 +876,7 @@ const ManageAppointments = () => {
         className={`hover:shadow-lg transition-all border-l-4 ${
           isRisky && isPending
             ? "border-l-red-500 bg-red-50/30"
-            : isTreatmentFollowUp // ✅ NEW: Special styling for treatment follow-ups
+            : isTreatmentFollowUp
             ? "border-l-orange-500"
             : isPending
             ? "border-l-yellow-500"
@@ -850,7 +900,6 @@ const ManageAppointments = () => {
               <div className="flex items-center gap-2 flex-wrap">
                 <StatusBadge status={appointment.status} />
 
-                {/* ✅ NEW: Show booking type badge */}
                 <Badge className={`${bookingTypeBadge.color} border text-xs`}>
                   <BookingTypeIcon className="w-3 h-3 mr-1" />
                   {bookingTypeBadge.label}
@@ -886,7 +935,6 @@ const ManageAppointments = () => {
             </Button>
           </div>
 
-          {/* ✅ NEW: Treatment Plan Alert */}
           {hasTreatmentPlan && (
             <Alert className="py-2 px-3 bg-orange-50 border-orange-200">
               <Heart className="h-3 w-3 text-orange-600" />
@@ -1498,7 +1546,7 @@ const ManageAppointments = () => {
                 </>
               )}
 
-              {/* ✅ ENHANCED: Complete Form with Treatment Plan Fields */}
+              {/* ✅ FIXED: Complete Form with Treatment Plan Detection */}
               {actionModal.type === "complete" && (
                 <>
                   <Alert>
@@ -1509,131 +1557,177 @@ const ManageAppointments = () => {
                     </AlertDescription>
                   </Alert>
 
-                  {/* ✅ NEW: Treatment Plan Flag */}
-                  <div className="flex items-start gap-3 p-4 bg-purple-50 dark:bg-purple-950 rounded-lg border-2 border-purple-200 dark:border-purple-800">
-                    <input
-                      type="checkbox"
-                      id="requiresTreatmentPlan"
-                      checked={actionForm.requiresTreatmentPlan}
-                      onChange={(e) =>
-                        setActionForm({
-                          ...actionForm,
-                          requiresTreatmentPlan: e.target.checked,
-                        })
-                      }
-                      className="mt-1 h-4 w-4 accent-purple-600 cursor-pointer"
-                    />
-                    <div className="flex-1">
-                      <label
-                        htmlFor="requiresTreatmentPlan"
-                        className="text-sm font-semibold cursor-pointer flex items-center gap-2"
-                      >
-                        <Heart className="w-4 h-4 text-purple-600" />
-                        This patient requires a treatment plan
-                      </label>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Flag this appointment for multi-visit treatment plan
-                        creation
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* ✅ NEW: Treatment Plan Fields (shown when flagged) */}
-                  {actionForm.requiresTreatmentPlan && (
-                    <div className="space-y-4 p-4 bg-purple-50/50 dark:bg-purple-950/30 rounded-lg border border-purple-200 dark:border-purple-800">
-                      <Alert className="border-purple-300 bg-purple-100/50">
-                        <Sparkles className="h-4 w-4 text-purple-600" />
-                        <AlertDescription className="text-xs">
-                          Complete these fields to help staff create the
-                          treatment plan faster. All fields auto-populate in the
-                          treatment plan form.
-                        </AlertDescription>
-                      </Alert>
-
-                      <div>
-                        <Label htmlFor="diagnosisSummary">
-                          Diagnosis Summary
-                        </Label>
-                        <Textarea
-                          id="diagnosisSummary"
-                          value={actionForm.diagnosisSummary}
-                          onChange={(e) =>
-                            setActionForm({
-                              ...actionForm,
-                              diagnosisSummary: e.target.value,
-                            })
-                          }
-                          placeholder="E.g., Deep cavity in tooth #14 with pulp involvement..."
-                          rows={3}
-                          className="resize-none mt-2"
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor="recommendedTreatmentName">
-                          Recommended Treatment Name
-                        </Label>
-                        <Input
-                          id="recommendedTreatmentName"
-                          value={actionForm.recommendedTreatmentName}
-                          onChange={(e) =>
-                            setActionForm({
-                              ...actionForm,
-                              recommendedTreatmentName: e.target.value,
-                            })
-                          }
-                          placeholder="E.g., Root Canal Treatment"
-                          className="mt-2"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label htmlFor="recommendedVisits">
-                            Recommended Visits
-                          </Label>
-                          <Input
-                            id="recommendedVisits"
-                            type="number"
-                            value={actionForm.recommendedVisits}
-                            onChange={(e) =>
-                              setActionForm({
-                                ...actionForm,
-                                recommendedVisits: e.target.value,
-                              })
+                  {/* ✅ FIXED: Check if appointment is already part of a treatment plan */}
+                  {actionModal.appointment?.treatment_plan ? (
+                    // ✅ Show treatment plan progress info instead of creation form
+                    <Alert className="bg-orange-50 dark:bg-orange-950 border-orange-200">
+                      <Heart className="h-4 w-4 text-orange-600" />
+                      <AlertTitle className="text-sm font-semibold">
+                        Treatment Plan Visit Completion
+                      </AlertTitle>
+                      <AlertDescription className="text-xs mt-2 space-y-2">
+                        <p>
+                          This appointment is part of:{" "}
+                          <strong>
+                            {
+                              actionModal.appointment.treatment_plan
+                                .treatment_name
                             }
-                            placeholder="E.g., 3"
-                            min="1"
-                            className="mt-2"
-                          />
+                          </strong>
+                        </p>
+                        <div className="flex items-center gap-4 text-xs">
+                          <span>
+                            Progress:{" "}
+                            {actionModal.appointment.treatment_plan
+                              .progress_percentage || 0}
+                            %
+                          </span>
+                          <span>
+                            Visit #
+                            {(actionModal.appointment.treatment_plan
+                              .visits_completed || 0) + 1}
+                            {actionModal.appointment.treatment_plan
+                              .total_visits_planned &&
+                              ` of ${actionModal.appointment.treatment_plan.total_visits_planned}`}
+                          </span>
                         </div>
-                        <div className="flex items-end">
-                          <Badge variant="outline" className="text-xs">
-                            <Target className="w-3 h-3 mr-1" />
-                            Helps plan scheduling
-                          </Badge>
-                        </div>
-                      </div>
-
-                      <div>
-                        <Label htmlFor="treatmentPlanNotes">
-                          Treatment Plan Notes
-                        </Label>
-                        <Textarea
-                          id="treatmentPlanNotes"
-                          value={actionForm.treatmentPlanNotes}
+                        <p className="text-orange-700 font-medium mt-2">
+                          ✓ Completing this will automatically update the
+                          treatment plan progress
+                        </p>
+                      </AlertDescription>
+                    </Alert>
+                  ) : (
+                    // ✅ Only show treatment plan creation for non-treatment appointments
+                    <>
+                      <div className="flex items-start gap-3 p-4 bg-purple-50 dark:bg-purple-950 rounded-lg border-2 border-purple-200 dark:border-purple-800">
+                        <input
+                          type="checkbox"
+                          id="requiresTreatmentPlan"
+                          checked={actionForm.requiresTreatmentPlan}
                           onChange={(e) =>
                             setActionForm({
                               ...actionForm,
-                              treatmentPlanNotes: e.target.value,
+                              requiresTreatmentPlan: e.target.checked,
                             })
                           }
-                          placeholder="E.g., Patient needs 3-session root canal therapy. Schedule follow-ups every 2 weeks..."
-                          rows={2}
-                          className="resize-none mt-2"
+                          className="mt-1 h-4 w-4 accent-purple-600 cursor-pointer"
                         />
+                        <div className="flex-1">
+                          <label
+                            htmlFor="requiresTreatmentPlan"
+                            className="text-sm font-semibold cursor-pointer flex items-center gap-2"
+                          >
+                            <Heart className="w-4 h-4 text-purple-600" />
+                            This patient requires a treatment plan
+                          </label>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Flag this appointment for multi-visit treatment plan
+                            creation
+                          </p>
+                        </div>
                       </div>
-                    </div>
+
+                      {/* ✅ Treatment Plan Fields (shown when flagged) */}
+                      {actionForm.requiresTreatmentPlan && (
+                        <div className="space-y-4 p-4 bg-purple-50/50 dark:bg-purple-950/30 rounded-lg border border-purple-200 dark:border-purple-800">
+                          <Alert className="border-purple-300 bg-purple-100/50">
+                            <Sparkles className="h-4 w-4 text-purple-600" />
+                            <AlertDescription className="text-xs">
+                              Complete these fields to help staff create the
+                              treatment plan faster. All fields auto-populate in
+                              the treatment plan form.
+                            </AlertDescription>
+                          </Alert>
+
+                          <div>
+                            <Label htmlFor="diagnosisSummary">
+                              Diagnosis Summary{" "}
+                              <span className="text-red-600">*</span>
+                            </Label>
+                            <Textarea
+                              id="diagnosisSummary"
+                              value={actionForm.diagnosisSummary}
+                              onChange={(e) =>
+                                setActionForm({
+                                  ...actionForm,
+                                  diagnosisSummary: e.target.value,
+                                })
+                              }
+                              placeholder="E.g., Deep cavity in tooth #14 with pulp involvement..."
+                              rows={3}
+                              className="resize-none mt-2"
+                            />
+                          </div>
+
+                          <div>
+                            <Label htmlFor="recommendedTreatmentName">
+                              Recommended Treatment Name{" "}
+                              <span className="text-red-600">*</span>
+                            </Label>
+                            <Input
+                              id="recommendedTreatmentName"
+                              value={actionForm.recommendedTreatmentName}
+                              onChange={(e) =>
+                                setActionForm({
+                                  ...actionForm,
+                                  recommendedTreatmentName: e.target.value,
+                                })
+                              }
+                              placeholder="E.g., Root Canal Treatment"
+                              className="mt-2"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="recommendedVisits">
+                                Recommended Visits
+                              </Label>
+                              <Input
+                                id="recommendedVisits"
+                                type="number"
+                                value={actionForm.recommendedVisits}
+                                onChange={(e) =>
+                                  setActionForm({
+                                    ...actionForm,
+                                    recommendedVisits: e.target.value,
+                                  })
+                                }
+                                placeholder="E.g., 3"
+                                min="1"
+                                className="mt-2"
+                              />
+                            </div>
+                            <div className="flex items-end">
+                              <Badge variant="outline" className="text-xs">
+                                <Target className="w-3 h-3 mr-1" />
+                                Helps plan scheduling
+                              </Badge>
+                            </div>
+                          </div>
+
+                          <div>
+                            <Label htmlFor="treatmentPlanNotes">
+                              Treatment Plan Notes
+                            </Label>
+                            <Textarea
+                              id="treatmentPlanNotes"
+                              value={actionForm.treatmentPlanNotes}
+                              onChange={(e) =>
+                                setActionForm({
+                                  ...actionForm,
+                                  treatmentPlanNotes: e.target.value,
+                                })
+                              }
+                              placeholder="E.g., Patient needs 3-session root canal therapy. Schedule follow-ups every 2 weeks..."
+                              rows={2}
+                              className="resize-none mt-2"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   <Separator />
@@ -1652,6 +1746,7 @@ const ManageAppointments = () => {
                     />
                   </div>
 
+                  {/* ✅ SEPARATE: Follow-up checkbox (this is NOT treatment plan related) */}
                   <div className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg border">
                     <input
                       type="checkbox"
@@ -1673,7 +1768,8 @@ const ManageAppointments = () => {
                         Follow-up appointment required
                       </label>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Mark if patient needs a follow-up visit
+                        Mark if patient needs a general follow-up visit
+                        (separate from treatment plan)
                       </p>
                     </div>
                   </div>
@@ -1749,7 +1845,12 @@ const ManageAppointments = () => {
                 }}
                 disabled={
                   appointmentManager.loading ||
-                  (actionModal.type === "reject" && !actionForm.reason)
+                  (actionModal.type === "reject" && !actionForm.reason) ||
+                  (actionModal.type === "complete" &&
+                    actionForm.requiresTreatmentPlan &&
+                    !actionModal.appointment?.treatment_plan &&
+                    (!actionForm.recommendedTreatmentName?.trim() ||
+                      !actionForm.diagnosisSummary?.trim()))
                 }
                 className={
                   actionModal.type === "approve"

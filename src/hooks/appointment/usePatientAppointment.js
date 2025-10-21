@@ -2,18 +2,6 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 
-/**
- * ✅ FIXED Patient Appointments Hook
- * Gets all data from get_appointments_by_role - NO DIRECT TABLE QUERIES
- * 
- * Features:
- * - Fetch active appointments (pending/confirmed)
- * - Treatment plan data included from RPC
- * - Cancel appointments
- * - Health analytics
- * 
- * NOTE: Archive functionality is in AppointmentHistory.jsx only
- */
 export const usePatientAppointments = () => {
   const { user, isPatient } = useAuth();
   
@@ -28,9 +16,6 @@ export const usePatientAppointments = () => {
     hasMore: false
   });
 
-  // ====================================================================
-  // ✅ Fetch Appointments (ALL DATA FROM RPC - NO DIRECT QUERIES)
-  // ====================================================================
   const fetchAppointments = useCallback(async (options = {}) => {
     if (!user || !isPatient) return { success: false, error: 'Authentication required' };
 
@@ -49,7 +34,6 @@ export const usePatientAppointments = () => {
 
       console.log('🔄 Fetching appointments via RPC...');
 
-      // ✅ ONLY use RPC functions - NO direct table queries
       const [appointmentsResponse, analyticsResponse] = await Promise.allSettled([
         supabase.rpc('get_appointments_by_role', {
           p_status: status ? [status] : null,
@@ -88,8 +72,6 @@ export const usePatientAppointments = () => {
         }
       });
       
-      // ✅ Filter for active appointments only (pending/confirmed)
-      // Treatment plan data is already included in the response as 'treatment_plan'
       const activeAppointments = newAppointments.filter(apt => 
         ['pending', 'confirmed'].includes(apt.status)
       );
@@ -108,7 +90,7 @@ export const usePatientAppointments = () => {
         offset: loadMore ? prev.offset + activeAppointments.length : activeAppointments.length
       }));
 
-      // Handle analytics (optional)
+      // Handle analytics 
       if (analyticsResponse.status === 'fulfilled' && analyticsResponse.value.data) {
         setHealthAnalytics(analyticsResponse.value.data);
       }
@@ -125,9 +107,6 @@ export const usePatientAppointments = () => {
     }
   }, [user, isPatient, pagination.limit, pagination.offset]);
 
-  // ====================================================================
-  // ✅ Cancel Appointment
-  // ====================================================================
   const cancelAppointment = useCallback(async (appointmentId, reason) => {
     try {
       const { data, error } = await supabase.rpc('cancel_appointment', {
@@ -147,9 +126,6 @@ export const usePatientAppointments = () => {
     }
   }, []);
 
-  // ====================================================================
-  // ✅ Check if can cancel appointment
-  // ====================================================================
   const canCancelAppointment = useCallback((appointmentId) => {
     const appointment = appointments.find(apt => apt.id === appointmentId);
     if (!appointment) return false;
@@ -158,11 +134,7 @@ export const usePatientAppointments = () => {
     return appointment.can_cancel === true;
   }, [appointments]);
 
-  // ====================================================================
-  // ✅ Computed Statistics (UPCOMING ONLY)
-  // ====================================================================
   const stats = useMemo(() => {
-    // ✅ FIXED: Use 'treatment_plan' from database response
     const treatmentRelatedAppointments = appointments.filter(apt => apt.treatment_plan);
     const today = new Date().toISOString().split('T')[0];
     
@@ -173,22 +145,15 @@ export const usePatientAppointments = () => {
       upcoming: appointments.filter(apt => apt.appointment_date >= today).length,
       healthScore: healthAnalytics?.health_score || 0,
       
-      // ✅ Treatment-specific stats
       treatmentRelatedCount: treatmentRelatedAppointments.length,
       hasTreatmentPlans: treatmentRelatedAppointments.length > 0
     };
   }, [appointments, healthAnalytics]);
 
-  // ====================================================================
-  // ✅ Helper: Get Appointment Details
-  // ====================================================================
   const getAppointmentDetails = useCallback((appointmentId) => {
     return appointments.find(apt => apt.id === appointmentId);
   }, [appointments]);
 
-  // ====================================================================
-  // ✅ Helper: Get Upcoming Appointments
-  // ====================================================================
   const upcomingAppointments = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     return appointments.filter(apt => 
@@ -200,19 +165,12 @@ export const usePatientAppointments = () => {
     });
   }, [appointments]);
 
-  // ====================================================================
-  // ✅ Helper: Get Appointments by Treatment Plan
-  // ====================================================================
   const getAppointmentsByTreatmentPlan = useCallback((treatmentPlanId) => {
-    // ✅ FIXED: Use 'treatment_plan' from database response
     return appointments.filter(apt => 
       apt.treatment_plan?.id === treatmentPlanId
     );
   }, [appointments]);
 
-  // ====================================================================
-  // ✅ Auto-fetch on mount
-  // ====================================================================
   useEffect(() => {
     if (user && isPatient) {
       fetchAppointments();
