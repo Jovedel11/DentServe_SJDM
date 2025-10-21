@@ -259,6 +259,48 @@ export const notifyAdminNewPartnership = async (request) => {
   });
 };
 
+// Partnership rejection notification
+export const notifyPartnershipRejected = async ({ clinic_name, email, staff_name, admin_notes, rejected_at }) => {
+  return sendEmail('partnership-rejected', {
+    clinic_name,
+    email,
+    staff_name,
+    admin_notes,
+    rejected_at,
+  });
+};
+
+// Partnership approval notification (after invitation created)
+export const notifyPartnershipApproved = async ({ 
+  clinic_name, 
+  email, 
+  staff_name, 
+  position,
+  invitation_id,
+  invitation_token 
+}) => {
+  return sendEmail('partnership-approved', {
+    clinic_name,
+    email,
+    staff_name,
+    position,
+    invitation_id,
+    invitation_token,
+  });
+};
+
+export const staffInvitation = async ({to_email, clinic_name, position, first_name, last_name, invitation_id, invitation_token}) => {
+  return sendEmail('send-staff-invitation', {
+    to_email,
+    clinic_name,
+    position,
+    first_name,
+    last_name,
+    invitation_id,
+    invitation_token,
+  });
+};
+
  // send bulk appointment reminders (manual trigger)
 export const sendBulkAppointmentReminders = async (appointments) => {
   return sendEmail('bulk-appointment-reminders', {
@@ -280,4 +322,8 @@ export default {
   notifyPatientTreatmentCompleted,
   sendDailyStaffDigest,
   sendBulkAppointmentReminders,
+  staffInvitation,
+  notifyAdminNewPartnership,
+  notifyPartnershipApproved,
+  notifyPartnershipRejected,
 };

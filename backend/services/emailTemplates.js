@@ -657,6 +657,96 @@ const newPartnershipRequest = ({ request }) => {
   return baseTemplate(content, `New partnership request from ${request.clinic_name}`);
 };
 
+// Partnership rejection email
+const partnershipRejected = ({ clinic_name, staff_name, admin_notes, rejected_at }) => {
+  const content = `
+    <h2 style="color: #ef4444; margin: 0 0 10px 0; font-size: 22px;">[DECLINED] Partnership Request Update</h2>
+    <p style="color: #6b7280; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0;">
+      Hello ${staff_name ? `<strong>${staff_name}</strong>` : 'there'},
+    </p>
+    <p style="color: #6b7280; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0;">
+      Thank you for your interest in partnering with <strong>DentServe</strong>. After careful review, we regret to inform you that we are unable to approve the partnership request for <strong>${clinic_name}</strong> at this time.
+    </p>
+
+    ${infoBox([
+      { label: 'Clinic Name', value: clinic_name },
+      { label: 'Reviewed Date', value: new Date(rejected_at).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }
+    ], 'Application Details')}
+
+    ${admin_notes ? `
+      <h3 style="color: #1f2937; font-size: 16px; margin: 20px 0 10px 0;">Reason for Decline:</h3>
+      <div style="background-color: #fee2e2; padding: 16px; border-left: 3px solid #ef4444; border-radius: 4px;">
+        <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.6;">${admin_notes}</p>
+      </div>
+    ` : ''}
+
+    ${alertBox(
+      'If you believe this was an error or would like to discuss your application further, please feel free to contact us.',
+      'info'
+    )}
+
+    <h3 style="color: #1f2937; font-size: 16px; margin: 30px 0 10px 0;">Next Steps:</h3>
+    <ul style="color: #4b5563; font-size: 14px; line-height: 1.8; margin: 0; padding-left: 20px;">
+      <li>You may reapply after addressing the concerns mentioned above</li>
+      <li>Contact our support team for more information</li>
+      <li>Visit our website to learn more about partnership requirements</li>
+    </ul>
+
+    <p style="color: #9ca3af; font-size: 13px; margin: 30px 0 0 0; text-align: center;">
+      We appreciate your interest in DentServe and wish you the best.
+    </p>
+  `;
+
+  return baseTemplate(content, `Partnership request update for ${clinic_name}`);
+};
+
+// Partnership approved email (with invitation)
+const partnershipApproved = ({ clinic_name, staff_name, email, invitation_link, position }) => {
+  const content = `
+    <h2 style="color: #10b981; margin: 0 0 10px 0; font-size: 22px;">[APPROVED] Welcome to DentServe!</h2>
+    <p style="color: #6b7280; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0;">
+      Congratulations ${staff_name ? `<strong>${staff_name}</strong>` : ''}! Your partnership request for <strong>${clinic_name}</strong> has been approved.
+    </p>
+
+    ${alertBox(
+      '<strong>Next Step:</strong> Complete your registration to activate your clinic on DentServe.',
+      'success'
+    )}
+
+    ${infoBox([
+      { label: 'Clinic Name', value: clinic_name },
+      { label: 'Your Role', value: position || 'Clinic Manager' },
+      { label: 'Email', value: email }
+    ], 'Partnership Details')}
+
+    <h3 style="color: #1f2937; font-size: 16px; margin: 30px 0 10px 0;">What's Next?</h3>
+    <ol style="color: #4b5563; font-size: 14px; line-height: 1.8; margin: 0; padding-left: 20px;">
+      <li>Click the button below to complete your registration</li>
+      <li>Create your clinic profile and add services</li>
+      <li>Add your dentists and staff members</li>
+      <li>Start accepting patient appointments</li>
+    </ol>
+
+    ${button('Complete Registration', invitation_link)}
+
+    <p style="color: #6b7280; font-size: 13px; margin: 20px 0; text-align: center;">
+      If the button doesn't work, copy and paste this link:<br>
+      <span style="color: #3b82f6; word-break: break-all;">${invitation_link}</span>
+    </p>
+
+    ${alertBox(
+      '<strong>Important:</strong> This invitation link will expire in 7 days. Please complete your registration soon.',
+      'warning'
+    )}
+
+    <p style="color: #9ca3af; font-size: 13px; margin: 30px 0 0 0; text-align: center;">
+      Welcome to the DentServe family! We're excited to have you on board.
+    </p>
+  `;
+
+  return baseTemplate(content, `Welcome to DentServe - ${clinic_name}`);
+};
+
 // staff emails
 const dailyStaffDigest = ({ staff, clinic, todayAppointments, stats, pendingActions }) => {
   const formatTime = (time) => {
@@ -755,5 +845,9 @@ export default {
   
   // Staff emails
   dailyStaffDigest,
+
+  // Partnership emails
   newPartnershipRequest,
+  partnershipApproved,
+  partnershipRejected,
 };

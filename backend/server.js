@@ -25,8 +25,8 @@ try {
 }
 
 const allowedOrigins = [
-  process.env.FRONTEND2,  // incase other import
-  process.env.FRONTEND3,  // last fallback
+  process.env.FRONTEND2,
+  process.env.FRONTEND3,
   process.env.FRONTEND_URL, // deployed frontend || production
 ];
 

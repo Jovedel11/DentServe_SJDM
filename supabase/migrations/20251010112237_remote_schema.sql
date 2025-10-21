@@ -472,7 +472,7 @@ create table "public"."staff_profiles" (
     "position" character varying(100) not null,
     "hire_date" date,
     "department" character varying(100),
-    "permissions" jsonb default '{"manage_clinic": true, "manage_doctors": false, "view_analytics": true, "manage_services": true, "manage_appointments": true}'::jsonb,
+    "permissions" jsonb default '{"manage_clinic": true, "manage_doctors": true, "view_analytics": true, "manage_services": true, "manage_appointments": true}'::jsonb,
     "is_active" boolean default true,
     "created_at" timestamp with time zone default now(),
     "updated_at" timestamp with time zone default now()
@@ -11428,6 +11428,21 @@ END;
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.refresh_clinic_location_stats()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $function$
+BEGIN
+    -- Force statistics update on location changes
+    IF TG_OP = 'INSERT' OR (TG_OP = 'UPDATE' AND NEW.location IS DISTINCT FROM OLD.location) THEN
+        -- Refresh row statistics immediately
+        PERFORM 1;
+    END IF;
+    RETURN NEW;
+END;
+$function$;
+
+
 CREATE OR REPLACE FUNCTION public.send_reschedule_reminder(
     p_appointment_id UUID,
     p_reason TEXT,
@@ -12768,6 +12783,7 @@ EXCEPTION
 END;
 $function$;
 
+-- Fix: Remove notification creation, it will be handled via email instead
 CREATE OR REPLACE FUNCTION public.reject_partnership_request(p_request_id uuid, p_admin_notes text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -12805,30 +12821,17 @@ BEGIN
         reviewed_at = NOW()
     WHERE id = p_request_id;
     
-    -- Create notification record (without metadata column)
-    INSERT INTO notifications (
-        user_id,
-        notification_type,
-        title,
-        message,
-        created_at
-    ) VALUES (
-        (current_user_context->>'user_id')::uuid,
-        'partnership_request',
-        'Partnership Request Rejected',
-        format('Partnership request for %s has been rejected. %s', 
-            request_record.clinic_name,
-            CASE 
-                WHEN p_admin_notes IS NOT NULL THEN 'Reason: ' || p_admin_notes
-                ELSE 'Please contact us if you have any questions.'
-            END
-        ),
-        NOW()
-    );
-    
+    -- ✅ FIX: Return email data instead of creating notification
     RETURN jsonb_build_object(
         'success', true,
-        'message', 'Partnership request rejected successfully'
+        'message', 'Partnership request rejected successfully',
+        'email_data', jsonb_build_object(
+            'clinic_name', request_record.clinic_name,
+            'email', request_record.email,
+            'staff_name', request_record.staff_name,
+            'admin_notes', p_admin_notes,
+            'rejected_at', NOW()
+        )
     );
     
 EXCEPTION
@@ -12838,8 +12841,7 @@ EXCEPTION
             'error', 'Failed to reject partnership request: ' || SQLERRM
         );
 END;
-$function$
-;
+$function$;
 
 CREATE OR REPLACE FUNCTION public.respond_to_feedback(p_feedback_id uuid, p_response text)
  RETURNS jsonb
@@ -13678,6 +13680,7 @@ END;
 $function$
 ;
 
+-- Fix: Add admin notification data to return value
 CREATE OR REPLACE FUNCTION public.submit_clinic_partnership_request(
     p_clinic_name VARCHAR,
     p_email VARCHAR,
@@ -13758,7 +13761,7 @@ BEGIN
         );
     END IF;
     
-    -- ✅ FIXED: Create partnership request with safe metadata
+    -- ✅ Create partnership request
     INSERT INTO clinic_partnership_requests (
         clinic_name,
         email,
@@ -13778,34 +13781,39 @@ BEGIN
         NULLIF(trim(p_contact_number), ''),
         'pending',
         NOW(),
-        -- ✅ FIXED: Safe metadata without request headers
         jsonb_build_object(
-            'recaptcha_token', p_recaptcha_token,
             'recaptcha_score', p_recaptcha_score,
-            'submission_method', 'public_form',
-            'submitted_at', NOW()
+            'submitted_from', 'web_form',
+            'ip_address', current_setting('request.headers', true)::json->>'x-forwarded-for'
         )
     ) RETURNING id INTO new_request_id;
     
-    RAISE LOG 'New partnership request created: % (reCAPTCHA score: %)', new_request_id, p_recaptcha_score;
-    
-    -- ✅ Return success with request details
+    -- ✅ NEW: Return admin notification data
     RETURN jsonb_build_object(
         'success', true,
-        'message', 'Partnership application submitted successfully',
-        'request_id', new_request_id
+        'message', 'Partnership request submitted successfully',
+        'request_id', new_request_id,
+        'admin_notification', jsonb_build_object(
+            'clinic_name', trim(p_clinic_name),
+            'email', LOWER(trim(p_email)),
+            'staff_name', COALESCE(NULLIF(trim(p_staff_name), ''), 'Not provided'),
+            'contact_number', COALESCE(NULLIF(trim(p_contact_number), ''), 'Not provided'),
+            'reason', trim(p_reason),
+            'address', trim(p_address),
+            'recaptcha_score', p_recaptcha_score,
+            'created_at', NOW()
+        )
     );
     
 EXCEPTION
     WHEN OTHERS THEN
-        RAISE LOG 'Partnership request error: %', SQLERRM;
         RETURN jsonb_build_object(
             'success', false,
-            'error', 'Failed to submit application. Please try again or contact support.',
-            'detail', SQLERRM
+            'error', 'Failed to submit request: ' || SQLERRM
         );
 END;
 $function$;
+
 
 CREATE OR REPLACE FUNCTION public.submit_feedback(p_clinic_rating integer DEFAULT NULL::integer, p_doctor_rating integer DEFAULT NULL::integer, p_comment text DEFAULT NULL::text, p_appointment_id uuid DEFAULT NULL::uuid, p_feedback_type feedback_type DEFAULT 'general'::feedback_type, p_is_anonymous boolean DEFAULT false)
  RETURNS jsonb
@@ -17158,6 +17166,12 @@ as permissive
 for update
 to authenticated
 using ((auth_user_id = ( SELECT auth.uid() AS uid)));
+
+-- Create trigger on clinics table
+CREATE TRIGGER trigger_refresh_clinic_location
+AFTER INSERT OR UPDATE OF location ON public.clinics
+FOR EACH ROW
+EXECUTE FUNCTION refresh_clinic_location_stats();
 
 
 CREATE TRIGGER update_admin_profiles_updated_at BEFORE UPDATE ON public.admin_profiles FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

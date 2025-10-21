@@ -93,7 +93,10 @@ const ClinicPanel = React.memo(({ clinic, onClose }) => {
               />
             </svg>
           </div>
-          <span className={styles.detailText}>{clinic.operating_hours}</span>
+          {/* ✅ FIX: Use formatted hours string instead of object */}
+          <span className={styles.detailText}>
+            {clinic.operating_hours_formatted || "Hours not available"}
+          </span>
         </div>
       </div>
 

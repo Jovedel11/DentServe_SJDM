@@ -621,6 +621,96 @@ router.post('/new-partnership-request', emailLimiter, async (req, res) => {
   }
 });
 
+// Partnership rejection email
+router.post('/partnership-rejected', emailLimiter, async (req, res) => {
+  try {
+    const { clinic_name, email, staff_name, admin_notes, rejected_at } = req.body;
+
+    if (!email || !clinic_name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: email and clinic_name'
+      });
+    }
+
+    const html = emailTemplates.partnershipRejected({
+      clinic_name,
+      staff_name: staff_name || 'Applicant',
+      admin_notes: admin_notes || 'After careful review, we are unable to proceed with your application at this time.',
+      rejected_at: rejected_at || new Date().toISOString()
+    });
+
+    const result = await sendEmail({
+      to: email,
+      subject: `Partnership Request Update - ${clinic_name}`,
+      html
+    });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+
+  } catch (error) {
+    console.error('❌ Partnership rejection email error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send partnership rejection email'
+    });
+  }
+});
+
+// Partnership approved email (sent after staff invitation is created)
+router.post('/partnership-approved', emailLimiter, async (req, res) => {
+  try {
+    const { 
+      clinic_name, 
+      email, 
+      staff_name, 
+      position,
+      invitation_id,
+      invitation_token 
+    } = req.body;
+
+    if (!email || !clinic_name || !invitation_id || !invitation_token) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    const invitation_link = `${process.env.FRONTEND_URL}/auth/staff-signup?invitation=${invitation_id}&token=${invitation_token}`;
+
+    const html = emailTemplates.partnershipApproved({
+      clinic_name,
+      staff_name: staff_name || 'there',
+      email,
+      invitation_link,
+      position: position || 'Clinic Manager'
+    });
+
+    const result = await sendEmail({
+      to: email,
+      subject: `🎉 Partnership Approved - Welcome to DentServe!`,
+      html
+    });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+
+  } catch (error) {
+    console.error('❌ Partnership approval email error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to send partnership approval email'
+    });
+  }
+});
+
 // bulk reminder endpoint (for staff to send multiple)
 router.post('/bulk-appointment-reminders', reminderLimiter, async (req, res) => {
   try {
@@ -703,7 +793,13 @@ router.get('/health', (req, res) => {
         'treatment-plan-completed'
       ],
       staff: [
-        'daily-staff-digest'
+        'daily-staff-digest',
+        'send-staff-invitation'
+      ],
+      partnership: [
+        'new-partnership-request',
+        'partnership-approved',
+        'partnership-rejected'
       ],
       bulk: [
         'bulk-appointment-reminders'

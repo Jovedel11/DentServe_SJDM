@@ -1,4 +1,3 @@
-import jwt from 'jsonwebtoken';
 import { supabase } from '../lib/supabaseSuperAdmin.js';
 
 const authenticateToken = async (req, res, next) => {
@@ -37,7 +36,7 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    // 🆕 Get user profile (allow null for incomplete staff)
+    // Get user profile
     const { data: profileData } = await supabase
       .from('user_profiles')
       .select('id, user_type, first_name, last_name')
@@ -49,7 +48,7 @@ const authenticateToken = async (req, res, next) => {
       userId: userData.id,
       authUserId: user.id,
       email: userData.email,
-      userProfileId: profileData?.id || null, // ✅ Allow null
+      userProfileId: profileData?.id || null, 
       userType: profileData?.user_type || 'unknown',
       firstName: profileData?.first_name || '',
       lastName: profileData?.last_name || '',

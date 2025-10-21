@@ -778,6 +778,7 @@ const StaffProfile = () => {
   );
 
   // ==================== DOCTOR HANDLERS ====================
+  // Around line 781-818, update handleAddDoctor
   const handleAddDoctor = useCallback(
     (e) => {
       e?.preventDefault();
@@ -790,6 +791,7 @@ const StaffProfile = () => {
         .substr(2, 6)
         .toUpperCase()}`;
 
+      // ✅ FIX: Only include fields that exist in the doctors table
       const newDoctor = {
         id: `new_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         license_number: tempLicenseNumber,
@@ -805,7 +807,10 @@ const StaffProfile = () => {
         languages_spoken: ["English", "Tagalog"],
         certifications: null,
         awards: [],
+        schedule: null, // ✅ FIX: Add schedule field for clinic relationship
         _action: "create",
+        // ❌ REMOVE: Don't include clinic-specific fields here
+        // clinic_schedule, doctor_clinic_id, clinic_is_active
       };
 
       const currentDoctors = editedData?.doctors_data || [];
@@ -2074,8 +2079,11 @@ const StaffProfile = () => {
           </ProfileCard>
         )}
 
-        {/* Security Section */}
-        {<ClinicSettings />}
+        {activeSection === "security" && (
+          <div className="mt-4">
+            <ClinicSettings />
+          </div>
+        )}
       </div>
     </div>
   );

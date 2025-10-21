@@ -487,105 +487,131 @@ export const authService = {
   },
 
   // 🔥 FIXED: Staff profile update with proper parameter structure
-  async updateStaffProfile(profileData, staffData, clinicData, servicesData, doctorsData) {
-    try {
-      // Format services data for CRUD operations
-      const formattedServicesData = Array.isArray(servicesData) 
-      ? servicesData
-          .filter(s => s.name && s.name.trim())
-          .map(service => {
-            const isNewService = !service.id || service.id.toString().startsWith('new_');
-            return {
-              id: isNewService ? null : service.id, 
-              name: service.name.trim(),
-              description: service.description?.trim() || null,
-              category: service.category || 'General',
-              duration_minutes: parseInt(service.duration_minutes) || 30,
-              min_price: parseFloat(service.min_price) || null,
-              max_price: parseFloat(service.max_price) || null,
-              priority: parseInt(service.priority) || 10,
-              is_active: Boolean(service.is_active),
-              requires_multiple_visits: Boolean(service.requires_multiple_visits),
-              typical_visit_count: parseInt(service.typical_visit_count) || 1,
-              requires_consultation: service.requires_consultation !== false, // default true
-              _action: service._action || (isNewService ? 'create' : 'update')
-            };
-          }) 
-      : [];
-
-      // Format doctors data for CRUD operations
-      const formattedDoctorsData = Array.isArray(doctorsData) 
-      ? doctorsData.map(doctor => {
-          const isNewDoctor = !doctor.id || doctor.id.toString().startsWith('new_');
+// 🔥 FIXED: Staff profile update with proper parameter structure
+async updateStaffProfile(profileData, staffData, clinicData, servicesData, doctorsData) {
+  try {
+    // Format services data for CRUD operations
+    const formattedServicesData = Array.isArray(servicesData) 
+    ? servicesData
+        .filter(s => s.name && s.name.trim())
+        .map(service => {
+          const isNewService = !service.id || service.id.toString().startsWith('new_');
           return {
-            id: isNewDoctor ? null : doctor.id,
-            user_id: doctor.user_id || null,
-            license_number: doctor.license_number?.trim() || '', 
-            specialization: doctor.specialization?.trim() || '',
-            first_name: doctor.first_name?.trim() || '',
-            last_name: doctor.last_name?.trim() || '',
-            education: doctor.education || null,
-            experience_years: doctor.experience_years ? parseInt(doctor.experience_years) : null,
-            bio: doctor.bio || null,
-            consultation_fee: doctor.consultation_fee ? parseFloat(doctor.consultation_fee) : null,
-            image_url: doctor.image_url || null,
-            languages_spoken: doctor.languages_spoken || null,
-            certifications: doctor.certifications || null,
-            awards: doctor.awards || null,
-            is_available: doctor.is_available !== undefined ? doctor.is_available : true,
-            schedule: doctor.schedule || null,
-            _action: doctor._action || (isNewDoctor ? 'create' : 'update')
+            id: isNewService ? null : service.id, 
+            name: service.name.trim(),
+            description: service.description?.trim() || null,
+            category: service.category || 'General',
+            duration_minutes: parseInt(service.duration_minutes) || 30,
+            min_price: parseFloat(service.min_price) || null,
+            max_price: parseFloat(service.max_price) || null,
+            priority: parseInt(service.priority) || 10,
+            is_active: Boolean(service.is_active),
+            requires_multiple_visits: Boolean(service.requires_multiple_visits),
+            typical_visit_count: parseInt(service.typical_visit_count) || 1,
+            requires_consultation: service.requires_consultation !== false, // default true
+            _action: service._action || (isNewService ? 'create' : 'update')
           };
         }) 
-      : [];
+    : [];
 
-      const { data, error } = await supabase.rpc('update_staff_profile', {
-        p_profile_data: {
-          first_name: profileData.firstName,
-          last_name: profileData.lastName,
-          phone: profileData.phone,
-          profile_image_url: profileData.profileImageUrl,
-          date_of_birth: profileData.dateOfBirth,
-          gender: profileData.gender
-        },
-        p_staff_data: {
-          position: staffData.position,
-          department: staffData.department
-        },
-        p_clinic_data: {
-          name: clinicData.name,
-          description: clinicData.description,
-          address: clinicData.address,
-          city: clinicData.city,
-          province: clinicData.province,
-          zip_code: clinicData.zipCode,
-          phone: clinicData.phone,
-          email: clinicData.email,
-          website_url: clinicData.websiteUrl,
-          image_url: clinicData.imageUrl,
-          operating_hours: clinicData.operatingHours,
-          appointment_limit_per_patient: clinicData.appointmentLimitPerPatient,
-          cancellation_policy_hours: clinicData.cancellationPolicyHours
-        },
-        p_services_data: formattedServicesData,
-        p_doctors_data: formattedDoctorsData
-      });
-      
-      if (error) {
-        console.error('Update staff profile error:', error);
-        return { success: false, error: error.message || 'Failed to update profile' };
-      }
-      
-      if (data && !data.success) {
-        return { success: false, error: data.error || 'Failed to update profile' };
-      }
+    // ✅ FIX: Format doctors data for CRUD operations - REMOVE user_id, clean extra fields
+    const formattedDoctorsData = Array.isArray(doctorsData) 
+    ? doctorsData.map(doctor => {
+        const isNewDoctor = !doctor.id || doctor.id.toString().startsWith('new_');
+        
+        // ✅ FIX: Clean language_spoken array handling
+        let cleanLanguages = null;
+        if (doctor.languages_spoken) {
+          if (Array.isArray(doctor.languages_spoken)) {
+            cleanLanguages = doctor.languages_spoken.filter(Boolean);
+          } else if (typeof doctor.languages_spoken === 'string') {
+            cleanLanguages = doctor.languages_spoken.split(',').map(l => l.trim()).filter(Boolean);
+          }
+        }
 
-      return { success: true, data, message: 'Profile updated successfully' };
-    } catch (error) {
-      console.error('Update staff profile error:', error);
+        // ✅ FIX: Clean awards array handling
+        let cleanAwards = null;
+        if (doctor.awards) {
+          if (Array.isArray(doctor.awards)) {
+            cleanAwards = doctor.awards.filter(Boolean);
+          } else if (typeof doctor.awards === 'string') {
+            cleanAwards = doctor.awards.split(',').map(a => a.trim()).filter(Boolean);
+          }
+        }
+
+        return {
+          id: isNewDoctor ? null : doctor.id,
+          // ❌ REMOVE: user_id field (doesn't exist in doctors table)
+          license_number: doctor.license_number?.trim() || '', 
+          specialization: doctor.specialization?.trim() || '',
+          first_name: doctor.first_name?.trim() || '',
+          last_name: doctor.last_name?.trim() || '',
+          education: doctor.education?.trim() || null,
+          experience_years: doctor.experience_years ? parseInt(doctor.experience_years) : null,
+          bio: doctor.bio?.trim() || null,
+          consultation_fee: doctor.consultation_fee ? parseFloat(doctor.consultation_fee) : null,
+          image_url: doctor.image_url || null,
+          languages_spoken: cleanLanguages,  // ✅ FIX: Clean array
+          certifications: doctor.certifications || null,
+          awards: cleanAwards,  // ✅ FIX: Clean array
+          is_available: doctor.is_available !== undefined ? doctor.is_available : true,
+          schedule: doctor.schedule || doctor.clinic_schedule || null,  // ✅ FIX: Handle both field names
+          _action: doctor._action || (isNewDoctor ? 'create' : 'update')
+        };
+      }) 
+    : [];
+
+    console.log('📤 Sending doctors data:', formattedDoctorsData);  // ✅ ADD: Debug log
+
+    const { data, error } = await supabase.rpc('update_staff_profile', {
+      p_profile_data: {
+        first_name: profileData.firstName,
+        last_name: profileData.lastName,
+        phone: profileData.phone,
+        profile_image_url: profileData.profileImageUrl,
+        date_of_birth: profileData.dateOfBirth,
+        gender: profileData.gender
+      },
+      p_staff_data: {
+        position: staffData.position,
+        department: staffData.department
+      },
+      p_clinic_data: {
+        name: clinicData.name,
+        description: clinicData.description,
+        address: clinicData.address,
+        city: clinicData.city,
+        province: clinicData.province,
+        zip_code: clinicData.zipCode,
+        phone: clinicData.phone,
+        email: clinicData.email,
+        website_url: clinicData.websiteUrl,
+        image_url: clinicData.imageUrl,
+        operating_hours: clinicData.operatingHours,
+        appointment_limit_per_patient: clinicData.appointmentLimitPerPatient,
+        cancellation_policy_hours: clinicData.cancellationPolicyHours
+      },
+      p_services_data: formattedServicesData,
+      p_doctors_data: formattedDoctorsData
+    });
+    
+    if (error) {
+      console.error('❌ Update staff profile error:', error);
       return { success: false, error: error.message || 'Failed to update profile' };
     }
-  },
+    
+    if (data && !data.success) {
+      console.error('❌ Update staff profile failed:', data.error);
+      return { success: false, error: data.error || 'Failed to update profile' };
+    }
+
+    console.log('✅ Staff profile updated:', data);  // ✅ ADD: Success log
+    return { success: true, data, message: 'Profile updated successfully' };
+  } catch (error) {
+    console.error('❌ Update staff profile exception:', error);
+    return { success: false, error: error.message || 'Failed to update profile' };
+  }
+},
 
   async updateAdminProfile(profileData) {
     try {

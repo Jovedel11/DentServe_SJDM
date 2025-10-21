@@ -208,107 +208,147 @@ export const useProfileManager = (options = {}) => {
   }, []);
 
   // Array update handler
-const handleArrayUpdate = useCallback((arrayName, index, field, value) => {
-  setEditedData(prev => {
-    if (!prev) return prev;
-    
-    const updated = { ...prev };
-    
-    if (!updated[arrayName]) {
-      updated[arrayName] = [];
-    }
-    
-    // Create a copy of the array
-    updated[arrayName] = [...updated[arrayName]];
-    
-    if (!updated[arrayName][index]) {
-      updated[arrayName][index] = {};
-    }
-    
-    // Create a copy of the item
-    updated[arrayName][index] = {
-      ...updated[arrayName][index],
-      [field]: value
-    };
-    
-    // ✅ **CRITICAL FIX: Auto-set _action flag for existing items**
-    const currentItem = updated[arrayName][index];
-    if (currentItem.id && !currentItem.id.toString().startsWith('new_')) {
-      // This is an existing item being edited
-      if (!currentItem._action || currentItem._action !== 'delete') {
-        updated[arrayName][index]._action = 'update';
+  const handleArrayUpdate = useCallback((arrayName, index, field, value) => {
+    setEditedData(prev => {
+      if (!prev) return prev;
+      
+      const updated = { ...prev };
+      
+      if (!updated[arrayName]) {
+        updated[arrayName] = [];
       }
-    }
-    
-    console.log(`📝 Updated ${arrayName}[${index}].${field}:`, value, '| Action:', updated[arrayName][index]._action);
-    
-    return updated;
-  });
-}, []);
+      
+      // Create a copy of the array
+      updated[arrayName] = [...updated[arrayName]];
+      
+      if (!updated[arrayName][index]) {
+        updated[arrayName][index] = {};
+      }
+      
+      // Create a copy of the item
+      updated[arrayName][index] = {
+        ...updated[arrayName][index],
+        [field]: value
+      };
+      
+      // ✅ **CRITICAL FIX: Auto-set _action flag for existing items**
+      const currentItem = updated[arrayName][index];
+      if (currentItem.id && !currentItem.id.toString().startsWith('new_')) {
+        // This is an existing item being edited
+        if (!currentItem._action || currentItem._action !== 'delete') {
+          updated[arrayName][index]._action = 'update';
+        }
+      }
+      
+      // ✅ ADD: More verbose logging for doctors
+      if (arrayName === 'doctors_data') {
+        console.log(`👨‍⚕️ Updated ${arrayName}[${index}].${field}:`, value, '| Action:', updated[arrayName][index]._action, '| ID:', currentItem.id);
+      } else {
+        console.log(`📝 Updated ${arrayName}[${index}].${field}:`, value, '| Action:', updated[arrayName][index]._action);
+      }
+      
+      return updated;
+    });
+  }, []);
 
   // Data processing for backend
-  const processDataForBackend = useCallback((data) => {
-    if (!data) return data;
-    
-    const processed = JSON.parse(JSON.stringify(data));
-
-    if (processed.role_specific_data) {
-      const roleData = processed.role_specific_data;
-      
-      // Convert comma-separated strings to arrays
-      const arrayFields = ['medical_conditions', 'allergies', 'preferred_doctors'];
-      arrayFields.forEach(field => {
-        if (roleData[field] && typeof roleData[field] === 'string') {
-          roleData[field] = roleData[field]
-            .split(',')
-            .map(item => item.trim())
-            .filter(Boolean);
-        }
-      });
-
-      // Convert string booleans to actual booleans
-      const booleanFields = ['email_notifications', 'is_available'];
-      booleanFields.forEach(field => {
-        if (typeof roleData[field] === 'string') {
-          roleData[field] = roleData[field] === 'true';
-        }
-      });
-    }
-    if (processed.clinic_data?.operating_hours) {
-      const hours = processed.clinic_data.operating_hours;
-      
-      // Check if it's already in correct format
-      if (!hours.weekdays && !hours.weekends) {
-        // Convert flat format to grouped format
-        const normalized = {
-          weekdays: {},
-          weekends: {}
-        };
-        
-        ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].forEach(day => {
-          if (hours[day]) {
-            normalized.weekdays[day] = {
-              start: hours[day].open || hours[day].start || "09:00",
-              end: hours[day].close || hours[day].end || "17:00"
-            };
-          }
-        });
-        
-        ['saturday', 'sunday'].forEach(day => {
-          if (hours[day]) {
-            normalized.weekends[day] = {
-              start: hours[day].open || hours[day].start || "09:00",
-              end: hours[day].close || hours[day].end || "17:00"
-            };
-          }
-        });
-        
-        processed.clinic_data.operating_hours = normalized;
-      }
-    }
+// Data processing for backend
+const processDataForBackend = useCallback((data) => {
+  if (!data) return data;
   
-    return processed;
-  }, []);
+  const processed = JSON.parse(JSON.stringify(data));
+
+  if (processed.role_specific_data) {
+    const roleData = processed.role_specific_data;
+    
+    // Convert comma-separated strings to arrays
+    const arrayFields = ['medical_conditions', 'allergies', 'preferred_doctors'];
+    arrayFields.forEach(field => {
+      if (roleData[field] && typeof roleData[field] === 'string') {
+        roleData[field] = roleData[field]
+          .split(',')
+          .map(item => item.trim())
+          .filter(Boolean);
+      }
+    });
+
+    // Convert string booleans to actual booleans
+    const booleanFields = ['email_notifications', 'is_available'];
+    booleanFields.forEach(field => {
+      if (typeof roleData[field] === 'string') {
+        roleData[field] = roleData[field] === 'true';
+      }
+    });
+  }
+  
+  if (processed.clinic_data?.operating_hours) {
+    const hours = processed.clinic_data.operating_hours;
+    
+    // Check if it's already in correct format
+    if (!hours.weekdays && !hours.weekends) {
+      // Convert flat format to grouped format
+      const normalized = {
+        weekdays: {},
+        weekends: {}
+      };
+      
+      ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].forEach(day => {
+        if (hours[day]) {
+          normalized.weekdays[day] = {
+            start: hours[day].open || hours[day].start || "09:00",
+            end: hours[day].close || hours[day].end || "17:00"
+          };
+        }
+      });
+      
+      ['saturday', 'sunday'].forEach(day => {
+        if (hours[day]) {
+          normalized.weekends[day] = {
+            start: hours[day].open || hours[day].start || "09:00",
+            end: hours[day].close || hours[day].end || "17:00"
+          };
+        }
+      });
+      
+      processed.clinic_data.operating_hours = normalized;
+    }
+  }
+
+  // ✅ **CRITICAL FIX: Clean doctors_data to remove extra fields from useStaffDoctors**
+  if (processed.doctors_data && Array.isArray(processed.doctors_data)) {
+    console.log('🧹 Cleaning doctors_data before sending to backend...');
+    
+    processed.doctors_data = processed.doctors_data.map((doctor, index) => {
+      // Define ONLY the valid fields that exist in the doctors table
+      const cleanedDoctor = {
+        id: doctor.id,
+        license_number: doctor.license_number,
+        specialization: doctor.specialization,
+        first_name: doctor.first_name,
+        last_name: doctor.last_name,
+        education: doctor.education || null,
+        experience_years: doctor.experience_years || null,
+        bio: doctor.bio || null,
+        consultation_fee: doctor.consultation_fee || null,
+        image_url: doctor.image_url || null,
+        languages_spoken: doctor.languages_spoken || null,
+        certifications: doctor.certifications || null,
+        awards: doctor.awards || null,
+        is_available: doctor.is_available !== undefined ? doctor.is_available : true,
+        schedule: doctor.schedule || doctor.clinic_schedule || null,  // Map clinic_schedule to schedule
+        _action: doctor._action
+      };
+
+      console.log(`✅ Cleaned doctor[${index}]:`, cleanedDoctor.first_name, cleanedDoctor.last_name, '| Action:', cleanedDoctor._action);
+      
+      return cleanedDoctor;
+    });
+    
+    console.log('🧹 Total doctors after cleaning:', processed.doctors_data.length);
+  }
+
+  return processed;
+}, []);
 
   const handleSave = useCallback(async (customData = null) => {
     const rawData = customData || editedData;

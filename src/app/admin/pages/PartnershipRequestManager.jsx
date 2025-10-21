@@ -90,36 +90,36 @@ const PartnershipRequestManager = () => {
       setActionLoading(true);
       setError("");
 
-      // ✅ Use modal's textarea value (adminNotes state) instead of prompt
+      // Step 1: Approve partnership request
       const result = await authService.approvePartnershipRequestV2(
         requestId,
-        adminNotes || null // Use the textarea value from modal
+        adminNotes || null
       );
 
       if (!result.success) {
         throw new Error(result.error);
       }
 
-      // Step 2: Send invitation email via backend
+      // Step 2: Send approval email with invitation link
       const emailData = result.data?.email_data;
 
       if (emailData) {
-        const invitationUrl = `${window.location.origin}/auth/staff-signup?invitation=${emailData.invitation_id}&token=${emailData.invitation_token}`;
-
         try {
           const emailResponse = await fetch(
-            "http://localhost:3000/api/email/send-staff-invitation",
+            `${import.meta.env.VITE_API_URL}/api/email/partnership-approved`,
             {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                to_email: emailData.email,
                 clinic_name: emailData.clinic_name,
+                email: emailData.email,
+                staff_name:
+                  emailData.first_name && emailData.last_name
+                    ? `${emailData.first_name} ${emailData.last_name}`
+                    : emailData.first_name || "there",
                 position: emailData.position,
-                first_name: emailData.first_name,
-                last_name: emailData.last_name,
                 invitation_id: emailData.invitation_id,
                 invitation_token: emailData.invitation_token,
               }),
@@ -132,14 +132,15 @@ const PartnershipRequestManager = () => {
             throw new Error(emailResult.error || "Failed to send email");
           }
 
-          console.log("✅ Email sent successfully:", emailResult);
+          console.log("Approval email sent successfully:", emailResult);
           toast.success(
-            "Partnership approved! Invitation email sent successfully."
+            "Partnership approved! Welcome email sent successfully."
           );
         } catch (emailError) {
-          console.error("❌ Email sending failed:", emailError);
+          console.error("Email sending failed:", emailError);
 
           // Fallback: Show link manually
+          const invitationUrl = `${window.location.origin}/auth/staff-signup?invitation=${emailData.invitation_id}&token=${emailData.invitation_token}`;
           setInvitationLink(invitationUrl);
           setShowInvitationModal(true);
           await navigator.clipboard.writeText(invitationUrl);
@@ -150,7 +151,6 @@ const PartnershipRequestManager = () => {
         }
       }
 
-      // ✅ FIXED: Close the modal and reset state after approval
       setShowModal(false);
       setAdminNotes("");
       setSelectedRequest(null);
@@ -168,6 +168,7 @@ const PartnershipRequestManager = () => {
   const handleReject = async (requestId) => {
     try {
       setActionLoading(true);
+
       const { data, error } = await supabase.rpc("reject_partnership_request", {
         p_request_id: requestId,
         p_admin_notes: adminNotes,
@@ -176,10 +177,51 @@ const PartnershipRequestManager = () => {
       if (error) throw error;
 
       if (data?.success) {
-        toast.success("Partnership request rejected and notification sent");
+        // Send rejection email
+        const emailData = data.email_data;
+
+        if (emailData) {
+          try {
+            const emailResponse = await fetch(
+              `${import.meta.env.VITE_API_URL}/api/email/partnership-rejected`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  clinic_name: emailData.clinic_name,
+                  email: emailData.email,
+                  staff_name: emailData.staff_name,
+                  admin_notes: emailData.admin_notes,
+                  rejected_at: emailData.rejected_at,
+                }),
+              }
+            );
+
+            const emailResult = await emailResponse.json();
+
+            if (emailResponse.ok && emailResult.success) {
+              toast.success(
+                "Partnership request rejected and notification sent"
+              );
+            } else {
+              toast.success(
+                "Partnership request rejected (email notification failed)"
+              );
+            }
+          } catch (emailError) {
+            console.error("❌ Email sending failed:", emailError);
+            toast.success(
+              "Partnership request rejected (email notification failed)"
+            );
+          }
+        }
+
         fetchRequests();
         setShowModal(false);
         setAdminNotes("");
+        setSelectedRequest(null);
       } else {
         throw new Error(data?.error || "Failed to reject request");
       }
@@ -198,6 +240,7 @@ const PartnershipRequestManager = () => {
     try {
       setActionLoading(true);
 
+      // Step 1: Create staff invitation
       const { data, error } = await supabase.rpc(
         "create_direct_staff_invitation",
         {
@@ -207,35 +250,60 @@ const PartnershipRequestManager = () => {
 
       if (error) throw error;
 
-      if (data?.success) {
-        // Send email using Resend
-        if (data.email_data?.success) {
-          const emailResult = await sendStaffInvitation(data.email_data);
-
-          if (emailResult.success) {
-            // Mark email as sent
-            await supabase
-              .from("email_queue")
-              .update({
-                status: "sent",
-                sent_at: new Date().toISOString(),
-                attempts: 1,
-              })
-              .eq("id", data.email_data.queue_id);
-
-            toast.success("Staff invitation sent successfully!");
-          } else {
-            toast.warning("Invitation created but email failed to send.");
-          }
-        } else {
-          toast.success("Staff invitation created!");
-        }
-
-        setShowDirectInviteModal(false);
-        setDirectInviteForm({ email: "" });
-      } else {
-        throw new Error(data?.error || "Failed to send invitation");
+      if (!data?.success) {
+        throw new Error(data?.error || "Failed to create invitation");
       }
+
+      // Step 2: Send invitation email via backend
+      const emailData = data.email_data;
+
+      if (emailData) {
+        try {
+          const emailResponse = await fetch(
+            `${import.meta.env.VITE_API_URL}/api/email/send-staff-invitation`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                to_email: emailData.email,
+                clinic_name: emailData.clinic_name,
+                position: emailData.position,
+                first_name: emailData.first_name || "Staff",
+                last_name: emailData.last_name || "Member",
+                invitation_id: emailData.invitation_id,
+                invitation_token: emailData.invitation_token,
+              }),
+            }
+          );
+
+          const emailResult = await emailResponse.json();
+
+          if (!emailResponse.ok || !emailResult.success) {
+            throw new Error(emailResult.error || "Failed to send email");
+          }
+
+          console.log("✅ Staff invitation email sent:", emailResult);
+          toast.success("Staff invitation sent successfully!");
+        } catch (emailError) {
+          console.error("❌ Email sending failed:", emailError);
+
+          // Fallback: Show link manually
+          const invitationUrl = `${window.location.origin}/auth/staff-signup?invitation=${emailData.invitation_id}&token=${emailData.invitation_token}`;
+          setInvitationLink(invitationUrl);
+          setShowInvitationModal(true);
+          await navigator.clipboard.writeText(invitationUrl);
+
+          toast.warning(
+            "Invitation created but email failed. Link copied to clipboard."
+          );
+        }
+      }
+
+      // Close modal and reset form
+      setShowDirectInviteModal(false);
+      setDirectInviteForm({ email: "" });
     } catch (error) {
       console.error("Error sending direct invitation:", error);
       toast.error(error.message || "Failed to send invitation");
@@ -243,7 +311,6 @@ const PartnershipRequestManager = () => {
       setActionLoading(false);
     }
   };
-
   // Filter requests based on search term
   const filteredRequests = requests.filter(
     (request) =>
