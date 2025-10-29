@@ -1,210 +1,370 @@
+// ============================================
+// 🏥 PROFESSIONAL DENTAL CLINIC MAP COMPONENT
+// ============================================
+
 .mapSection {
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   min-height: 100vh;
-  padding: 2rem 0;
+  padding: 4rem 0;
   display: flex;
   align-items: center;
-}
+  position: relative;
 
-.clinicCount {
-  text-align: center;
-  color: #1f2937; // ✅ Darker color for better visibility
-  font-size: 1rem;
-  margin-top: 0.75rem;
-  font-weight: 500;
-  
-  strong {
-    color: #0f172a; // ✅ Even darker for emphasis
-    font-weight: 700;
+  @media (max-width: 1200px) {
+    padding: 3rem 0;
+  }
+
+  @media (max-width: 768px) {
+    padding: 2.5rem 0;
+  }
+
+  @media (max-width: 480px) {
+    padding: 2rem 0;
+  }
+
+  @media (max-width: 375px) {
+    padding: 1.5rem 0;
   }
 }
 
-// ✅ NEW: Signup/Login Prompt Styles
-.signupPrompt {
+// ============================================
+// 📦 CONTAINER & LAYOUT
+// ============================================
+
+.container {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  width: 100%;
+
+  @media (max-width: 1200px) {
+    max-width: 1200px;
+    padding: 0 1.5rem;
+  }
+
+  @media (max-width: 768px) {
+    padding: 0 1.25rem;
+  }
+
+  @media (max-width: 480px) {
+    padding: 0 1rem;
+  }
+
+  @media (max-width: 375px) {
+    padding: 0 0.875rem;
+  }
+}
+
+// ============================================
+// 📝 HEADER SECTION
+// ============================================
+
+.header {
+  text-align: center;
+  margin-bottom: 3rem;
+
+  @media (max-width: 1200px) {
+    margin-bottom: 2.5rem;
+  }
+
+  @media (max-width: 768px) {
+    margin-bottom: 2rem;
+  }
+
+  @media (max-width: 480px) {
+    margin-bottom: 1.75rem;
+  }
+}
+
+.title {
+  color: #ffffff;
+  font-size: 2.75rem;
+  margin: 0 0 1rem 0;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+
+  @media (max-width: 1200px) {
+    font-size: 2.5rem;
+  }
+
+  @media (max-width: 768px) {
+    font-size: 2rem;
+    margin-bottom: 0.875rem;
+  }
+
+  @media (max-width: 480px) {
+    font-size: 1.75rem;
+    margin-bottom: 0.75rem;
+  }
+
+  @media (max-width: 375px) {
+    font-size: 1.5rem;
+  }
+}
+
+.subtitle {
+  color: #cbd5e1;
+  font-size: 1.125rem;
   max-width: 700px;
-  margin: 1.5rem auto 0;
-  padding: 1.25rem 1.5rem;
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  border: 2px solid #3b82f6;
-  border-radius: 12px;
+  margin: 0 auto;
+  line-height: 1.6;
+  font-weight: 400;
+
+  @media (max-width: 1200px) {
+    font-size: 1.0625rem;
+    max-width: 650px;
+  }
+
+  @media (max-width: 768px) {
+    font-size: 1rem;
+    max-width: 600px;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 480px) {
+    font-size: 0.9375rem;
+    max-width: 100%;
+    padding: 0 0.5rem;
+  }
+
+  @media (max-width: 375px) {
+    font-size: 0.875rem;
+  }
+}
+
+// ============================================
+// 📊 CLINIC COUNT DISPLAY
+// ============================================
+
+.clinicCount {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  color: #e2e8f0;
+  font-size: 1.0625rem;
+  margin-top: 1.5rem;
+  font-weight: 500;
+
+  .locationIcon {
+    flex-shrink: 0;
+    color: #60a5fa;
+  }
+
+  span {
+    strong {
+      color: #ffffff;
+      font-weight: 700;
+    }
+  }
+
+  @media (max-width: 768px) {
+    font-size: 1rem;
+    margin-top: 1.25rem;
+    gap: 0.5rem;
+
+    .locationIcon {
+      width: 16px;
+      height: 16px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    font-size: 0.9375rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+    padding: 0 0.5rem;
+  }
+
+  @media (max-width: 375px) {
+    font-size: 0.875rem;
+  }
+}
+
+// ============================================
+// 🔒 SIGNUP/LOGIN PROMPT
+// ============================================
+
+.signupPrompt {
+  max-width: 800px;
+  margin: 2rem auto 0;
+  padding: 1.75rem 2rem;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
   display: flex;
   align-items: flex-start;
-  gap: 1rem;
-  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1);
-  
+  gap: 1.5rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(96, 165, 250, 0.3);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  }
+
+  @media (max-width: 1200px) {
+    max-width: 750px;
+    padding: 1.5rem 1.75rem;
+  }
+
   @media (max-width: 768px) {
+    padding: 1.5rem;
+    gap: 1.25rem;
+    margin: 1.75rem auto 0;
+    max-width: 100%;
+  }
+
+  @media (max-width: 480px) {
+    padding: 1.25rem;
+    gap: 1rem;
+    margin: 1.5rem auto 0;
+    border-radius: 12px;
+  }
+
+  @media (max-width: 375px) {
     padding: 1rem;
-    gap: 0.75rem;
+    gap: 0.875rem;
   }
 }
 
 .signupPromptIcon {
-  font-size: 2rem;
   flex-shrink: 0;
-  
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+
+  svg {
+    color: #ffffff;
+  }
+
   @media (max-width: 768px) {
-    font-size: 1.5rem;
+    width: 44px;
+    height: 44px;
+
+    svg {
+      width: 24px;
+      height: 24px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+
+    svg {
+      width: 22px;
+      height: 22px;
+    }
+  }
+
+  @media (max-width: 375px) {
+    width: 36px;
+    height: 36px;
+
+    svg {
+      width: 20px;
+      height: 20px;
+    }
   }
 }
 
 .signupPromptContent {
   flex: 1;
+  min-width: 0;
 }
 
 .signupPromptTitle {
-  margin: 0 0 0.5rem 0;
-  color: #1e40af; // ✅ Dark blue for good visibility
-  font-size: 1.1rem;
-  
+  margin: 0 0 0.75rem 0;
+  color: #ffffff;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.3;
+
   @media (max-width: 768px) {
-    font-size: 1rem;
+    font-size: 1.125rem;
+    margin-bottom: 0.625rem;
   }
-  
-  strong {
-    font-weight: 700;
+
+  @media (max-width: 480px) {
+    font-size: 1.0625rem;
+    margin-bottom: 0.5rem;
+  }
+
+  @media (max-width: 375px) {
+    font-size: 1rem;
   }
 }
 
 .signupPromptText {
   margin: 0;
-  color: #1f2937; // ✅ Dark gray for readability
-  font-size: 0.95rem;
-  line-height: 1.5;
-  
+  color: #cbd5e1;
+  font-size: 1rem;
+  line-height: 1.6;
+  font-weight: 400;
+
   @media (max-width: 768px) {
+    font-size: 0.9375rem;
+    line-height: 1.5;
+  }
+
+  @media (max-width: 480px) {
     font-size: 0.875rem;
+  }
+
+  @media (max-width: 375px) {
+    font-size: 0.8125rem;
   }
 }
 
 .signupLink,
 .loginLink {
-  color: #2563eb; // ✅ Bright blue for links
+  color: #60a5fa;
   font-weight: 600;
   text-decoration: none;
-  transition: color 0.2s;
-  
-  &:hover {
-    color: #1d4ed8;
-    text-decoration: underline;
-  }
-}
+  margin: 0 0.25rem;
+  transition: all 0.2s ease;
+  position: relative;
 
-.noData {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 400px;
-  color: #374151; // ✅ Dark gray for visibility
-  
-  p {
-    font-size: 1.1rem;
-    margin-bottom: 1rem;
-    color: #1f2937; // ✅ Darker
-    font-weight: 500;
+  &::after {
+    content: "";
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #60a5fa 0%, #3b82f6 100%);
+    transition: width 0.3s ease;
   }
-  
-  .retryButton {
-    padding: 0.625rem 1.75rem;
-    background: #3b82f6;
-    color: white;
-    border: none;
-    border-radius: 0.5rem;
-    cursor: pointer;
-    font-size: 1rem;
-    font-weight: 600;
-    transition: background 0.2s;
-    
-    &:hover {
-      background: #2563eb;
+
+  &:hover {
+    color: #93c5fd;
+
+    &::after {
+      width: 100%;
     }
   }
-}
 
-.popupContent {
-  padding: 0.5rem;
-  min-width: 220px;
-}
-
-.popupTitle {
-  margin: 0 0 0.5rem 0;
-  font-size: 1rem;
-  font-weight: 700;
-  color: #0f172a; // ✅ Very dark for title
-}
-
-.popupAddress {
-  margin: 0 0 0.75rem 0;
-  font-size: 0.875rem;
-  color: #374151; // ✅ Dark gray
-  line-height: 1.4;
-}
-
-.popupInfo {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.popupStatus {
-  font-size: 0.875rem;
-  font-weight: 600;
-  
-  &.open {
-    color: #059669; // ✅ Green for open
-  }
-  
-  &.closed {
-    color: #dc2626; // ✅ Red for closed
+  &:focus {
+    outline: 2px solid #60a5fa;
+    outline-offset: 3px;
+    border-radius: 3px;
   }
 }
 
-.popupRating {
-  font-size: 0.875rem;
-  color: #1f2937; // ✅ Dark gray
-  font-weight: 500;
-}
-
-.popupHours {
-  margin: 0;
-  font-size: 0.875rem;
-  color: #374151; // ✅ Dark gray
-  
-  strong {
-    color: #0f172a; // ✅ Very dark
-    font-weight: 600;
-  }
-}
-
-.container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 1rem;
-  width: 100%;
-}
-
-.header {
-  text-align: center;
-  margin-bottom: 2rem;
-}
-
-.title {
-  color: #ffffff;
-  font-size: clamp(1.5rem, 4vw, 2.2rem);
-  margin-bottom: 0.5rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.subtitle {
-  color: #cbd5e0;
-  font-size: clamp(0.9rem, 2vw, 1.1rem);
-  max-width: 600px;
-  margin: 0 auto;
-  line-height: 1.5;
-}
+// ============================================
+// 🗺️ MAP WRAPPER & CONTAINER
+// ============================================
 
 .mapWrapper {
   position: relative;
@@ -213,61 +373,137 @@
 }
 
 .mapContainer {
-  height: 90vh;
-  min-height: 500px;
-  width: 90%;
+  height: 80vh;
+  min-height: 600px;
+  max-height: 900px;
+  width: 100%;
   position: relative;
-  border-radius: 12px;
+  border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(58, 134, 255, 0.1);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #1e293b;
+
+  @media (max-width: 1200px) {
+    height: 75vh;
+    min-height: 550px;
+  }
+
+  @media (max-width: 768px) {
+    height: 70vh;
+    min-height: 500px;
+    border-radius: 16px;
+  }
+
+  @media (max-width: 480px) {
+    height: 65vh;
+    min-height: 450px;
+    border-radius: 12px;
+  }
+
+  @media (max-width: 375px) {
+    height: 60vh;
+    min-height: 400px;
+  }
 }
 
 .mapCanvas {
   width: 100%;
   height: 100%;
+  z-index: 1;
 }
+
+// ============================================
+// 🔄 RESET VIEW BUTTON
+// ============================================
 
 .resetButton {
   position: absolute;
-  bottom: 1rem;
-  right: 1rem;
-  z-index: 1000;
-  background: rgba(13, 59, 102, 0.9);
-  border: none;
-  border-radius: 50%;
-  width: 44px;
-  height: 44px;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 500;
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  transition: all 0.2s ease;
-  
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
   svg {
-    width: 20px;
-    height: 20px;
-    color: #ffffff;
+    color: #60a5fa;
+    transition: transform 0.3s ease;
   }
-  
+
   &:hover {
-    background: #3a86ff;
-    transform: scale(1.05);
+    background: #3b82f6;
+    border-color: #3b82f6;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(59, 130, 246, 0.4);
+
+    svg {
+      color: #ffffff;
+      transform: rotate(180deg);
+    }
   }
-  
+
+  &:active {
+    transform: translateY(0);
+  }
+
   &:focus {
-    outline: 2px solid #3a86ff;
-    outline-offset: 2px;
+    outline: 2px solid #60a5fa;
+    outline-offset: 3px;
+  }
+
+  @media (max-width: 768px) {
+    width: 44px;
+    height: 44px;
+    bottom: 1.25rem;
+    right: 1.25rem;
+    z-index: 450;
+
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
+
+  @media (max-width: 480px) {
+    width: 40px;
+    height: 40px;
+    bottom: 1rem;
+    right: 1rem;
+    border-radius: 10px;
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+
+  @media (max-width: 375px) {
+    width: 36px;
+    height: 36px;
+    bottom: 0.875rem;
+    right: 0.875rem;
   }
 }
 
-// Marker styles
+// ============================================
+// 📍 CLINIC MARKERS
+// ============================================
+
 .clinicMarker {
   position: relative;
   width: 32px;
   height: 32px;
-  
+  cursor: pointer;
+
   .markerPin {
     width: 32px;
     height: 32px;
@@ -276,70 +512,421 @@
     position: absolute;
     top: 0;
     left: 0;
-    transition: transform 0.2s ease;
-    box-shadow: 0 0 12px currentColor;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 0 0 2px rgba(255, 255, 255, 0.9);
   }
-  
+
   .markerLabel {
     position: absolute;
-    top: 10px;
-    color: white;
-    font-size: 0.8rem;
-    font-weight: 700;
-    transform: rotate(45deg);
+    top: 50%;
+    left: 50%;
+    color: #ffffff;
+    font-size: 0.8125rem;
+    font-weight: 800;
+    transform: translate(-50%, -50%);
     z-index: 10;
-    width: 100%;
     text-align: center;
-    left: 0;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+    pointer-events: none;
   }
-  
-  &.high .markerPin {
-    background: #10b981;
-  }
-  
-  &.medium .markerPin {
-    background: #f59e0b;
-  }
-  
-  &.low .markerPin {
-    background: #ef4444;
-  }
-  
-  &.selected .markerPin {
-    transform: rotate(-45deg) scale(1.2);
-    z-index: 1000;
-  }
-}
 
-@media (max-width: 768px) {
-  .mapContainer {
-    height: 60vh;
-    min-height: 400px;
+  &.high .markerPin {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
   }
-  
-  .resetButton {
-    width: 40px;
-    height: 40px;
-    
-    svg {
-      width: 18px;
-      height: 18px;
+
+  &.medium .markerPin {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  }
+
+  &.low .markerPin {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  }
+
+  &.selected .markerPin {
+    transform: rotate(-45deg) scale(1.35);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3), 0 0 0 3px #ffffff,
+      0 0 24px currentColor;
+    z-index: 400;
+  }
+
+  &:hover .markerPin {
+    transform: rotate(-45deg) scale(1.2);
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25),
+      0 0 0 2px rgba(255, 255, 255, 1);
+  }
+
+  @media (max-width: 480px) {
+    width: 28px;
+    height: 28px;
+
+    .markerPin {
+      width: 28px;
+      height: 28px;
+    }
+
+    .markerLabel {
+      font-size: 0.75rem;
+    }
+
+    &.selected .markerPin {
+      transform: rotate(-45deg) scale(1.3);
+    }
+  }
+
+  @media (max-width: 375px) {
+    width: 26px;
+    height: 26px;
+
+    .markerPin {
+      width: 26px;
+      height: 26px;
+    }
+
+    .markerLabel {
+      font-size: 0.6875rem;
     }
   }
 }
 
-@media (max-width: 480px) {
-  .mapSection {
-    padding: 1rem 0;
+// ============================================
+// 🗨️ POPUP CONTENT
+// ============================================
+
+.popupContent {
+  padding: 1rem;
+  min-width: 260px;
+  font-family: inherit;
+
+  @media (max-width: 480px) {
+    min-width: 220px;
+    padding: 0.875rem;
   }
-  
-  .container {
-    padding: 0 0.5rem;
-  }
-  
-  .mapContainer {
-    height: 55vh;
-    min-height: 350px;
+
+  @media (max-width: 375px) {
+    min-width: 200px;
+    padding: 0.75rem;
   }
 }
+
+.popupTitle {
+  margin: 0 0 0.75rem 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.3;
+
+  @media (max-width: 480px) {
+    font-size: 1.0625rem;
+    margin-bottom: 0.625rem;
+  }
+
+  @media (max-width: 375px) {
+    font-size: 1rem;
+  }
+}
+
+.popupAddress {
+  margin: 0 0 1rem 0;
+  font-size: 0.9375rem;
+  color: #475569;
+  line-height: 1.5;
+  font-weight: 400;
+
+  @media (max-width: 480px) {
+    font-size: 0.875rem;
+    margin-bottom: 0.875rem;
+  }
+
+  @media (max-width: 375px) {
+    font-size: 0.8125rem;
+  }
+}
+
+.popupInfo {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.875rem;
+  flex-wrap: wrap;
+
+  @media (max-width: 480px) {
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+}
+
+.popupStatus {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.375rem 0.75rem;
+  border-radius: 8px;
+
+  .statusIndicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  &.open {
+    color: #059669;
+    background: #d1fae5;
+
+    .statusIndicator {
+      background: #10b981;
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+    }
+  }
+
+  &.closed {
+    color: #dc2626;
+    background: #fee2e2;
+
+    .statusIndicator {
+      background: #ef4444;
+    }
+  }
+
+  @media (max-width: 480px) {
+    font-size: 0.8125rem;
+    padding: 0.3125rem 0.625rem;
+
+    .statusIndicator {
+      width: 7px;
+      height: 7px;
+    }
+  }
+
+  @media (max-width: 375px) {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+
+    .statusIndicator {
+      width: 6px;
+      height: 6px;
+    }
+  }
+}
+
+.popupRating {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  color: #334155;
+  font-weight: 600;
+
+  .starIcon {
+    color: #f59e0b;
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 480px) {
+    font-size: 0.8125rem;
+
+    .starIcon {
+      width: 13px;
+      height: 13px;
+    }
+  }
+
+  @media (max-width: 375px) {
+    font-size: 0.75rem;
+
+    .starIcon {
+      width: 12px;
+      height: 12px;
+    }
+  }
+}
+
+.popupHours {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.875rem;
+  color: #475569;
+  font-weight: 400;
+  line-height: 1.5;
+
+  .clockIcon {
+    color: #64748b;
+    flex-shrink: 0;
+  }
+
+  strong {
+    color: #0f172a;
+    font-weight: 600;
+  }
+
+  @media (max-width: 480px) {
+    font-size: 0.8125rem;
+    gap: 0.375rem;
+
+    .clockIcon {
+      width: 13px;
+      height: 13px;
+    }
+  }
+
+  @media (max-width: 375px) {
+    font-size: 0.75rem;
+
+    .clockIcon {
+      width: 12px;
+      height: 12px;
+    }
+  }
+}
+
+// ============================================
+// ❌ NO DATA STATE
+// ============================================
+
+.noData {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 500px;
+  padding: 3rem 2rem;
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+
+  .noDataIcon {
+    color: #475569;
+    margin-bottom: 1.5rem;
+  }
+
+  p {
+    font-size: 1.25rem;
+    margin: 0 0 2rem 0;
+    color: #cbd5e1;
+    font-weight: 500;
+    text-align: center;
+  }
+
+  .retryButton {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.875rem 2rem;
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: #ffffff;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+
+    svg {
+      flex-shrink: 0;
+    }
+
+    &:hover {
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(59, 130, 246, 0.4);
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
+
+    &:focus {
+      outline: 2px solid #60a5fa;
+      outline-offset: 3px;
+    }
+  }
+
+  @media (max-width: 768px) {
+    min-height: 450px;
+    padding: 2.5rem 1.5rem;
+
+    .noDataIcon {
+      width: 56px;
+      height: 56px;
+      margin-bottom: 1.25rem;
+    }
+
+    p {
+      font-size: 1.125rem;
+      margin-bottom: 1.75rem;
+    }
+
+    .retryButton {
+      padding: 0.75rem 1.75rem;
+      font-size: 0.9375rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    min-height: 400px;
+    padding: 2rem 1.25rem;
+
+    .noDataIcon {
+      width: 48px;
+      height: 48px;
+      margin-bottom: 1rem;
+    }
+
+    p {
+      font-size: 1.0625rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .retryButton {
+      padding: 0.75rem 1.5rem;
+      font-size: 0.875rem;
+      gap: 0.5rem;
+
+      svg {
+        width: 16px;
+        height: 16px;
+      }
+    }
+  }
+
+  @media (max-width: 375px) {
+    min-height: 350px;
+    padding: 1.75rem 1rem;
+
+    .noDataIcon {
+      width: 44px;
+      height: 44px;
+    }
+
+    p {
+      font-size: 1rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .retryButton {
+      padding: 0.625rem 1.25rem;
+      font-size: 0.8125rem;
+
+      svg {
+        width: 15px;
+        height: 15px;
+      }
+    }
+  }
+}
+
+// ============================================
+// 🎯 Z-INDEX HIERARCHY
+// ============================================
+// Map Canvas: 1
+// Markers (normal): 100-999 (dynamic)
+// Selected Marker: 1000
+// Reset Button: 500 (desktop), 450 (mobile)
+// Map Legend: 600
+// Clinic Panel: 700
+// Leaflet Popups: 600-800 (auto-managed)
+// ============================================

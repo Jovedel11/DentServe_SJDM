@@ -46,6 +46,7 @@ import DateTimeSelectionStep from "../components/booking/date-time-selection-ste
 import ConfirmationStep from "../components/booking/confirmation-step";
 import TreatmentLinkModal from "@/app/patient/components/booking/treatment-link-modal";
 import { useTreatmentPlans } from "@/hooks/appointment/useTreatmentPlans";
+import ConfirmationDialog from "@/core/components/ui/confirmation-dialog";
 
 import { useBookingFlow } from "../hook/useBookingFlow";
 import { useIsMobile } from "@/core/hooks/use-mobile";
@@ -95,7 +96,7 @@ const BookAppointment = () => {
   const [showBlockerDialog, setShowBlockerDialog] = useState(false);
   const [blockerDetails, setBlockerDetails] = useState(null);
 
-  const { followUpBooking, startFollowUpBooking } = useTreatmentPlans();
+  const { followUpBooking } = useTreatmentPlans();
   const {
     // Step & Progress
     bookingStep,
@@ -107,7 +108,6 @@ const BookAppointment = () => {
 
     // Loading States
     loading,
-    error,
     checkingAvailability,
     validationLoading,
 
@@ -133,7 +133,6 @@ const BookAppointment = () => {
     // Treatment Plan States
     ongoingTreatments,
     showTreatmentLinkPrompt,
-    hasOngoingTreatments,
     isLinkedToTreatment,
     selectedTreatment,
     isConsultationOnly,
@@ -147,8 +146,13 @@ const BookAppointment = () => {
     isPatient,
     profile,
 
+    // ✨ NEW: Reliability Dialog State
+    showReliabilityDialog,
+    setShowReliabilityDialog,
+    handleReliabilityConfirm,
+    handleReliabilityCancel,
+
     // Actions
-    selectTreatmentPlan,
     clearTreatmentPlanLink,
     dismissTreatmentPrompt,
     closeToast,
@@ -262,86 +266,105 @@ const BookAppointment = () => {
     );
   }
 
-  // ==================== SUCCESS STATE ====================
+  // ==================== SUCCESS STATE ==================== 
   if (bookingSuccess) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-primary/5 to-secondary/10 flex items-center justify-center p-4">
-        <Card className="max-w-lg mx-auto shadow-2xl border-2 animate-in zoom-in-95 fade-in-0 duration-500">
+      <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-secondary/10 flex items-center justify-center p-4 relative overflow-hidden">
+        {/* ✨ Animated Background Elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-primary/5 rounded-full blur-3xl animate-pulse-glow" />
+          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-secondary/5 rounded-full blur-3xl animate-pulse-glow" style={{ animationDelay: '1s' }} />
+        </div>
+
+        <Card className="max-w-lg mx-auto shadow-2xl border-2 animate-in zoom-in-95 fade-in-0 duration-500 relative z-10">
           <CardContent className="text-center p-8 sm:p-10">
-            {/* Success Icon */}
-            <div className="w-24 h-24 sm:w-28 sm:h-28 mx-auto mb-6 bg-gradient-to-br from-green-500/20 to-green-500/10 rounded-full flex items-center justify-center animate-in zoom-in-50 duration-700 shadow-lg">
-              <CheckCircle2 className="w-12 h-12 sm:w-14 sm:h-14 text-green-600 dark:text-green-500 animate-in zoom-in-50 duration-1000" />
+            {/* ✨ Enhanced Success Icon with Celebration Animation */}
+            <div className="relative w-28 h-28 mx-auto mb-6">
+              <div className="absolute inset-0 bg-gradient-to-br from-green-500/20 to-green-500/10 rounded-full animate-ping" />
+              <div className="relative w-28 h-28 bg-gradient-to-br from-green-500/20 to-green-500/10 rounded-full flex items-center justify-center animate-celebrate shadow-lg">
+                <CheckCircle2 className="w-14 h-14 text-green-600 dark:text-green-500 drop-shadow-lg" />
+              </div>
             </div>
 
-            {/* Success Title */}
-            <h1 className="text-3xl sm:text-4xl font-bold mb-4 bg-gradient-to-r from-primary via-purple-600 to-pink-600 bg-clip-text text-transparent">
+            {/* ✨ Enhanced Title with Better Gradient */}
+            <h1 className="text-3xl sm:text-4xl font-bold mb-3 bg-gradient-to-r from-green-600 via-primary to-purple-600 bg-clip-text text-transparent animate-slide-in-down">
               {isConsultationOnly
                 ? "Consultation Booked!"
-                : "Appointment Booked!"}
+                : "Appointment Confirmed!"}
             </h1>
 
-            <p className="text-sm sm:text-base text-muted-foreground mb-6">
+            <p className="text-base text-muted-foreground mb-6 animate-slide-in-up">
               Your appointment has been successfully scheduled
             </p>
 
-            {/* Appointment Details */}
-            <div className="space-y-4 text-left animate-in slide-in-from-bottom-4 fade-in-0 duration-700">
-              <div className="bg-gradient-to-br from-card to-muted/50 border-2 rounded-xl p-5 sm:p-6">
-                <h3 className="font-bold mb-4 flex items-center gap-2 text-base sm:text-lg">
-                  <Sparkles className="w-5 h-5 text-primary" />
-                  Appointment Details
-                </h3>
-                <div className="space-y-3 text-sm sm:text-base">
-                  <div className="flex justify-between items-start gap-4">
-                    <span className="text-muted-foreground">Type:</span>
-                    <Badge
-                      variant="outline"
-                      className="capitalize font-semibold"
-                    >
-                      {bookingType?.replace(/_/g, " ")}
-                    </Badge>
+            {/* ✨ Enhanced Appointment Details Card */}
+            <div className="space-y-4 text-left animate-scale-in">
+              <Card className="bg-gradient-to-br from-card to-muted/50 border-2 shadow-inner">
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <Sparkles className="w-5 h-5 text-primary" />
+                    </div>
+                    <h3 className="font-bold text-lg">Appointment Details</h3>
                   </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground flex items-center gap-2">
-                      <Hospital className="w-4 h-4" />
-                      Clinic:
-                    </span>
-                    <span className="font-semibold text-right line-clamp-2">
-                      {bookingData.clinic?.name}
-                    </span>
+
+                  <div className="space-y-4">
+                    {/* Type Badge */}
+                    <div className="flex justify-between items-center p-3 rounded-lg bg-background/70 smooth-transition">
+                      <span className="text-muted-foreground text-sm">Type:</span>
+                      <Badge variant="outline" className="capitalize font-semibold text-sm">
+                        {bookingType?.replace(/_/g, " ")}
+                      </Badge>
+                    </div>
+
+                    {/* Clinic */}
+                    <div className="flex items-start justify-between gap-4 p-3 rounded-lg bg-background/70 smooth-transition">
+                      <div className="flex items-center gap-2.5 text-muted-foreground text-sm">
+                        <Hospital className="w-4 h-4 flex-shrink-0" />
+                        <span>Clinic:</span>
+                      </div>
+                      <span className="font-semibold text-right line-clamp-2 flex-1">
+                        {bookingData.clinic?.name}
+                      </span>
+                    </div>
+
+                    {/* Doctor */}
+                    <div className="flex items-start justify-between gap-4 p-3 rounded-lg bg-background/70 smooth-transition">
+                      <div className="flex items-center gap-2.5 text-muted-foreground text-sm">
+                        <Users className="w-4 h-4 flex-shrink-0" />
+                        <span>Doctor:</span>
+                      </div>
+                      <span className="font-semibold text-right">
+                        {bookingData.doctor?.name}
+                      </span>
+                    </div>
+
+                    {/* Date & Time in Grid */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-3 rounded-lg bg-background/70 smooth-transition">
+                        <div className="flex items-center gap-2 text-muted-foreground text-xs mb-2">
+                          <CalendarDays className="w-4 h-4" />
+                          <span>Date</span>
+                        </div>
+                        <p className="font-semibold text-sm leading-tight">
+                          {new Date(bookingData.date).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-background/70 smooth-transition">
+                        <div className="flex items-center gap-2 text-muted-foreground text-xs mb-2">
+                          <Clock className="w-4 h-4" />
+                          <span>Time</span>
+                        </div>
+                        <p className="font-semibold text-sm">{bookingData.time}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground flex items-center gap-2">
-                      <Users className="w-4 h-4" />
-                      Doctor:
-                    </span>
-                    <span className="font-semibold text-right">
-                      {bookingData.doctor?.name}
-                    </span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground flex items-center gap-2">
-                      <CalendarDays className="w-4 h-4" />
-                      Date:
-                    </span>
-                    <span className="font-semibold text-right">
-                      {new Date(bookingData.date).toLocaleDateString("en-US", {
-                        weekday: isMobile ? "short" : "long",
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
-                    </span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-muted-foreground flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
-                      Time:
-                    </span>
-                    <span className="font-semibold">{bookingData.time}</span>
-                  </div>
-                </div>
-              </div>
+                </CardContent>
+              </Card>
 
               {/* Treatment Linked Badge */}
               {isLinkedToTreatment && selectedTreatment && (
@@ -378,11 +401,21 @@ const BookAppointment = () => {
               )}
             </div>
 
-            {/* Redirect Notice */}
+            {/* ✨ Enhanced Redirect with Progress */}
             <div className="mt-8 pt-6 border-t">
-              <div className="flex items-center justify-center gap-2.5 text-sm text-muted-foreground">
-                <Loader2 className="animate-spin h-4 w-4 text-primary" />
-                <span>Redirecting to your appointments...</span>
+              <div className="flex flex-col items-center gap-3">
+                <div className="relative">
+                  <Loader2 className="animate-spin h-5 w-5 text-primary" />
+                  <div className="absolute inset-0 h-5 w-5 rounded-full bg-primary/20 animate-ping" />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-medium text-foreground mb-1">
+                    Redirecting to your appointments...
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Please wait a moment
+                  </p>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -869,6 +902,20 @@ const BookAppointment = () => {
           )}
         </div>
       </div>
+
+      {/* ✨ NEW: Professional Reliability Confirmation Dialog (replaces window.confirm) */}
+      <ConfirmationDialog
+        open={showReliabilityDialog}
+        onOpenChange={setShowReliabilityDialog}
+        onConfirm={handleReliabilityConfirm}
+        onCancel={handleReliabilityCancel}
+        title="Attendance Commitment Required"
+        description="Your appointment history shows some missed appointments. Are you sure you can attend this appointment? Continued no-shows may affect your booking privileges."
+        confirmText="Yes, I'll Attend"
+        cancelText="Cancel Booking"
+        variant="warning"
+        icon={Shield}
+      />
     </div>
   );
 };

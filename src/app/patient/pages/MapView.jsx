@@ -117,11 +117,23 @@ const MapView = () => {
 
   // ✅ Format distance for display
   const formatDistanceDisplay = useCallback((distanceKm) => {
-    if (!distanceKm || distanceKm === 0 || isNaN(distanceKm)) {
+    // ✅ Explicitly check for null/undefined, but allow 0
+    if (distanceKm === null || distanceKm === undefined || isNaN(distanceKm)) {
       return null;
     }
+
     const distanceNum = parseFloat(distanceKm);
-    return distanceNum > 0 ? `${distanceNum.toFixed(1)} km` : null;
+
+    // ✅ Handle 0 or very small distances
+    if (distanceNum === 0) {
+      return "0.0 km";
+    }
+
+    if (distanceNum < 0.1) {
+      return "< 0.1 km";
+    }
+
+    return `${distanceNum.toFixed(1)} km`;
   }, []);
 
   // ✅ Format operating hours for display
@@ -308,8 +320,9 @@ const MapView = () => {
       case "distance":
         if (isLocationAvailable()) {
           filtered.sort((a, b) => {
-            const distA = a.distance_numeric || a.distance_km || 99999;
-            const distB = b.distance_numeric || b.distance_km || 99999;
+            // ✅ Use nullish coalescing to preserve 0 values
+            const distA = a.distance_numeric ?? a.distance_km ?? 99999;
+            const distB = b.distance_numeric ?? b.distance_km ?? 99999;
             return distA - distB;
           });
         }
@@ -319,8 +332,10 @@ const MapView = () => {
         break;
       case "recommended":
         filtered.sort((a, b) => {
-          const distA = a.distance_numeric || a.distance_km || 1;
-          const distB = b.distance_numeric || b.distance_km || 1;
+          // ✅ Use nullish coalescing to only default if null/undefined, not 0
+          const distA = a.distance_numeric ?? a.distance_km ?? 1;
+          const distB = b.distance_numeric ?? b.distance_km ?? 1;
+
           const scoreA =
             (a.rating || 0) * 0.6 +
             (1 / Math.max(distA, 0.1)) * 0.3 +

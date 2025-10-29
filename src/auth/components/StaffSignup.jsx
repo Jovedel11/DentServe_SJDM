@@ -13,7 +13,20 @@ import {
   CardTitle,
 } from "@/core/components/ui/card";
 import { Alert, AlertDescription } from "@/core/components/ui/alert";
-import { Loader2, CheckCircle, XCircle } from "lucide-react";
+import {
+  Loader2,
+  CheckCircle,
+  XCircle,
+  Eye,
+  EyeOff,
+  Shield,
+  Mail,
+  Phone,
+  User,
+  Lock,
+  AlertCircle,
+  Calendar,
+} from "lucide-react";
 import styles from "../styles/StaffSignup.module.scss";
 
 const StaffSignup = () => {
@@ -33,6 +46,10 @@ const StaffSignup = () => {
     confirmPassword: "",
   });
 
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState(0);
+
   const invitationId = searchParams.get("invitation");
   const token = searchParams.get("token");
 
@@ -40,6 +57,22 @@ const StaffSignup = () => {
   useEffect(() => {
     validateInvitation();
   }, [invitationId, token]);
+
+  // Calculate password strength
+  useEffect(() => {
+    if (formData.password) {
+      let strength = 0;
+      if (formData.password.length >= 8) strength++;
+      if (formData.password.length >= 12) strength++;
+      if (/[a-z]/.test(formData.password) && /[A-Z]/.test(formData.password))
+        strength++;
+      if (/[0-9]/.test(formData.password)) strength++;
+      if (/[^A-Za-z0-9]/.test(formData.password)) strength++;
+      setPasswordStrength(Math.min(strength, 4));
+    } else {
+      setPasswordStrength(0);
+    }
+  }, [formData.password]);
 
   const validateInvitation = async () => {
     if (!invitationId || !token) {
@@ -146,7 +179,6 @@ const StaffSignup = () => {
       setSubmitting(true);
       setError("");
 
-      // ✅ FIXED: Single server-side call that creates everything
       console.log("Creating complete staff account...");
       const result = await authService.completeStaffSignupFromInvitation(
         invitationId,
@@ -163,7 +195,6 @@ const StaffSignup = () => {
 
       console.log("✅ Account created:", result.data);
 
-      // ✅ Now sign in with the created credentials
       console.log("Signing in...");
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: invitationData.email,
@@ -172,7 +203,6 @@ const StaffSignup = () => {
 
       if (signInError) {
         console.error("Sign in error:", signInError);
-        // Account created but sign-in failed - user can try logging in manually
         setError("Account created! Please try logging in.");
         setTimeout(() => navigate("/login"), 2000);
         return;
@@ -180,7 +210,6 @@ const StaffSignup = () => {
 
       console.log("✅ Signed in successfully");
 
-      // ✅ Navigate to profile completion
       navigate("/staff/complete-profile", {
         state: {
           clinicId: result.data.clinic_id,
@@ -199,6 +228,18 @@ const StaffSignup = () => {
     }
   };
 
+  const getPasswordStrengthLabel = () => {
+    const labels = ["Weak", "Fair", "Good", "Strong", "Very Strong"];
+    return labels[passwordStrength - 1] || "";
+  };
+
+  const getPasswordStrengthClass = () => {
+    if (passwordStrength === 0) return "";
+    if (passwordStrength <= 2) return styles.strengthWeak;
+    if (passwordStrength === 3) return styles.strengthGood;
+    return styles.strengthStrong;
+  };
+
   if (loading) {
     return (
       <div className={styles.container}>
@@ -207,6 +248,9 @@ const StaffSignup = () => {
             <div className={styles.loadingState}>
               <Loader2 className={styles.loadingIcon} />
               <p className={styles.loadingText}>Validating invitation...</p>
+              <p className={styles.loadingSubtext}>
+                Please wait while we verify your invitation link
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -218,15 +262,27 @@ const StaffSignup = () => {
     return (
       <div className={styles.container}>
         <Card className={styles.card}>
-          <CardHeader>
+          <CardHeader className={styles.cardHeader}>
             <div className={styles.errorHeader}>
-              <XCircle className={styles.errorIcon} />
-              <CardTitle>Invalid Invitation</CardTitle>
+              <div className={styles.errorIconWrapper}>
+                <XCircle className={styles.errorIcon} />
+              </div>
+              <div>
+                <CardTitle className={styles.cardTitle}>
+                  Invalid Invitation
+                </CardTitle>
+                <CardDescription className={styles.cardDescription}>
+                  This invitation link is not valid
+                </CardDescription>
+              </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
+          <CardContent className={styles.cardContent}>
+            <Alert variant="destructive" className={styles.alert}>
+              <AlertCircle className={styles.alertIcon} />
+              <AlertDescription className={styles.alertDescription}>
+                {error}
+              </AlertDescription>
             </Alert>
             <Button
               className={styles.fullWidthButton}
@@ -243,109 +299,214 @@ const StaffSignup = () => {
   return (
     <div className={styles.container}>
       <Card className={styles.card}>
-        <CardHeader>
-          <CardTitle>Complete Your Staff Registration</CardTitle>
-          <CardDescription>
+        <CardHeader className={styles.cardHeader}>
+          <div className={styles.headerTop}>
+            <div className={styles.securityBadge}>
+              <Shield className={styles.securityIcon} />
+              <span>Secure Registration</span>
+            </div>
+          </div>
+          <CardTitle className={styles.cardTitle}>
+            Complete Your Staff Registration
+          </CardTitle>
+          <CardDescription className={styles.cardDescription}>
             You've been invited to join{" "}
-            <strong>
+            <strong className={styles.clinicName}>
               {invitationData?.metadata?.clinic_name || "our clinic"}
             </strong>{" "}
-            as {invitationData?.position}
+            as{" "}
+            <span className={styles.position}>{invitationData?.position}</span>
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className={styles.cardContent}>
           <form onSubmit={handleSubmit} className={styles.form}>
             {/* Email (readonly) */}
             <div className={styles.formField}>
-              <Label>Email</Label>
-              <Input
-                type="email"
-                value={invitationData?.email || ""}
-                disabled
-                className={styles.disabledInput}
-              />
+              <Label htmlFor="email" className={styles.label}>
+                Email Address
+              </Label>
+              <div className={styles.inputWrapper}>
+                <Mail className={styles.inputIcon} />
+                <Input
+                  id="email"
+                  type="email"
+                  value={invitationData?.email || ""}
+                  disabled
+                  className={styles.disabledInput}
+                />
+              </div>
             </div>
 
-            {/* First Name */}
-            <div className={styles.formField}>
-              <Label htmlFor="firstName">First Name *</Label>
-              <Input
-                id="firstName"
-                name="firstName"
-                value={formData.firstName}
-                onChange={handleInputChange}
-                placeholder="Enter your first name"
-                required
-              />
-            </div>
+            {/* Name Row */}
+            <div className={styles.formRow}>
+              {/* First Name */}
+              <div className={styles.formField}>
+                <Label htmlFor="firstName" className={styles.label}>
+                  First Name <span className={styles.required}>*</span>
+                </Label>
+                <div className={styles.inputWrapper}>
+                  <User className={styles.inputIcon} />
+                  <Input
+                    id="firstName"
+                    name="firstName"
+                    value={formData.firstName}
+                    onChange={handleInputChange}
+                    placeholder="John"
+                    required
+                    className={styles.input}
+                  />
+                </div>
+              </div>
 
-            {/* Last Name */}
-            <div className={styles.formField}>
-              <Label htmlFor="lastName">Last Name *</Label>
-              <Input
-                id="lastName"
-                name="lastName"
-                value={formData.lastName}
-                onChange={handleInputChange}
-                placeholder="Enter your last name"
-                required
-              />
+              {/* Last Name */}
+              <div className={styles.formField}>
+                <Label htmlFor="lastName" className={styles.label}>
+                  Last Name <span className={styles.required}>*</span>
+                </Label>
+                <div className={styles.inputWrapper}>
+                  <User className={styles.inputIcon} />
+                  <Input
+                    id="lastName"
+                    name="lastName"
+                    value={formData.lastName}
+                    onChange={handleInputChange}
+                    placeholder="Doe"
+                    required
+                    className={styles.input}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Phone */}
             <div className={styles.formField}>
-              <Label htmlFor="phone">Phone Number (Optional)</Label>
-              <Input
-                id="phone"
-                name="phone"
-                type="tel"
-                value={formData.phone}
-                onChange={handleInputChange}
-                placeholder="+63 XXX XXX XXXX"
-              />
+              <Label htmlFor="phone" className={styles.label}>
+                Phone Number <span className={styles.optional}>(Optional)</span>
+              </Label>
+              <div className={styles.inputWrapper}>
+                <Phone className={styles.inputIcon} />
+                <Input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                  placeholder="+63 XXX XXX XXXX"
+                  className={styles.input}
+                />
+              </div>
             </div>
 
             {/* Password */}
             <div className={styles.formField}>
-              <Label htmlFor="password">Password *</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                value={formData.password}
-                onChange={handleInputChange}
-                placeholder="Min. 8 characters"
-                required
-              />
+              <Label htmlFor="password" className={styles.label}>
+                Password <span className={styles.required}>*</span>
+              </Label>
+              <div className={styles.inputWrapper}>
+                <Lock className={styles.inputIcon} />
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  value={formData.password}
+                  onChange={handleInputChange}
+                  placeholder="Minimum 8 characters"
+                  required
+                  className={styles.input}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className={styles.togglePassword}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? (
+                    <EyeOff className={styles.eyeIcon} />
+                  ) : (
+                    <Eye className={styles.eyeIcon} />
+                  )}
+                </button>
+              </div>
+              {formData.password && (
+                <div className={styles.passwordStrength}>
+                  <div className={styles.strengthBar}>
+                    <div
+                      className={`${
+                        styles.strengthFill
+                      } ${getPasswordStrengthClass()}`}
+                      style={{ width: `${(passwordStrength / 4) * 100}%` }}
+                    />
+                  </div>
+                  {passwordStrength > 0 && (
+                    <span
+                      className={`${
+                        styles.strengthLabel
+                      } ${getPasswordStrengthClass()}`}
+                    >
+                      {getPasswordStrengthLabel()}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Confirm Password */}
             <div className={styles.formField}>
-              <Label htmlFor="confirmPassword">Confirm Password *</Label>
-              <Input
-                id="confirmPassword"
-                name="confirmPassword"
-                type="password"
-                value={formData.confirmPassword}
-                onChange={handleInputChange}
-                placeholder="Re-enter password"
-                required
-              />
+              <Label htmlFor="confirmPassword" className={styles.label}>
+                Confirm Password <span className={styles.required}>*</span>
+              </Label>
+              <div className={styles.inputWrapper}>
+                <Lock className={styles.inputIcon} />
+                <Input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={formData.confirmPassword}
+                  onChange={handleInputChange}
+                  placeholder="Re-enter your password"
+                  required
+                  className={styles.input}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className={styles.togglePassword}
+                  aria-label={
+                    showConfirmPassword ? "Hide password" : "Show password"
+                  }
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className={styles.eyeIcon} />
+                  ) : (
+                    <Eye className={styles.eyeIcon} />
+                  )}
+                </button>
+              </div>
+              {formData.confirmPassword &&
+                formData.password === formData.confirmPassword && (
+                  <div className={styles.passwordMatch}>
+                    <CheckCircle className={styles.checkIcon} />
+                    <span>Passwords match</span>
+                  </div>
+                )}
             </div>
 
             {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
+              <Alert variant="destructive" className={styles.errorAlert}>
+                <AlertCircle className={styles.alertIcon} />
+                <AlertDescription className={styles.alertDescription}>
+                  {error}
+                </AlertDescription>
               </Alert>
             )}
 
             {/* Deadline notice */}
             {invitationData?.expires_at && (
-              <Alert>
-                <CheckCircle className={styles.successIcon} />
+              <Alert className={styles.infoAlert}>
+                <Calendar className={styles.infoIcon} />
                 <AlertDescription className={styles.deadlineText}>
-                  Please complete your profile setup within 7 days to activate
-                  your account.
+                  Please complete your profile setup within{" "}
+                  <strong>7 days</strong> to activate your account.
                 </AlertDescription>
               </Alert>
             )}
@@ -361,9 +522,17 @@ const StaffSignup = () => {
                   Creating Account...
                 </>
               ) : (
-                "Create Account & Continue"
+                <>
+                  Create Account & Continue
+                  <CheckCircle className={styles.buttonIconRight} />
+                </>
               )}
             </Button>
+
+            <p className={styles.disclaimer}>
+              By creating an account, you agree to our Terms of Service and
+              Privacy Policy
+            </p>
           </form>
         </CardContent>
       </Card>

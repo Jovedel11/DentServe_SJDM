@@ -27,18 +27,16 @@ const CSJDM_CENTER = [14.815710752120832, 121.07312517865853];
 const CITY_ZOOM = 13;
 const MAP_MIN_ZOOM = 11;
 const MAP_MAX_ZOOM = 18;
-const MAX_PUBLIC_CLINICS = 8; // ✅ Limit for non-authenticated users
+const MAX_PUBLIC_CLINICS = 8;
 
 // ✅ HELPER: Parse operating hours from JSON string
 const parseOperatingHours = (hoursData) => {
   if (!hoursData) return null;
 
-  // If it's already an object, return it
   if (typeof hoursData === "object" && hoursData !== null) {
     return hoursData;
   }
 
-  // If it's a string, try to parse it
   if (typeof hoursData === "string") {
     try {
       return JSON.parse(hoursData);
@@ -67,7 +65,6 @@ const formatOperatingHoursDetailed = (hoursData) => {
     return `${displayHour}:${minutes} ${ampm}`;
   };
 
-  // Get representative schedules
   const weekdaySchedule =
     weekdays?.monday ||
     weekdays?.tuesday ||
@@ -117,7 +114,6 @@ const formatOperatingHours = (hoursData) => {
     const currentDay = daysOfWeek[now.getDay()];
     const isWeekend = currentDay === "saturday" || currentDay === "sunday";
 
-    // Get hours for today
     const hoursGroup = isWeekend ? parsed.weekends : parsed.weekdays;
     const todayHours = hoursGroup?.[currentDay];
 
@@ -148,9 +144,7 @@ const extractCoordinates = (location) => {
   if (!location) return null;
 
   try {
-    // Handle different PostGIS formats
     if (typeof location === "string") {
-      // WKT format: "POINT(longitude latitude)"
       const match = location.match(
         /POINT\s*\(\s*([+-]?\d+\.?\d*)\s+([+-]?\d+\.?\d*)\s*\)/i
       );
@@ -161,14 +155,12 @@ const extractCoordinates = (location) => {
         };
       }
     } else if (location && typeof location === "object") {
-      // GeoJSON format
       if (location.coordinates && Array.isArray(location.coordinates)) {
         return {
           latitude: location.coordinates[1],
           longitude: location.coordinates[0],
         };
       }
-      // PostGIS object format
       if (location.x !== undefined && location.y !== undefined) {
         return {
           latitude: location.y,
@@ -216,13 +208,17 @@ const ResetViewButton = React.memo(() => {
       onClick={resetView}
       aria-label="Reset map view"
     >
-      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-        />
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
       </svg>
     </button>
   );
@@ -233,7 +229,6 @@ const ClinicMarker = React.memo(({ clinic, isSelected, onClick }) => {
   const createCustomIcon = useCallback((feedbackCount, selected) => {
     let className = styles.clinicMarker;
 
-    // ✅ Real feedback-based classification
     if (feedbackCount >= 15) className += ` ${styles.high}`;
     else if (feedbackCount >= 5) className += ` ${styles.medium}`;
     else className += ` ${styles.low}`;
@@ -268,13 +263,35 @@ const ClinicMarker = React.memo(({ clinic, isSelected, onClick }) => {
                 clinic.is_open ? styles.open : styles.closed
               }`}
             >
-              {clinic.is_open ? "🟢 Open" : "🔴 Closed"}
+              <span className={styles.statusIndicator}></span>
+              {clinic.is_open ? "Open" : "Closed"}
             </span>
             <span className={styles.popupRating}>
-              ⭐ {clinic.rating} ({clinic.total_reviews})
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className={styles.starIcon}
+              >
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+              {clinic.rating} ({clinic.total_reviews})
             </span>
           </div>
           <p className={styles.popupHours}>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className={styles.clockIcon}
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6v6l4 2" />
+            </svg>
             <strong>Today:</strong> {clinic.operating_hours_today}
           </p>
         </div>
@@ -303,7 +320,6 @@ const Map = () => {
         setIsLoading(true);
         setError(null);
 
-        // ✅ Step 1: Get all active clinics using RPC function
         const { data: rpcData, error: rpcError } = await supabase.rpc(
           "find_nearest_clinics",
           {
@@ -325,7 +341,6 @@ const Map = () => {
         const clinicsFromRPC = rpcData.data?.clinics || [];
         console.log("📍 Fetched clinics from RPC:", clinicsFromRPC.length);
 
-        // ✅ Step 2: Get feedback counts for each clinic
         const { data: feedbackData, error: feedbackError } = await supabase
           .from("feedback")
           .select("clinic_id, clinic_rating, is_public")
@@ -336,7 +351,6 @@ const Map = () => {
           console.warn("⚠️ Feedback fetch error:", feedbackError);
         }
 
-        // ✅ Step 3: Count feedback per clinic
         const feedbackCounts = {};
         if (feedbackData) {
           feedbackData.forEach((feedback) => {
@@ -348,10 +362,8 @@ const Map = () => {
           });
         }
 
-        // ✅ Step 4: Transform and enrich clinic data
         const enrichedClinics = clinicsFromRPC
           .map((clinic) => {
-            // Extract position from RPC response
             let coordinates = null;
             if (clinic.position) {
               const lat = parseFloat(clinic.position.lat);
@@ -361,12 +373,10 @@ const Map = () => {
               }
             }
 
-            // Fallback: try extracting from location field
             if (!coordinates && clinic.location) {
               coordinates = extractCoordinates(clinic.location);
             }
 
-            // Skip clinics without valid coordinates
             if (!coordinates) {
               console.warn(
                 `⚠️ Skipping clinic ${clinic.name} - no valid coordinates`
@@ -385,13 +395,13 @@ const Map = () => {
               email: clinic.email,
               website_url: clinic.website_url,
               image_url: clinic.image_url,
-              operating_hours: clinic.operating_hours, // ✅ Keep original for parsing
+              operating_hours: clinic.operating_hours,
               operating_hours_today: formatOperatingHours(
                 clinic.operating_hours
-              ), // ✅ For popup
+              ),
               operating_hours_formatted: formatOperatingHoursDetailed(
                 clinic.operating_hours
-              ), // ✅ For panel
+              ),
               feedbackCount: feedbackCounts[clinic.id] || 0,
               rating: parseFloat(clinic.rating || 0).toFixed(1),
               total_reviews: clinic.total_reviews || 0,
@@ -401,9 +411,8 @@ const Map = () => {
               doctors: clinic.doctors || [],
             };
           })
-          .filter(Boolean); // Remove null entries
+          .filter(Boolean);
 
-        // ✅ Step 5: Sort by feedback count (most popular first) and limit to MAX_PUBLIC_CLINICS
         const sortedClinics = enrichedClinics
           .sort((a, b) => b.feedbackCount - a.feedbackCount)
           .slice(0, MAX_PUBLIC_CLINICS);
@@ -489,30 +498,53 @@ const Map = () => {
           </p>
           {!isLoading && clinics.length > 0 && (
             <>
-              <p className={styles.clinicCount}>
-                📍 Showing <strong>{clinics.length}</strong> top-rated dental
-                clinic{clinics.length !== 1 ? "s" : ""} in your area
-              </p>
-              {/* ✅ Sign up / Login Encouragement */}
+              <div className={styles.clinicCount}>
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className={styles.locationIcon}
+                >
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                <span>
+                  Showing <strong>{clinics.length}</strong> top-rated dental
+                  clinic{clinics.length !== 1 ? "s" : ""} in your area
+                </span>
+              </div>
               <div className={styles.signupPrompt}>
-                <div className={styles.signupPromptIcon}>🔒</div>
+                <div className={styles.signupPromptIcon}>
+                  <svg
+                    width="28"
+                    height="28"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                </div>
                 <div className={styles.signupPromptContent}>
-                  <p className={styles.signupPromptTitle}>
-                    <strong>Unlock Full Access!</strong>
-                  </p>
+                  <h3 className={styles.signupPromptTitle}>
+                    Unlock Full Access
+                  </h3>
                   <p className={styles.signupPromptText}>
                     Viewing {MAX_PUBLIC_CLINICS} clinics only.
                     <a href="/signup" className={styles.signupLink}>
-                      {" "}
                       Sign up
-                    </a>{" "}
+                    </a>
                     or
                     <a href="/login" className={styles.loginLink}>
-                      {" "}
                       log in
-                    </a>{" "}
+                    </a>
                     to see all clinics, book appointments, and access exclusive
-                    features!
+                    features.
                   </p>
                 </div>
               </div>
@@ -532,8 +564,30 @@ const Map = () => {
               <Loader message="Loading clinic locations..." />
             ) : clinics.length === 0 ? (
               <div className={styles.noData}>
-                <p>No clinics found in this area.</p>
+                <svg
+                  width="64"
+                  height="64"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  className={styles.noDataIcon}
+                >
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                <p>No clinics found in this area</p>
                 <button onClick={handleRetry} className={styles.retryButton}>
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
+                  </svg>
                   Try Again
                 </button>
               </div>
