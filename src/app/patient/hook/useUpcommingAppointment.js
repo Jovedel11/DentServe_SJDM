@@ -290,62 +290,67 @@ export const useAppointmentManagement = () => {
     [cancellationHook, showToast]
   );
 
-  const confirmCancelAppointment = useCallback(
-    async (appointmentId, cancellationReason) => {
-      if (!cancellationReason || cancellationReason.trim() === "") {
-        showToast("Please provide a cancellation reason", "warning");
-        return;
-      }
+const confirmCancelAppointment = useCallback(
+  async (appointmentId, cancellationReason) => {
+    if (!cancellationReason || cancellationReason.trim() === "") {
+      showToast("Please provide a cancellation reason", "warning");
+      return;
+    }
 
-      try {
-        const hookResult = await appointmentHook.cancelAppointment(
-          appointmentId,
-          cancellationReason.trim()
+    try {
+      console.log('🚀 [CONFIRM CANCEL] Starting cancellation process...', {
+        appointmentId,
+        reason: cancellationReason.trim()
+      });
+
+      // ✅ FIX: Use ONLY cancellationHook (which sends emails)
+      const result = await cancellationHook.cancelAppointment(
+        appointmentId,
+        cancellationReason.trim()
+      );
+
+      console.log('📧 [CONFIRM CANCEL] Cancellation result:', result);
+
+      if (result?.success) {
+        console.log('✅ [CONFIRM CANCEL] Cancellation successful');
+        
+        // Close modal
+        setCancelModal({
+          isOpen: false,
+          appointment: null,
+          canCancel: true,
+          reason: "",
+          eligibilityChecked: false,
+        });
+        
+        // Show success message
+        showToast(
+          result.message || "Appointment cancelled successfully",
+          "success"
         );
-
-        if (hookResult?.success) {
-          setCancelModal({
-            isOpen: false,
-            appointment: null,
-            canCancel: true,
-            reason: "",
-            eligibilityChecked: false,
-          });
-          showToast("Appointment cancelled successfully", "success");
-          appointmentHook.refresh();
-          fetchOngoingTreatments();
-          return;
-        }
-
-        const fallbackResult = await cancellationHook.cancelAppointment(
-          appointmentId,
-          cancellationReason.trim()
+        
+        // Refresh data
+        console.log('🔄 [CONFIRM CANCEL] Refreshing appointments and treatments...');
+        await Promise.all([
+          appointmentHook.refresh(),
+          fetchOngoingTreatments()
+        ]);
+        
+        console.log('✅ [CONFIRM CANCEL] Data refreshed');
+      } else {
+        console.error('❌ [CONFIRM CANCEL] Cancellation failed:', result?.error);
+        showToast(
+          result?.error || "Failed to cancel appointment",
+          "error"
         );
-
-        if (fallbackResult?.success) {
-          setCancelModal({
-            isOpen: false,
-            appointment: null,
-            canCancel: true,
-            reason: "",
-            eligibilityChecked: false,
-          });
-          showToast("Appointment cancelled successfully", "success");
-          appointmentHook.refresh();
-          fetchOngoingTreatments();
-        } else {
-          showToast(
-            fallbackResult?.error || "Failed to cancel appointment",
-            "error"
-          );
-        }
-      } catch (error) {
-        console.error("Error cancelling appointment:", error);
-        showToast("An error occurred while cancelling", "error");
       }
-    },
-    [appointmentHook, cancellationHook, showToast, fetchOngoingTreatments]
-  );
+    } catch (error) {
+      console.error('❌ [CONFIRM CANCEL] Unexpected error:', error);
+      showToast("An error occurred while cancelling", "error");
+    }
+  },
+  [cancellationHook, appointmentHook, showToast, fetchOngoingTreatments]
+);
 
   const handleViewDetails = useCallback(
     (appointment) => {

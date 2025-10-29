@@ -747,6 +747,282 @@ const partnershipApproved = ({ clinic_name, staff_name, email, invitation_link, 
   return baseTemplate(content, `Welcome to DentServe - ${clinic_name}`);
 };
 
+// Appointment rescheduled by staff
+const appointmentRescheduledByStaff = ({ patient, appointment, clinic, doctor, oldDate, oldTime, newDate, newTime, reason }) => {
+  const content = `
+    <h2 style="color: #f59e0b; margin: 0 0 10px 0; font-size: 22px;">[RESCHEDULED] Appointment Time Changed</h2>
+    <p style="color: #6b7280; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0;">
+      Hello <strong>${patient.first_name}</strong>, your appointment has been rescheduled by <strong>${clinic.name}</strong>.
+    </p>
+
+    ${infoBox([
+      { label: 'Previous Date', value: `${new Date(oldDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} at ${oldTime}` },
+      { label: 'New Date', value: `${new Date(newDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} at ${newTime}` },
+      { label: 'Clinic', value: clinic.name },
+      { label: 'Doctor', value: doctor.name }
+    ], 'Schedule Change')}
+
+    ${reason ? `
+      <h3 style="color: #1f2937; font-size: 16px; margin: 20px 0 10px 0;">Reason for Reschedule:</h3>
+      <div style="background-color: #fef3c7; padding: 16px; border-left: 3px solid #f59e0b; border-radius: 4px;">
+        <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;">${reason}</p>
+      </div>
+    ` : ''}
+
+    ${alertBox(
+      'Please confirm your availability for the new time. If you cannot attend, please contact us immediately.',
+      'warning'
+    )}
+
+    ${button('View Updated Appointment', `${FRONTEND_URL}/patient/appointments/upcoming`)}
+
+    <p style="color: #9ca3af; font-size: 13px; margin: 30px 0 0 0; text-align: center;">
+      Contact us at ${clinic.phone || clinic.email} if you have questions.
+    </p>
+  `;
+
+  return baseTemplate(content, `Your appointment has been rescheduled to ${new Date(newDate).toLocaleDateString()}`);
+};
+
+// Appointment rescheduled by patient - notify staff
+const appointmentRescheduledByPatient = ({ staff_email, patient, appointment, clinic, doctor, oldDate, oldTime, newDate, newTime, reason }) => {
+  const content = `
+    <h2 style="color: #2563eb; margin: 0 0 10px 0; font-size: 22px;">[PATIENT RESCHEDULED] Appointment Time Changed</h2>
+    <p style="color: #6b7280; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0;">
+      <strong>${patient.name}</strong> has rescheduled their appointment.
+    </p>
+
+    ${infoBox([
+      { label: 'Patient', value: patient.name },
+      { label: 'Previous', value: `${new Date(oldDate).toLocaleDateString()} at ${oldTime}` },
+      { label: 'New Schedule', value: `${new Date(newDate).toLocaleDateString()} at ${newTime}` },
+      { label: 'Doctor', value: doctor.name }
+    ], 'Reschedule Details')}
+
+    ${reason ? `
+      <h3 style="color: #1f2937; font-size: 16px; margin: 20px 0 10px 0;">Patient's Reason:</h3>
+      <p style="color: #4b5563; font-size: 14px;">${reason}</p>
+    ` : ''}
+
+    ${button('View Schedule', `${FRONTEND_URL}/staff/appointments`)}
+  `;
+
+  return baseTemplate(content, `${patient.name} rescheduled appointment`);
+};
+
+// Reschedule reminder for cancelled appointment
+const rescheduleReminder = ({ patient, appointment, clinic, doctor, cancellation, suggestedDates = [] }) => {
+  const content = `
+    <h2 style="color: #f59e0b; margin: 0 0 10px 0; font-size: 22px;">[REMINDER] Please Reschedule Your Appointment</h2>
+    <p style="color: #6b7280; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0;">
+      Hello <strong>${patient.first_name}</strong>, this is a friendly reminder to reschedule your cancelled appointment.
+    </p>
+
+    ${infoBox([
+      { label: 'Cancelled Date', value: new Date(appointment.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) },
+      { label: 'Cancelled Time', value: appointment.time },
+      { label: 'Clinic', value: clinic.name },
+      { label: 'Doctor', value: doctor.name }
+    ], 'Cancelled Appointment')}
+
+    ${cancellation.reason ? `
+      <p style="color: #6b7280; font-size: 14px; margin: 10px 0;"><strong>Cancellation Reason:</strong> ${cancellation.reason}</p>
+    ` : ''}
+
+    ${suggestedDates.length > 0 ? `
+      <h3 style="color: #1f2937; font-size: 16px; margin: 20px 0 10px 0;">Suggested Available Dates:</h3>
+      <ul style="color: #4b5563; font-size: 14px; line-height: 1.8;">
+        ${suggestedDates.map(date => `<li>${new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</li>`).join('')}
+      </ul>
+    ` : ''}
+
+    ${alertBox(
+      'Please book a new appointment at your earliest convenience to maintain continuity of care.',
+      'info'
+    )}
+
+    ${button('Book New Appointment', `${FRONTEND_URL}/patient/appointments/book`)}
+
+    <p style="color: #9ca3af; font-size: 13px; margin: 30px 0 0 0; text-align: center;">
+      Call us at ${clinic.phone || 'the clinic'} if you need assistance with booking.
+    </p>
+  `;
+
+  return baseTemplate(content, `Reminder: Please reschedule your appointment`);
+};
+
+// Treatment plan paused
+const treatmentPlanPaused = ({ patient, treatmentPlan, clinic, doctor, reason, expectedResumeDate }) => {
+  const content = `
+    <h2 style="color: #f59e0b; margin: 0 0 10px 0; font-size: 22px;">[PAUSED] Treatment Plan Temporarily Paused</h2>
+    <p style="color: #6b7280; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0;">
+      Hello <strong>${patient.first_name}</strong>, your treatment plan has been temporarily paused.
+    </p>
+
+    ${infoBox([
+      { label: 'Treatment', value: treatmentPlan.treatment_name },
+      { label: 'Progress', value: `${treatmentPlan.progress_percentage}% Complete` },
+      { label: 'Visits Completed', value: `${treatmentPlan.visits_completed} of ${treatmentPlan.total_visits_planned || '∞'}` },
+      { label: 'Paused Date', value: new Date().toLocaleDateString() },
+      { label: 'Expected Resume', value: expectedResumeDate ? new Date(expectedResumeDate).toLocaleDateString() : 'To be determined' }
+    ], 'Treatment Status')}
+
+    ${reason ? `
+      <h3 style="color: #1f2937; font-size: 16px; margin: 20px 0 10px 0;">Reason for Pause:</h3>
+      <div style="background-color: #fef3c7; padding: 16px; border-left: 3px solid #f59e0b; border-radius: 4px;">
+        <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;">${reason}</p>
+      </div>
+    ` : ''}
+
+    ${alertBox(
+      'Your treatment progress has been saved. You can resume when ready. No further appointments will be scheduled until treatment is resumed.',
+      'info'
+    )}
+
+    ${button('View Treatment Details', `${FRONTEND_URL}/patient/appointments/upcoming`)}
+
+    <p style="color: #9ca3af; font-size: 13px; margin: 30px 0 0 0; text-align: center;">
+      Contact ${clinic.name} at ${clinic.phone || clinic.email} when you're ready to resume.
+    </p>
+  `;
+
+  return baseTemplate(content, `Treatment plan paused: ${treatmentPlan.treatment_name}`);
+};
+
+// Treatment plan resumed
+const treatmentPlanResumed = ({ patient, treatmentPlan, clinic, doctor, nextSteps }) => {
+  const content = `
+    <h2 style="color: #10b981; margin: 0 0 10px 0; font-size: 22px;">[RESUMED] Treatment Plan Resumed</h2>
+    <p style="color: #6b7280; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0;">
+      Great news, <strong>${patient.first_name}</strong>! Your treatment plan has been resumed.
+    </p>
+
+    ${infoBox([
+      { label: 'Treatment', value: treatmentPlan.treatment_name },
+      { label: 'Current Progress', value: `${treatmentPlan.progress_percentage}% Complete` },
+      { label: 'Visits Completed', value: `${treatmentPlan.visits_completed} of ${treatmentPlan.total_visits_planned || '∞'}` },
+      { label: 'Remaining Visits', value: treatmentPlan.total_visits_planned ? `${treatmentPlan.total_visits_planned - treatmentPlan.visits_completed}` : 'Ongoing' },
+      { label: 'Doctor', value: doctor.name }
+    ], 'Treatment Status')}
+
+    <h3 style="color: #1f2937; font-size: 16px; margin: 30px 0 10px 0;">Next Steps:</h3>
+    ${nextSteps ? `
+      <div style="background-color: #d1fae5; padding: 16px; border-left: 3px solid #10b981; border-radius: 4px;">
+        <p style="margin: 0; color: #065f46; font-size: 14px; line-height: 1.6;">${nextSteps}</p>
+      </div>
+    ` : `
+      <ul style="color: #4b5563; font-size: 14px; line-height: 1.8; margin: 0; padding-left: 20px;">
+        <li>Schedule your next appointment as soon as possible</li>
+        <li>Continue with the treatment plan as originally outlined</li>
+        <li>Maintain regular attendance for best results</li>
+      </ul>
+    `}
+
+    ${alertBox(
+      'IMPORTANT: Please schedule your next visit within the next 7 days to stay on track with your treatment.',
+      'warning'
+    )}
+
+    ${button('Schedule Next Visit', `${FRONTEND_URL}/patient/appointments/book`)}
+
+    <p style="color: #9ca3af; font-size: 13px; margin: 30px 0 0 0; text-align: center;">
+      We're glad to continue your care journey!
+    </p>
+  `;
+
+  return baseTemplate(content, `Treatment resumed: ${treatmentPlan.treatment_name}`);
+};
+
+// Treatment plan cancelled
+const treatmentPlanCancelled = ({ patient, treatmentPlan, clinic, doctor, cancellation }) => {
+  const content = `
+    <h2 style="color: #ef4444; margin: 0 0 10px 0; font-size: 22px;">[CANCELLED] Treatment Plan Cancelled</h2>
+    <p style="color: #6b7280; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0;">
+      Hello <strong>${patient.first_name}</strong>, we're writing to inform you that your treatment plan has been cancelled.
+    </p>
+
+    ${infoBox([
+      { label: 'Treatment', value: treatmentPlan.treatment_name },
+      { label: 'Started', value: new Date(treatmentPlan.start_date).toLocaleDateString() },
+      { label: 'Progress', value: `${treatmentPlan.progress_percentage}% (${treatmentPlan.visits_completed} visits completed)` },
+      { label: 'Cancelled Date', value: new Date().toLocaleDateString() },
+      { label: 'Clinic', value: clinic.name }
+    ], 'Cancelled Treatment')}
+
+    <h3 style="color: #1f2937; font-size: 16px; margin: 20px 0 10px 0;">Reason for Cancellation:</h3>
+    <div style="background-color: #fee2e2; padding: 16px; border-left: 3px solid #ef4444; border-radius: 4px;">
+      <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.6;">${cancellation.reason}</p>
+    </div>
+
+    ${alertBox(
+      'All scheduled appointments for this treatment plan have been cancelled. Your treatment history has been saved.',
+      'info'
+    )}
+
+    <h3 style="color: #1f2937; font-size: 16px; margin: 30px 0 10px 0;">What This Means:</h3>
+    <ul style="color: #4b5563; font-size: 14px; line-height: 1.8; margin: 0; padding-left: 20px;">
+      <li>No further treatment appointments will be scheduled</li>
+      <li>Your treatment progress records are preserved</li>
+      <li>You can discuss alternative treatment options with your dentist</li>
+      <li>A new treatment plan can be created if needed</li>
+    </ul>
+
+    ${button('View Treatment History', `${FRONTEND_URL}/patient/appointments/upcoming`)}
+
+    <p style="color: #9ca3af; font-size: 13px; margin: 30px 0 0 0; text-align: center;">
+      Please contact ${clinic.name} at ${clinic.phone || clinic.email} if you have questions.
+    </p>
+  `;
+
+  return baseTemplate(content, `Treatment plan cancelled: ${treatmentPlan.treatment_name}`);
+};
+
+// Treatment plan visit cancelled (impacts treatment progress)
+const treatmentVisitCancelled = ({ patient, treatmentPlan, appointment, clinic, doctor, cancellation, impactNotes }) => {
+  const content = `
+    <h2 style="color: #f59e0b; margin: 0 0 10px 0; font-size: 22px;">[TREATMENT UPDATE] Treatment Visit Cancelled</h2>
+    <p style="color: #6b7280; font-size: 15px; line-height: 1.6; margin: 0 0 20px 0;">
+      Hello <strong>${patient.first_name}</strong>, your treatment plan visit has been cancelled.
+    </p>
+
+    ${infoBox([
+      { label: 'Treatment', value: treatmentPlan.treatment_name },
+      { label: 'Visit Number', value: cancellation.visit_number ? `Visit ${cancellation.visit_number} of ${treatmentPlan.total_visits_planned || '∞'}` : 'Scheduled visit' },
+      { label: 'Cancelled Date', value: new Date(appointment.date).toLocaleDateString() },
+      { label: 'Cancelled Time', value: appointment.time },
+      { label: 'Current Progress', value: `${treatmentPlan.progress_percentage}% (${treatmentPlan.visits_completed} visits completed)` }
+    ], 'Cancelled Visit Details')}
+
+    ${cancellation.reason ? `
+      <h3 style="color: #1f2937; font-size: 16px; margin: 20px 0 10px 0;">Cancellation Reason:</h3>
+      <div style="background-color: #fef3c7; padding: 16px; border-left: 3px solid #f59e0b; border-radius: 4px;">
+        <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;">${cancellation.reason}</p>
+      </div>
+    ` : ''}
+
+    ${alertBox(
+      `<strong>Treatment Impact:</strong> ${impactNotes || 'This cancellation may delay your treatment completion. Please reschedule as soon as possible to stay on track.'}`,
+      'warning'
+    )}
+
+    <h3 style="color: #1f2937; font-size: 16px; margin: 30px 0 10px 0;">IMPORTANT - Action Required:</h3>
+    <ul style="color: #4b5563; font-size: 14px; line-height: 1.8; margin: 0; padding-left: 20px;">
+      <li><strong>Reschedule immediately</strong> to avoid treatment delays</li>
+      <li>Treatment effectiveness depends on regular visits</li>
+      <li>Gaps in treatment may require restarting some procedures</li>
+      <li>Contact your dentist if you need to adjust your treatment plan</li>
+    </ul>
+
+    ${button('Reschedule Treatment Visit', `${FRONTEND_URL}/patient/appointments/book`)}
+
+    <p style="color: #9ca3af; font-size: 13px; margin: 30px 0 0 0; text-align: center;">
+      Questions? Call ${clinic.phone || clinic.email} - we're here to help!
+    </p>
+  `;
+
+  return baseTemplate(content, `Treatment visit cancelled - action needed`);
+};
+
 // staff emails
 const dailyStaffDigest = ({ staff, clinic, todayAppointments, stats, pendingActions }) => {
   const formatTime = (time) => {
@@ -838,10 +1114,21 @@ export default {
   appointmentCompleted,
   noShowNotice,
   
+  // 🆕 NEW: Appointment rescheduling
+  appointmentRescheduledByStaff,
+  appointmentRescheduledByPatient,
+  rescheduleReminder,
+  
   // Treatment plan emails
   treatmentPlanCreated,
   treatmentFollowUpReminder,
   treatmentPlanCompleted,
+  
+  // 🆕 NEW: Treatment plan status changes
+  treatmentPlanPaused,
+  treatmentPlanResumed,
+  treatmentPlanCancelled,
+  treatmentVisitCancelled,
   
   // Staff emails
   dailyStaffDigest,

@@ -567,8 +567,8 @@ export const useAppointmentManagement = (options = {}) => {
     rejectAppointment, 
     completeAppointment,
     markNoShow,
-    sendRescheduleReminder, // ✅ NEW
-    bulkApproveAppointments, // ✅ NEW
+    sendRescheduleReminder,
+    bulkApproveAppointments,
 
     // Cancellation
     ...cancellation,
@@ -577,6 +577,6 @@ export const useAppointmentManagement = (options = {}) => {
     refreshData: () => fetchAppointments({}, false),
     getAppointmentById: (id) => state.appointments.find(apt => apt.id === id),
     getAppointmentsByStatus: (status) => state.appointments.filter(apt => apt.status === status),
-    getTodaysAppointments: () => computedData.todayAppointments || [] // ✅ NEW
+    getTodaysAppointments: () => computedData.todayAppointments || []
   };
 };

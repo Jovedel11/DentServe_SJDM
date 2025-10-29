@@ -83,6 +83,7 @@ import {
 // Hooks
 import { useAppointmentManagement } from "@/hooks/appointment/useAppointmentManagement";
 import { useAppointmentRealtime } from "@/hooks/appointment/useAppointmentRealtime";
+import { useAppointmentReschedule } from "@/hooks/appointment/useAppointmentReschedule";
 import { useAuth } from "@/auth/context/AuthProvider";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -96,6 +97,8 @@ const ManageAppointments = () => {
     includeStats: true,
     autoRefresh: false,
   });
+
+  const rescheduleManager = useAppointmentReschedule();
 
   // Real-time
   useAppointmentRealtime({
@@ -129,6 +132,16 @@ const ManageAppointments = () => {
     diagnosisSummary: "",
     recommendedTreatmentName: "",
     recommendedVisits: "",
+  });
+
+  const [rescheduleModal, setRescheduleModal] = useState({
+    isOpen: false,
+    appointment: null,
+    selectedDate: "",
+    selectedTime: "",
+    reason: "",
+    availableSlots: [],
+    loadingSlots: false,
   });
 
   const [toast, setToast] = useState({
@@ -364,6 +377,114 @@ const ManageAppointments = () => {
     } else {
       showToast(result.error || "Failed to mark no-show", "error");
     }
+  };
+
+  // ✅ RESCHEDULE: Open modal and fetch available slots
+  const handleOpenReschedule = async (appointment) => {
+    setRescheduleModal({
+      isOpen: true,
+      appointment,
+      selectedDate: "",
+      selectedTime: "",
+      reason: "",
+      availableSlots: [],
+      loadingSlots: false,
+    });
+
+    // Auto-fetch next 7 days availability
+    setRescheduleModal((prev) => ({ ...prev, loadingSlots: true }));
+
+    const result = await rescheduleManager.getAvailableSlotsForReschedule(
+      appointment.id,
+      null,
+      [] // Will use default next 7 days
+    );
+
+    if (result.success) {
+      setRescheduleModal((prev) => ({
+        ...prev,
+        availableSlots: result.availability || [],
+        loadingSlots: false,
+      }));
+    } else {
+      showToast("Failed to load available slots", "error");
+      setRescheduleModal((prev) => ({ ...prev, loadingSlots: false }));
+    }
+  };
+
+  // ✅ RESCHEDULE: When date is selected, show available times
+  const handleDateSelect = async (date) => {
+    setRescheduleModal((prev) => ({
+      ...prev,
+      selectedDate: date,
+      selectedTime: "",
+      loadingSlots: true,
+    }));
+
+    // Fetch slots for specific date
+    const result = await rescheduleManager.getAvailableSlotsForReschedule(
+      rescheduleModal.appointment.id,
+      date
+    );
+
+    if (result.success && result.availability?.[0]) {
+      setRescheduleModal((prev) => ({
+        ...prev,
+        availableSlots: result.availability,
+        loadingSlots: false,
+      }));
+    } else {
+      showToast("Failed to load slots for this date", "error");
+      setRescheduleModal((prev) => ({ ...prev, loadingSlots: false }));
+    }
+  };
+
+  // ✅ RESCHEDULE: Confirm reschedule
+  const handleConfirmReschedule = async () => {
+    if (!rescheduleModal.selectedDate || !rescheduleModal.selectedTime) {
+      showToast("Please select a date and time", "error");
+      return;
+    }
+
+    const result = await rescheduleManager.rescheduleAppointment(
+      rescheduleModal.appointment.id,
+      rescheduleModal.selectedDate,
+      rescheduleModal.selectedTime,
+      rescheduleModal.reason || "Staff-initiated reschedule"
+    );
+
+    if (result.success) {
+      showToast(
+        `✅ Appointment rescheduled to ${new Date(
+          rescheduleModal.selectedDate
+        ).toLocaleDateString()} at ${rescheduleModal.selectedTime}`,
+        "success"
+      );
+      setRescheduleModal({
+        isOpen: false,
+        appointment: null,
+        selectedDate: "",
+        selectedTime: "",
+        reason: "",
+        availableSlots: [],
+        loadingSlots: false,
+      });
+      appointmentManager.refreshData();
+    } else {
+      showToast(result.error || "Failed to reschedule appointment", "error");
+    }
+  };
+
+  const closeRescheduleModal = () => {
+    setRescheduleModal({
+      isOpen: false,
+      appointment: null,
+      selectedDate: "",
+      selectedTime: "",
+      reason: "",
+      availableSlots: [],
+      loadingSlots: false,
+    });
   };
 
   // Check if appointment is past
@@ -958,6 +1079,48 @@ const ManageAppointments = () => {
               </AlertDescription>
             </Alert>
           )}
+          {isPending && (
+            <>
+              <Button
+                size="sm"
+                onClick={() =>
+                  setActionModal({
+                    type: "approve",
+                    isOpen: true,
+                    appointment,
+                  })
+                }
+                className="flex-1 bg-green-600 hover:bg-green-700"
+              >
+                <Check className="w-4 h-4 mr-1" />
+                Approve
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => handleOpenReschedule(appointment)}
+                className="flex-1"
+              >
+                <RefreshCw className="w-4 h-4 mr-1" />
+                Reschedule
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() =>
+                  setActionModal({
+                    type: "reject",
+                    isOpen: true,
+                    appointment,
+                  })
+                }
+                className="flex-1"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Reject
+              </Button>
+            </>
+          )}
         </CardHeader>
 
         <CardContent className="space-y-3">
@@ -1079,16 +1242,25 @@ const ManageAppointments = () => {
             )}
 
             {isConfirmed && !isPast && (
-              <div className="w-full flex items-center justify-center py-2 bg-blue-50 rounded-md border border-blue-200">
-                <Clock className="w-4 h-4 mr-2 text-blue-600" />
-                <span className="text-sm font-medium text-blue-700">
-                  Scheduled - Awaiting Visit
-                </span>
-              </div>
-            )}
-            {isConfirmed && !isPast && (
-              <div className="flex gap-2">
-                <SingleReminderButton appointment={appointment} />
+              <div className="w-full space-y-2">
+                <div className="flex items-center justify-center py-2 bg-blue-50 rounded-md border border-blue-200">
+                  <Clock className="w-4 h-4 mr-2 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-700">
+                    Scheduled - Awaiting Visit
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <SingleReminderButton appointment={appointment} />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleOpenReschedule(appointment)}
+                    className="flex-1"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-1" />
+                    Reschedule
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -1893,6 +2065,220 @@ const ManageAppointments = () => {
                         Confirm No Show
                       </>
                     )}
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        {/* ✅ NEW: Reschedule Modal */}
+        <Dialog
+          open={rescheduleModal.isOpen}
+          onOpenChange={closeRescheduleModal}
+        >
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl flex items-center gap-2">
+                <RefreshCw className="w-5 h-5 text-blue-600" />
+                Reschedule Appointment
+              </DialogTitle>
+              <DialogDescription>
+                {rescheduleModal.appointment && (
+                  <span className="text-sm">
+                    Patient:{" "}
+                    <strong>{rescheduleModal.appointment.patient?.name}</strong>
+                    {" • Current: "}
+                    {new Date(
+                      rescheduleModal.appointment.appointment_date
+                    ).toLocaleDateString()}
+                    {" at "}
+                    {rescheduleModal.appointment.appointment_time}
+                  </span>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 py-4">
+              {/* Info Alert */}
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription className="text-xs">
+                  Patient will receive an email notification about the new
+                  appointment time.
+                </AlertDescription>
+              </Alert>
+
+              {/* Reason Input */}
+              <div>
+                <Label htmlFor="rescheduleReason">
+                  Reason for Rescheduling (Optional)
+                </Label>
+                <Textarea
+                  id="rescheduleReason"
+                  value={rescheduleModal.reason}
+                  onChange={(e) =>
+                    setRescheduleModal({
+                      ...rescheduleModal,
+                      reason: e.target.value,
+                    })
+                  }
+                  placeholder="E.g., Doctor unavailable, clinic scheduling conflict..."
+                  rows={2}
+                  className="resize-none mt-2"
+                />
+              </div>
+
+              <Separator />
+
+              {/* Available Dates */}
+              {rescheduleModal.loadingSlots ? (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary mb-3" />
+                    <p className="text-sm text-muted-foreground">
+                      Loading available time slots...
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <div>
+                    <Label className="text-base font-semibold mb-3 block">
+                      Select New Date
+                    </Label>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {rescheduleModal.availableSlots.map((slot, idx) => {
+                        const date = new Date(slot.date);
+                        const isSelected =
+                          rescheduleModal.selectedDate === slot.date;
+                        const hasSlots =
+                          slot.slots?.filter((s) => s.available).length > 0;
+
+                        return (
+                          <Button
+                            key={idx}
+                            variant={isSelected ? "default" : "outline"}
+                            className={`h-auto py-3 flex flex-col items-center ${
+                              !hasSlots ? "opacity-50 cursor-not-allowed" : ""
+                            }`}
+                            onClick={() =>
+                              hasSlots && handleDateSelect(slot.date)
+                            }
+                            disabled={!hasSlots}
+                          >
+                            <Calendar className="w-4 h-4 mb-1" />
+                            <span className="font-semibold text-sm">
+                              {date.toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {date.toLocaleDateString("en-US", {
+                                weekday: "short",
+                              })}
+                            </span>
+                            {hasSlots ? (
+                              <Badge
+                                variant="secondary"
+                                className="mt-1 text-xs"
+                              >
+                                {slot.slots.filter((s) => s.available).length}{" "}
+                                slots
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="destructive"
+                                className="mt-1 text-xs"
+                              >
+                                Full
+                              </Badge>
+                            )}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Available Times */}
+                  {rescheduleModal.selectedDate && (
+                    <div>
+                      <Label className="text-base font-semibold mb-3 block">
+                        Select Time Slot
+                      </Label>
+                      <div className="grid grid-cols-3 md:grid-cols-4 gap-2">
+                        {rescheduleModal.availableSlots
+                          .find((s) => s.date === rescheduleModal.selectedDate)
+                          ?.slots?.filter((s) => s.available)
+                          .map((timeSlot, idx) => {
+                            const isSelected =
+                              rescheduleModal.selectedTime === timeSlot.time;
+                            return (
+                              <Button
+                                key={idx}
+                                variant={isSelected ? "default" : "outline"}
+                                className="h-auto py-3"
+                                onClick={() =>
+                                  setRescheduleModal({
+                                    ...rescheduleModal,
+                                    selectedTime: timeSlot.time,
+                                  })
+                                }
+                              >
+                                <Clock className="w-3 h-3 mr-1" />
+                                {timeSlot.time}
+                              </Button>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Selected Summary */}
+                  {rescheduleModal.selectedDate &&
+                    rescheduleModal.selectedTime && (
+                      <Alert className="bg-blue-50 border-blue-200">
+                        <CheckCircle className="h-4 w-4 text-blue-600" />
+                        <AlertDescription>
+                          <strong>New appointment time:</strong>{" "}
+                          {new Date(
+                            rescheduleModal.selectedDate
+                          ).toLocaleDateString("en-US", {
+                            weekday: "long",
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                          })}{" "}
+                          at {rescheduleModal.selectedTime}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                </>
+              )}
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={closeRescheduleModal}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleConfirmReschedule}
+                disabled={
+                  !rescheduleModal.selectedDate ||
+                  !rescheduleModal.selectedTime ||
+                  rescheduleManager.loading
+                }
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {rescheduleManager.loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Rescheduling...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Confirm Reschedule
                   </>
                 )}
               </Button>

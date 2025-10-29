@@ -1,16 +1,11 @@
 import { useState, useCallback } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
+import { 
+  notifyPatientAppointmentRescheduled,
+  notifyStaffAppointmentRescheduled 
+} from '@/services/emailService';
 
-/**
- * ✅ ENHANCED Appointment Rescheduling Hook
- * 
- * FEATURES:
- * - Patient can reschedule own appointments (with policy check)
- * - Staff can reschedule any appointment at their clinic
- * - Availability checking
- * - Suggest alternative dates
- */
 export const useAppointmentReschedule = () => {
   const { user, profile, isPatient, isStaff, isAdmin } = useAuth();
 
@@ -175,93 +170,172 @@ export const useAppointmentReschedule = () => {
     }
   }, []);
 
-  // ✅ Reschedule Appointment
-  const rescheduleAppointment = useCallback(async (
-    appointmentId,
-    newDate,
-    newTime,
-    rescheduleReason = ''
-  ) => {
+const rescheduleAppointment = useCallback(async (
+  appointmentId,
+  newDate,
+  newTime,
+  rescheduleReason = ''
+) => {
+  try {
+    setState(prev => ({ ...prev, loading: true, error: null }));
+
+    // ✅ Step 1: Verify can reschedule
+    const eligibility = await canRescheduleAppointment(appointmentId);
+    if (!eligibility.canReschedule) {
+      throw new Error(eligibility.reason);
+    }
+
+    const appointment = eligibility.appointment;
+
+    // ✅ Step 2: Call the DATABASE FUNCTION (not direct update!)
+    const { data: result, error: rpcError } = await supabase.rpc('reschedule_appointment', {
+      p_appointment_id: appointmentId,
+      p_new_date: newDate,
+      p_new_time: newTime,
+      p_reschedule_reason: rescheduleReason || null
+    });
+
+    if (rpcError) {
+      console.error('❌ RPC Error:', rpcError);
+      throw new Error(rpcError.message);
+    }
+
+    if (!result?.success) {
+      throw new Error(result?.error || 'Failed to reschedule appointment');
+    }
+
+    console.log('✅ Appointment rescheduled via database function:', result);
+
+    // ✅ Step 3: Send email notifications
     try {
-      setState(prev => ({ ...prev, loading: true, error: null }));
-
-      // Step 1: Verify can reschedule
-      const eligibility = await canRescheduleAppointment(appointmentId);
-      if (!eligibility.canReschedule) {
-        throw new Error(eligibility.reason);
-      }
-
-      const appointment = eligibility.appointment;
-
-      // Step 2: Check new slot availability
-      const { data: isAvailable, error: availError } = await supabase.rpc('check_appointment_availability', {
-        p_doctor_id: appointment.doctor_id,
-        p_appointment_date: newDate,
-        p_appointment_time: newTime,
-        p_duration_minutes: appointment.duration_minutes,
-        p_exclude_appointment_id: appointmentId
-      });
-
-      if (availError) throw availError;
-      if (!isAvailable) {
-        throw new Error('Selected time slot is no longer available');
-      }
-
-      // ✅ Step 3: Update with staff/patient context
-      const updateNote = `Rescheduled from ${appointment.appointment_date} ${appointment.appointment_time}. Reason: ${rescheduleReason || (isStaff ? 'Staff adjustment' : 'Patient request')}. By: ${isStaff ? 'Staff' : 'Patient'}`;
-
-      const { data: updatedAppointment, error: updateError } = await supabase
+      // Fetch complete appointment data for email
+      const { data: fullAppointment, error: fetchError } = await supabase
         .from('appointments')
-        .update({
-          appointment_date: newDate,
-          appointment_time: newTime,
-          notes: appointment.notes 
-            ? `${appointment.notes}\n---\n${updateNote}` 
-            : updateNote,
-          updated_at: new Date().toISOString()
-        })
+        .select(`
+          *,
+          patient:users!appointments_patient_id_fkey (
+            email,
+            phone,
+            user_profiles!inner (
+              first_name,
+              last_name
+            )
+          ),
+          clinic:clinics!inner (
+            name,
+            email,
+            phone,
+            address
+          ),
+          doctor:doctors (
+            first_name,
+            last_name
+          )
+        `)
         .eq('id', appointmentId)
-        .select()
         .single();
 
-      if (updateError) throw updateError;
+      if (fetchError) {
+        console.warn('⚠️ Could not fetch appointment for email:', fetchError);
+      } else if (fullAppointment) {
+        if (isStaff || isAdmin) {
+          // Staff rescheduled → notify patient
+          const emailResult = await notifyPatientAppointmentRescheduled({
+            patient: {
+              email: fullAppointment.patient?.email,
+              first_name: fullAppointment.patient?.user_profiles?.first_name
+            },
+            appointment: {
+              date: newDate,
+              time: newTime
+            },
+            clinic: {
+              name: fullAppointment.clinic?.name,
+              phone: fullAppointment.clinic?.phone,
+              email: fullAppointment.clinic?.email,
+              address: fullAppointment.clinic?.address
+            },
+            doctor: {
+              name: fullAppointment.doctor 
+                ? `Dr. ${fullAppointment.doctor.first_name} ${fullAppointment.doctor.last_name}`
+                : 'Doctor'
+            },
+            oldDate: result.data.old_date,
+            oldTime: result.data.old_time,
+            newDate,
+            newTime,
+            reason: rescheduleReason || null
+          });
 
-      // Step 4: Notification (optional - if function exists)
-      try {
-        await supabase.rpc('create_appointment_notification', {
-          p_user_id: appointment.patient_id,
-          p_notification_type: 'appointment_confirmed',
-          p_appointment_id: appointmentId,
-          p_custom_message: `Appointment rescheduled to ${newDate} at ${newTime}`
-        });
-      } catch (notifError) {
-        console.warn('Notification failed:', notifError);
-      }
+          if (!emailResult.success) {
+            console.warn('⚠️ Failed to send reschedule email to patient:', emailResult.error);
+          } else {
+            console.log('✅ Patient email sent successfully');
+          }
+        } else if (isPatient) {
+          // Patient rescheduled → notify staff
+          const emailResult = await notifyStaffAppointmentRescheduled({
+            staff_email: fullAppointment.clinic?.email,
+            patient: {
+              name: `${fullAppointment.patient?.user_profiles?.first_name} ${fullAppointment.patient?.user_profiles?.last_name}`,
+              email: fullAppointment.patient?.email
+            },
+            appointment: {
+              date: newDate,
+              time: newTime
+            },
+            clinic: {
+              name: fullAppointment.clinic?.name
+            },
+            doctor: {
+              name: fullAppointment.doctor 
+                ? `Dr. ${fullAppointment.doctor.first_name} ${fullAppointment.doctor.last_name}`
+                : 'Doctor'
+            },
+            oldDate: result.data.old_date,
+            oldTime: result.data.old_time,
+            newDate,
+            newTime,
+            reason: rescheduleReason || null
+          });
 
-      setState(prev => ({ ...prev, loading: false }));
-
-      return {
-        success: true,
-        appointment: updatedAppointment,
-        message: 'Appointment rescheduled successfully',
-        oldDateTime: {
-          date: appointment.appointment_date,
-          time: appointment.appointment_time
-        },
-        newDateTime: {
-          date: newDate,
-          time: newTime
+          if (!emailResult.success) {
+            console.warn('⚠️ Failed to send reschedule email to staff:', emailResult.error);
+          } else {
+            console.log('✅ Staff email sent successfully');
+          }
         }
-      };
-
-    } catch (err) {
-      const errorMsg = err.message || 'Failed to reschedule appointment';
-      setState(prev => ({ ...prev, loading: false, error: errorMsg }));
-      return { success: false, error: errorMsg };
+      }
+    } catch (emailError) {
+      // Email errors shouldn't break the reschedule flow
+      console.error('❌ Email notification error (non-fatal):', emailError);
     }
-  }, [canRescheduleAppointment, isStaff]);
 
-  // ✅ STAFF: Suggest Reschedule Options
+    setState(prev => ({ ...prev, loading: false }));
+
+    return {
+      success: true,
+      appointment: result.data,
+      message: result.message || 'Appointment rescheduled successfully',
+      oldDateTime: {
+        date: result.data.old_date,
+        time: result.data.old_time
+      },
+      newDateTime: {
+        date: newDate,
+        time: newTime
+      }
+    };
+
+  } catch (err) {
+    const errorMsg = err.message || 'Failed to reschedule appointment';
+    setState(prev => ({ ...prev, loading: false, error: errorMsg }));
+    console.error('❌ Reschedule error:', err);
+    return { success: false, error: errorMsg };
+  }
+}, [canRescheduleAppointment, isStaff, isAdmin, isPatient]);
+
+  // Suggest Reschedule Options
   const suggestRescheduleOptions = useCallback(async (appointmentId, numberOfDays = 7) => {
     if (!isStaff && !isAdmin) {
       return { success: false, error: 'Only staff can suggest reschedule options' };

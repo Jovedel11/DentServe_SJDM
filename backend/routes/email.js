@@ -711,6 +711,305 @@ router.post('/partnership-approved', emailLimiter, async (req, res) => {
   }
 });
 
+// 🆕 Appointment rescheduled by staff
+router.post('/appointment-rescheduled-by-staff', emailLimiter, async (req, res) => {
+  try {
+    const { patient, appointment, clinic, doctor, oldDate, oldTime, newDate, newTime, reason } = req.body;
+
+    if (!patient?.email || !appointment || !clinic || !doctor) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    const html = emailTemplates.appointmentRescheduledByStaff({
+      patient,
+      appointment,
+      clinic,
+      doctor,
+      oldDate,
+      oldTime,
+      newDate,
+      newTime,
+      reason: reason || null
+    });
+
+    const result = await sendEmail({
+      to: patient.email,
+      subject: `⏰ Appointment Rescheduled - ${clinic.name}`,
+      html,
+      replyTo: clinic.email || null
+    });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Error sending reschedule notification:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 🆕 Appointment rescheduled by patient
+router.post('/appointment-rescheduled-by-patient', emailLimiter, async (req, res) => {
+  try {
+    const { staff_email, patient, appointment, clinic, doctor, oldDate, oldTime, newDate, newTime, reason } = req.body;
+
+    if (!staff_email || !patient || !appointment || !clinic || !doctor) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    const html = emailTemplates.appointmentRescheduledByPatient({
+      staff_email,
+      patient,
+      appointment,
+      clinic,
+      doctor,
+      oldDate,
+      oldTime,
+      newDate,
+      newTime,
+      reason: reason || null
+    });
+
+    const result = await sendEmail({
+      to: staff_email,
+      subject: `📅 Patient Rescheduled: ${patient.name}`,
+      html
+    });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Error sending reschedule notification:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 🆕 Reschedule reminder
+router.post('/reschedule-reminder', reminderLimiter, async (req, res) => {
+  try {
+    const { patient, appointment, clinic, doctor, cancellation, suggestedDates } = req.body;
+
+    if (!patient?.email || !appointment || !clinic || !doctor) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    const html = emailTemplates.rescheduleReminder({
+      patient,
+      appointment,
+      clinic,
+      doctor,
+      cancellation,
+      suggestedDates: suggestedDates || []
+    });
+
+    const result = await sendEmail({
+      to: patient.email,
+      subject: `📅 Reminder: Please Reschedule Your Appointment`,
+      html,
+      replyTo: clinic.email || null
+    });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Error sending reschedule reminder:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 🆕 Treatment plan paused
+router.post('/treatment-plan-paused', emailLimiter, async (req, res) => {
+  try {
+    const { patient, treatmentPlan, clinic, doctor, reason, expectedResumeDate } = req.body;
+
+    if (!patient?.email || !treatmentPlan || !clinic || !doctor) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    const html = emailTemplates.treatmentPlanPaused({
+      patient,
+      treatmentPlan,
+      clinic,
+      doctor,
+      reason: reason || null,
+      expectedResumeDate: expectedResumeDate || null
+    });
+
+    const result = await sendEmail({
+      to: patient.email,
+      subject: `⏸️ Treatment Plan Paused: ${treatmentPlan.treatment_name}`,
+      html,
+      replyTo: clinic.email || null
+    });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Error sending pause notification:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 🆕 Treatment plan resumed
+router.post('/treatment-plan-resumed', emailLimiter, async (req, res) => {
+  try {
+    const { patient, treatmentPlan, clinic, doctor, nextSteps } = req.body;
+
+    if (!patient?.email || !treatmentPlan || !clinic || !doctor) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    const html = emailTemplates.treatmentPlanResumed({
+      patient,
+      treatmentPlan,
+      clinic,
+      doctor,
+      nextSteps: nextSteps || null
+    });
+
+    const result = await sendEmail({
+      to: patient.email,
+      subject: `▶️ Treatment Plan Resumed: ${treatmentPlan.treatment_name}`,
+      html,
+      replyTo: clinic.email || null
+    });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Error sending resume notification:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 🆕 Treatment plan cancelled
+router.post('/treatment-plan-cancelled', emailLimiter, async (req, res) => {
+  try {
+    const { patient, treatmentPlan, clinic, doctor, cancellation } = req.body;
+
+    if (!patient?.email || !treatmentPlan || !clinic || !doctor || !cancellation) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    const html = emailTemplates.treatmentPlanCancelled({
+      patient,
+      treatmentPlan,
+      clinic,
+      doctor,
+      cancellation
+    });
+
+    const result = await sendEmail({
+      to: patient.email,
+      subject: `Treatment Plan Cancelled: ${treatmentPlan.treatment_name}`,
+      html,
+      replyTo: clinic.email || null
+    });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Error sending cancellation notification:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 🆕 Treatment visit cancelled (impacts treatment)
+router.post('/treatment-visit-cancelled', emailLimiter, async (req, res) => {
+  try {
+    const { patient, treatmentPlan, appointment, clinic, doctor, cancellation, impactNotes } = req.body;
+
+    if (!patient?.email || !treatmentPlan || !appointment || !clinic || !doctor || !cancellation) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    const html = emailTemplates.treatmentVisitCancelled({
+      patient,
+      treatmentPlan,
+      appointment,
+      clinic,
+      doctor,
+      cancellation,
+      impactNotes: impactNotes || null
+    });
+
+    const result = await sendEmail({
+      to: patient.email,
+      subject: `⚠️ Treatment Visit Cancelled - Action Needed`,
+      html,
+      replyTo: clinic.email || null
+    });
+
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Error sending treatment visit cancellation:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // bulk reminder endpoint (for staff to send multiple)
 router.post('/bulk-appointment-reminders', reminderLimiter, async (req, res) => {
   try {

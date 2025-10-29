@@ -2,7 +2,13 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useAuth } from '@/auth/context/AuthProvider';
 import { supabase } from '@/lib/supabaseClient';
 import { useTreatmentPlanFollowUp } from './useTreatmentFollowUp';
-import { notifyPatientTreatmentPlanCreated, notifyPatientTreatmentCompleted } from '@/services/emailService';
+import { 
+  notifyPatientTreatmentPlanCreated,
+  notifyPatientTreatmentCompleted,
+  notifyPatientTreatmentPlanPaused,    
+  notifyPatientTreatmentPlanResumed,   
+  notifyPatientTreatmentPlanCancelled 
+} from '@/services/emailService';
 
 export const useTreatmentPlans = () => {
   const { user, profile, isPatient, isStaff, isAdmin } = useAuth();
@@ -210,7 +216,7 @@ export const useTreatmentPlans = () => {
   }, []);
 
   // Update Treatment Plan Status
-  const updateTreatmentPlanStatus = useCallback(async (treatmentPlanId, status, notes = null) => {
+  const updateTreatmentPlanStatus = useCallback(async (treatmentPlanId, status, notes = null, additionalData = {}) => {
     if (!isStaff && !isAdmin) {
       return { success: false, error: 'Only staff can update treatment plans' };
     }
@@ -232,6 +238,7 @@ export const useTreatmentPlans = () => {
       if (status === 'completed') {
         updateData.actual_end_date = new Date().toISOString().split('T')[0];
         updateData.progress_percentage = 100;
+        updateData.completed_at = new Date().toISOString();
       } else if (status === 'cancelled') {
         updateData.actual_end_date = new Date().toISOString().split('T')[0];
       }
@@ -244,12 +251,18 @@ export const useTreatmentPlans = () => {
         .select(`
           *,
           patient:patients!inner (
+            user_id,
             user_profiles!inner (
               email,
-              first_name
+              first_name,
+              last_name
             )
           ),
-          clinic:clinics!inner (name),
+          clinic:clinics!inner (
+            name,
+            phone,
+            email
+          ),
           doctor:doctors (
             first_name,
             last_name
@@ -261,30 +274,88 @@ export const useTreatmentPlans = () => {
   
       setState(prev => ({ ...prev, loading: false }));
   
-      // ✅ STEP 3: Send completion email ONCE (not twice!)
-      if (status === 'completed' && data) {
-        const emailResult = await notifyPatientTreatmentCompleted({
-          patient: {
-            email: data.patient?.user_profiles?.email,
-            first_name: data.patient?.user_profiles?.first_name
-          },
-          treatmentPlan: {
-            treatment_name: data.treatment_name,
-            start_date: data.start_date,
-            completed_at: data.completed_at || data.actual_end_date,
-            visits_completed: data.visits_completed,
-            treatment_notes: notes || data.treatment_notes
-          },
-          clinic: {
-            name: data.clinic?.name
-          },
-          doctor: {
-            name: data.doctor ? `Dr. ${data.doctor.first_name} ${data.doctor.last_name}` : 'Doctor'
+      // ✅ STEP 3: Send appropriate email based on status change
+      if (data) {
+        try {
+          const emailPayload = {
+            patient: {
+              email: data.patient?.user_profiles?.email,
+              first_name: data.patient?.user_profiles?.first_name
+            },
+            treatmentPlan: {
+              treatment_name: data.treatment_name,
+              treatment_category: data.treatment_category,
+              progress_percentage: data.progress_percentage,
+              visits_completed: data.visits_completed,
+              total_visits_planned: data.total_visits_planned,
+              start_date: data.start_date,
+              expected_end_date: data.expected_end_date,
+              actual_end_date: data.actual_end_date,
+              completed_at: data.completed_at,
+              treatment_notes: notes || data.treatment_notes
+            },
+            clinic: {
+              name: data.clinic?.name,
+              phone: data.clinic?.phone,
+              email: data.clinic?.email
+            },
+            doctor: {
+              name: data.doctor 
+                ? `Dr. ${data.doctor.first_name} ${data.doctor.last_name}`
+                : 'Doctor'
+            }
+          };
+  
+          let emailResult;
+  
+          switch(status) {
+            case 'completed':
+              emailResult = await notifyPatientTreatmentCompleted(emailPayload);
+              break;
+  
+            case 'paused':
+              emailResult = await notifyPatientTreatmentPlanPaused({
+                ...emailPayload,
+                reason: notes || additionalData.pauseReason || null,
+                expectedResumeDate: additionalData.expectedResumeDate || null
+              });
+              break;
+  
+            case 'active': {
+              // Check if this is a resume (was previously paused)
+              const { data: previousData } = await supabase
+                .from('treatment_plans')
+                .select('status')
+                .eq('id', treatmentPlanId)
+                .single();
+  
+              if (previousData?.status === 'paused') {
+                emailResult = await notifyPatientTreatmentPlanResumed({
+                  ...emailPayload,
+                  nextSteps: notes || additionalData.nextSteps || null
+                });
+              }
+              break;
+            }
+  
+            case 'cancelled':
+              emailResult = await notifyPatientTreatmentPlanCancelled({
+                ...emailPayload,
+                cancellation: {
+                  reason: notes || 'Treatment plan cancelled by clinic',
+                  cancelled_at: new Date().toISOString()
+                }
+              });
+              break;
           }
-        });
-      
-        if (!emailResult.success) {
-          console.warn('⚠️ Failed to send treatment completion email:', emailResult.error);
+  
+          if (emailResult && !emailResult.success) {
+            console.warn(`⚠️ Failed to send ${status} email:`, emailResult.error);
+          }
+  
+        } catch (emailError) {
+          // Email errors shouldn't break the status update
+          console.error('❌ Email notification error:', emailError);
         }
       }
   

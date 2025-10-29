@@ -308,6 +308,151 @@ export const sendBulkAppointmentReminders = async (appointments) => {
   });
 };
 
+// 🆕 Notify patient appointment rescheduled by staff
+export const notifyPatientAppointmentRescheduled = async ({
+  patient,
+  appointment,
+  clinic,
+  doctor,
+  oldDate,
+  oldTime,
+  newDate,
+  newTime,
+  reason = null
+}) => {
+  return sendEmail('appointment-rescheduled-by-staff', {
+    patient,
+    appointment,
+    clinic,
+    doctor,
+    oldDate,
+    oldTime,
+    newDate,
+    newTime,
+    reason
+  });
+};
+
+// 🆕 Notify staff appointment rescheduled by patient
+export const notifyStaffAppointmentRescheduled = async ({
+  staff_email,
+  patient,
+  appointment,
+  clinic,
+  doctor,
+  oldDate,
+  oldTime,
+  newDate,
+  newTime,
+  reason = null
+}) => {
+  return sendEmail('appointment-rescheduled-by-patient', {
+    staff_email,
+    patient,
+    appointment,
+    clinic,
+    doctor,
+    oldDate,
+    oldTime,
+    newDate,
+    newTime,
+    reason
+  });
+};
+
+// 🆕 Send reschedule reminder to patient
+export const sendRescheduleReminder = async ({
+  patient,
+  appointment,
+  clinic,
+  doctor,
+  cancellation,
+  suggestedDates = []
+}) => {
+  return sendEmail('reschedule-reminder', {
+    patient,
+    appointment,
+    clinic,
+    doctor,
+    cancellation,
+    suggestedDates
+  });
+};
+
+// 🆕 Notify patient treatment plan paused
+export const notifyPatientTreatmentPlanPaused = async ({
+  patient,
+  treatmentPlan,
+  clinic,
+  doctor,
+  reason = null,
+  expectedResumeDate = null
+}) => {
+  return sendEmail('treatment-plan-paused', {
+    patient,
+    treatmentPlan,
+    clinic,
+    doctor,
+    reason,
+    expectedResumeDate
+  });
+};
+
+// 🆕 Notify patient treatment plan resumed
+export const notifyPatientTreatmentPlanResumed = async ({
+  patient,
+  treatmentPlan,
+  clinic,
+  doctor,
+  nextSteps = null
+}) => {
+  return sendEmail('treatment-plan-resumed', {
+    patient,
+    treatmentPlan,
+    clinic,
+    doctor,
+    nextSteps
+  });
+};
+
+// 🆕 Notify patient treatment plan cancelled
+export const notifyPatientTreatmentPlanCancelled = async ({
+  patient,
+  treatmentPlan,
+  clinic,
+  doctor,
+  cancellation
+}) => {
+  return sendEmail('treatment-plan-cancelled', {
+    patient,
+    treatmentPlan,
+    clinic,
+    doctor,
+    cancellation
+  });
+};
+
+// 🆕 Notify patient treatment visit cancelled (impacts treatment)
+export const notifyPatientTreatmentVisitCancelled = async ({
+  patient,
+  treatmentPlan,
+  appointment,
+  clinic,
+  doctor,
+  cancellation,
+  impactNotes = null
+}) => {
+  return sendEmail('treatment-visit-cancelled', {
+    patient,
+    treatmentPlan,
+    appointment,
+    clinic,
+    doctor,
+    cancellation,
+    impactNotes
+  });
+};
+
 export default {
   notifyStaffNewAppointment,
   notifyPatientAppointmentConfirmed,
@@ -317,9 +462,19 @@ export default {
   notifyPatientAppointmentCancelled,
   notifyPatientAppointmentCompleted,
   notifyPatientNoShow,
+
+  notifyPatientAppointmentRescheduled,
+  notifyStaffAppointmentRescheduled,
+  sendRescheduleReminder,
+  // Treatment plans
   notifyPatientTreatmentPlanCreated,
   sendTreatmentFollowUpReminder,
-  notifyPatientTreatmentCompleted,
+
+  notifyPatientTreatmentPlanPaused,
+  notifyPatientTreatmentPlanResumed,
+  notifyPatientTreatmentPlanCancelled,
+  notifyPatientTreatmentVisitCancelled,
+  // Other
   sendDailyStaffDigest,
   sendBulkAppointmentReminders,
   staffInvitation,

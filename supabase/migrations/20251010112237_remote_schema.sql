@@ -6798,7 +6798,7 @@ WHEN 'patient' THEN
             a.id, a.appointment_date, a.appointment_time, a.status, 
             a.symptoms, a.notes, a.duration_minutes, a.created_at,
             a.booking_type, a.consultation_fee_charged,  -- ✅ ADDED
-            c.id as clinic_id, c.name as clinic_name, c.address as clinic_address, c.phone as clinic_phone,
+            c.id as clinic_id, c.name as clinic_name, c.address as clinic_address, c.phone as clinic_phone, c.email as clinic_email,
             d.id as doctor_id, d.specialization, d.first_name as doctor_first_name, d.last_name as doctor_last_name,
             can_cancel_appointment(a.id) as can_cancel
         FROM appointments a
@@ -6875,7 +6875,8 @@ appointment_services_agg AS (
                         'id', pa.clinic_id,
                         'name', pa.clinic_name,
                         'address', pa.clinic_address,
-                        'phone', pa.clinic_phone
+                        'phone', pa.clinic_phone,
+                        'email', pa.clinic_email
                     ),
                     'doctor', CASE 
                         WHEN pa.doctor_id IS NOT NULL THEN
@@ -13479,159 +13480,212 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.send_reschedule_reminder(p_appointment_id uuid, p_reason text, p_suggested_dates date[] DEFAULT NULL::date[])
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public', 'pg_catalog', 'extensions'
-AS $function$
+CREATE OR REPLACE FUNCTION public.reschedule_appointment(
+    p_appointment_id UUID,
+    p_new_date DATE,
+    p_new_time TIME,
+    p_reschedule_reason TEXT DEFAULT NULL
+) RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
 DECLARE
     current_context JSONB;
-    appointment_record RECORD;
-    v_current_role TEXT;
-    clinic_id_val UUID;
     current_user_id UUID;
-    patient_contact RECORD;
-    reminder_message TEXT;
+    current_user_role TEXT;
+    appointment_record RECORD;
+    old_date DATE;
+    old_time TIME;
+    availability_check BOOLEAN;
+    clinic_id_val UUID;
+    cancellation_policy_hours INTEGER;
+    hours_until_old_appointment NUMERIC;
 BEGIN
-    --  Get current user context
+    -- Get context
     current_context := get_current_user_context();
-    
     IF NOT (current_context->>'authenticated')::boolean THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Authentication required');
+        RETURN current_context;
     END IF;
     
-    v_current_role := current_context->>'user_type';
     current_user_id := (current_context->>'user_id')::UUID;
+    current_user_role := current_context->>'user_type';
     
-    --  Only staff can send reschedule reminders
-    IF v_current_role != 'staff' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Access denied: Staff only');
+    -- Validate inputs
+    IF p_appointment_id IS NULL OR p_new_date IS NULL OR p_new_time IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Missing required parameters');
     END IF;
     
-    clinic_id_val := (current_context->>'clinic_id')::UUID;
-    
-    --  Input validation
-    IF p_appointment_id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Appointment ID is required');
-    END IF;
-    
-    IF p_reason IS NULL OR TRIM(p_reason) = '' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Reason is required');
-    END IF;
-    
-    --  Get appointment details with patient info
+    -- Get appointment details
     SELECT 
-        a.id,
-        a.patient_id,
-        a.clinic_id,
-        a.appointment_date,
-        a.appointment_time,
-        a.status,
+        a.*,
+        c.cancellation_policy_hours,
+        c.id as clinic_id,
         c.name as clinic_name,
-        c.phone as clinic_phone,
         c.email as clinic_email,
+        c.phone as clinic_phone,
         up.first_name || ' ' || up.last_name as patient_name,
         u.email as patient_email,
-        u.phone as patient_phone,
-        COALESCE(d.first_name || ' ' || d.last_name, 'Dr. ' || d.specialization) as doctor_name
+        d.first_name || ' ' || d.last_name as doctor_name,
+        EXTRACT(EPOCH FROM 
+            ((a.appointment_date + a.appointment_time) - NOW())
+        ) / 3600 as hours_until_appointment
     INTO appointment_record
     FROM appointments a
     JOIN clinics c ON a.clinic_id = c.id
     JOIN users u ON a.patient_id = u.id
     JOIN user_profiles up ON u.id = up.user_id
     LEFT JOIN doctors d ON a.doctor_id = d.id
-    WHERE a.id = p_appointment_id
-    AND a.clinic_id = clinic_id_val;
+    WHERE a.id = p_appointment_id;
     
     IF NOT FOUND THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Appointment not found or access denied');
+        RETURN jsonb_build_object('success', false, 'error', 'Appointment not found');
     END IF;
     
-    --  Verify appointment is cancelled (can only send reminder for cancelled appointments)
-    IF appointment_record.status != 'cancelled' THEN
+    -- Access control
+    CASE current_user_role
+        WHEN 'patient' THEN
+            IF appointment_record.patient_id != current_user_id THEN
+                RETURN jsonb_build_object('success', false, 'error', 'Access denied');
+            END IF;
+            
+            -- Check cancellation policy for patients
+            hours_until_old_appointment := appointment_record.hours_until_appointment;
+            IF hours_until_old_appointment < COALESCE(appointment_record.cancellation_policy_hours, 24) THEN
+                RETURN jsonb_build_object(
+                    'success', false,
+                    'error', format('Cannot reschedule within %s hours of appointment', 
+                                  COALESCE(appointment_record.cancellation_policy_hours, 24))
+                );
+            END IF;
+        WHEN 'staff' THEN
+            IF appointment_record.clinic_id != (current_context->>'clinic_id')::UUID THEN
+                RETURN jsonb_build_object('success', false, 'error', 'Access denied');
+            END IF;
+        WHEN 'admin' THEN
+            NULL; -- Admin can reschedule anything
+        ELSE
+            RETURN jsonb_build_object('success', false, 'error', 'Insufficient permissions');
+    END CASE;
+    
+    -- Validate appointment status
+    IF appointment_record.status NOT IN ('pending', 'confirmed') THEN
         RETURN jsonb_build_object(
-            'success', false, 
-            'error', format('Can only send reschedule reminder for cancelled appointments. Current status: %s', appointment_record.status)
+            'success', false,
+            'error', format('Cannot reschedule appointment with status: %s', appointment_record.status)
         );
     END IF;
     
-    --  Build reminder message
-    reminder_message := format(
-        'Your appointment on %s at %s was cancelled. Reason: %s. You can reschedule your appointment at your convenience. Please contact us at %s or book online.',
-        appointment_record.appointment_date::text,
-        appointment_record.appointment_time::text,
-        p_reason,
-        COALESCE(appointment_record.clinic_phone, appointment_record.clinic_email, 'the clinic')
+    -- Validate new date is in future
+    IF p_new_date < CURRENT_DATE OR 
+       (p_new_date = CURRENT_DATE AND p_new_time <= CURRENT_TIME) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'New appointment time must be in the future');
+    END IF;
+    
+    -- Check doctor availability for new slot
+    availability_check := check_appointment_availability(
+        appointment_record.doctor_id,
+        p_new_date,
+        p_new_time,
+        appointment_record.duration_minutes,
+        p_appointment_id
     );
     
-    --  Add suggested dates if provided
-    IF p_suggested_dates IS NOT NULL AND array_length(p_suggested_dates, 1) > 0 THEN
-        reminder_message := reminder_message || E'\n\nSuggested available dates: ' || 
-            array_to_string(p_suggested_dates, ', ');
+    IF NOT availability_check THEN
+        RETURN jsonb_build_object(
+            'success', false,
+            'error', 'The requested time slot is not available',
+            'data', jsonb_build_object('suggested_action', 'choose_different_time')
+        );
     END IF;
     
-    --  Create notification for patient
+    -- Store old values
+    old_date := appointment_record.appointment_date;
+    old_time := appointment_record.appointment_time;
+    
+    -- Transaction: Update appointment
     BEGIN
-        INSERT INTO notifications (
-            user_id,
-            notification_type,
-            title,
-            message,
-            related_appointment_id,
-            scheduled_for,
-            created_at
-        ) VALUES (
-            appointment_record.patient_id,
-            'appointment_cancelled',
-            'Appointment Cancellation - Reschedule Available',
-            reminder_message,
-            p_appointment_id,
-            NOW(),
-            NOW()
-        );
+        -- Update appointment
+        UPDATE appointments
+        SET 
+            appointment_date = p_new_date,
+            appointment_time = p_new_time,
+            notes = COALESCE(notes, '') || 
+                   E'\n---\nRESCHEDULED: ' || NOW()::text ||
+                   E'\nFrom: ' || old_date || ' ' || old_time ||
+                   E'\nTo: ' || p_new_date || ' ' || p_new_time ||
+                   E'\nBy: ' || current_user_role ||
+                   CASE 
+                       WHEN p_reschedule_reason IS NOT NULL THEN 
+                           E'\nReason: ' || p_reschedule_reason
+                       ELSE ''
+                   END,
+            updated_at = NOW()
+        WHERE id = p_appointment_id;
         
-        --  Log analytics event
-        INSERT INTO analytics_events (
-            clinic_id,
-            user_id,
-            event_type,
-            metadata
-        ) VALUES (
-            clinic_id_val,
-            current_user_id,
-            'reschedule_reminder_sent',
-            jsonb_build_object(
+        -- Update treatment plan next visit date if linked
+        UPDATE treatment_plans
+        SET 
+            next_visit_date = p_new_date,
+            updated_at = NOW()
+        WHERE next_visit_appointment_id = p_appointment_id;
+        
+        -- Create notifications based on who rescheduled
+        IF current_user_role = 'patient' THEN
+            -- Notify staff
+            INSERT INTO notifications (user_id, notification_type, title, message, related_appointment_id)
+            SELECT 
+                u.id,
+                'appointment_cancelled'::notification_type,
+                'Patient Rescheduled Appointment',
+                format('Patient %s rescheduled appointment from %s %s to %s %s. Reason: %s',
+                       appointment_record.patient_name,
+                       old_date, old_time,
+                       p_new_date, p_new_time,
+                       COALESCE(p_reschedule_reason, 'Not provided')),
+                p_appointment_id
+            FROM staff_profiles sp
+            JOIN user_profiles up ON sp.user_profile_id = up.id
+            JOIN users u ON up.user_id = u.id
+            WHERE sp.clinic_id = appointment_record.clinic_id AND sp.is_active = true;
+        ELSE
+            -- Notify patient
+            INSERT INTO notifications (user_id, notification_type, title, message, related_appointment_id)
+            VALUES (
+                appointment_record.patient_id,
+                'appointment_confirmed'::notification_type,
+                'Appointment Rescheduled',
+                format('Your appointment has been rescheduled from %s %s to %s %s. %s',
+                       old_date, old_time,
+                       p_new_date, p_new_time,
+                       COALESCE('Reason: ' || p_reschedule_reason, '')),
+                p_appointment_id
+            );
+        END IF;
+        
+        RETURN jsonb_build_object(
+            'success', true,
+            'message', 'Appointment rescheduled successfully',
+            'data', jsonb_build_object(
                 'appointment_id', p_appointment_id,
-                'patient_id', appointment_record.patient_id,
-                'suggested_dates_count', COALESCE(array_length(p_suggested_dates, 1), 0)
+                'old_date', old_date,
+                'old_time', old_time,
+                'new_date', p_new_date,
+                'new_time', p_new_time,
+                'rescheduled_by', current_user_role,
+                'rescheduled_at', NOW(),
+                'clinic_name', appointment_record.clinic_name,
+                'doctor_name', appointment_record.doctor_name,
+                'patient_name', appointment_record.patient_name,
+                'patient_email', appointment_record.patient_email
             )
         );
         
     EXCEPTION WHEN OTHERS THEN
-        RAISE LOG 'Failed to create reschedule reminder notification: %', SQLERRM;
-        RETURN jsonb_build_object('success', false, 'error', 'Failed to send notification: ' || SQLERRM);
+        RAISE LOG 'reschedule_appointment error: %', SQLERRM;
+        RETURN jsonb_build_object('success', false, 'error', 'Failed to reschedule: ' || SQLERRM);
     END;
-    
-    -- ✅ Return success
-    RETURN jsonb_build_object(
-        'success', true,
-        'message', 'Reschedule reminder sent successfully',
-        'data', jsonb_build_object(
-            'appointment_id', p_appointment_id,
-            'patient_name', appointment_record.patient_name,
-            'patient_email', appointment_record.patient_email,
-            'notification_sent', true
-        )
-    );
-    
-EXCEPTION
-    WHEN OTHERS THEN
-        RAISE LOG 'Error in send_reschedule_reminder: %', SQLERRM;
-        RETURN jsonb_build_object('success', false, 'error', 'Failed to send reschedule reminder: ' || SQLERRM);
 END;
-$function$
-;
+$$;
 
 CREATE OR REPLACE FUNCTION public.send_staff_invitation_email(p_invitation_data jsonb)
  RETURNS jsonb
